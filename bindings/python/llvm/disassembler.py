@@ -36,7 +36,7 @@ Option_UseMarkup = 1
 
 
 _initialized = False
-_targets = ['AArch64', 'ARM', 'Hexagon', 'MSP430', 'Mips', 'NVPTX', 'PowerPC', 'R600', 'Sparc', 'SystemZ', 'X86', 'XCore']
+_targets = ['AArch64', 'ARM', 'Hexagon', 'MSP430', 'Mips', 'NVPTX', 'PowerPC', 'R600', 'Sparc', 'SystemZ', 'AAP', 'X86', 'XCore']
 def _ensure_initialized():
     global _initialized
     if not _initialized:
