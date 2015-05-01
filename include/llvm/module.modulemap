@@ -190,6 +190,7 @@ module LLVM_Utils {
 
     // These are intended for textual inclusion.
     textual header "Support/Dwarf.def"
+    textual header "Support/ELFRelocs/AAP.def"
     textual header "Support/ELFRelocs/AArch64.def"
     textual header "Support/ELFRelocs/ARM.def"
     textual header "Support/ELFRelocs/Hexagon.def"

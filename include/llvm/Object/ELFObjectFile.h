@@ -762,6 +762,7 @@ std::error_code ELFObjectFile<ELFT>::getRelocationValueString(
   case ELF::EM_ARM:
   case ELF::EM_HEXAGON:
   case ELF::EM_MIPS:
+  case ELF::EM_AAP:
     res = *SymName;
     break;
   default:
@@ -868,6 +869,8 @@ StringRef ELFObjectFile<ELFT>::getFileFormatName() const {
     case ELF::EM_SPARC:
     case ELF::EM_SPARC32PLUS:
       return "ELF32-sparc";
+    case ELF::EM_AAP:
+      return "ELF32-aap";
     default:
       return "ELF32-unknown";
     }
@@ -931,6 +934,9 @@ unsigned ELFObjectFile<ELFT>::getArch() const {
     return Triple::sparc;
   case ELF::EM_SPARCV9:
     return Triple::sparcv9;
+
+  case ELF::EM_AAP:
+    return Triple::aap;
 
   default:
     return Triple::UnknownArch;

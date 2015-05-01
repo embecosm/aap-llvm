@@ -450,6 +450,9 @@ void ScalarEnumerationTraits<ELFYAML::ELF_REL>::enumeration(
   case ELF::EM_ARM:
 #include "llvm/Support/ELFRelocs/ARM.def"
     break;
+  case ELF::EM_AAP:
+#include "llvm/Support/ELFRelocs/AAP.def"
+    break;
   default:
     llvm_unreachable("Unsupported architecture");
   }

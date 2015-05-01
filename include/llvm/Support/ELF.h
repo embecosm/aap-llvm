@@ -308,7 +308,9 @@ enum {
   EM_COGE          = 216, // Cognitive Smart Memory Processor
   EM_COOL          = 217, // iCelero CoolEngine
   EM_NORC          = 218, // Nanoradio Optimized RISC
-  EM_CSR_KALIMBA   = 219  // CSR Kalimba architecture family
+  EM_CSR_KALIMBA   = 219, // CSR Kalimba architecture family
+
+  EM_AAP           = 0x5343 // AAP
 };
 
 // Object file classes.
@@ -533,6 +535,11 @@ enum {
 // ELF Relocation type for Sparc.
 enum {
 #include "ELFRelocs/Sparc.def"
+};
+
+// ELF Relocation type for AAP.
+enum {
+#include "ELFRelocs/AAP.def"
 };
 
 #undef ELF_RELOC
