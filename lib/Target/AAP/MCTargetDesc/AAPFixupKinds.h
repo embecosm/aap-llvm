@@ -29,6 +29,24 @@ enum Fixups {
   fixup_AAP_BR16,
   fixup_AAP_BR32,
 
+  // Fixup for resolving conditional branches to other basic blocks
+  fixup_AAP_BRCC16,
+  fixup_AAP_BRCC32,
+
+  // Branch and links to other basic blocks
+  fixup_AAP_BAL16,
+  fixup_AAP_BAL32,
+
+  // Fixup for absolute addresses
+  fixup_AAP_ABS3_SHORT,
+  fixup_AAP_ABS6_SHORT,
+
+  fixup_AAP_ABS6,
+  fixup_AAP_ABS9,
+  fixup_AAP_ABS10,
+  fixup_AAP_ABS12,
+  fixup_AAP_ABS16,
+
   // Marker
   LastTargetFixupKind,
   NumTargetFixupKinds = LastTargetFixupKind - FirstTargetFixupKind

@@ -21,18 +21,30 @@ class AAPAsmBackend : public MCAsmBackend {
 public:
   AAPAsmBackend(Target const &T) {}
 
-  unsigned getNumFixupKinds() const override { return 3; }
+  unsigned getNumFixupKinds() const override { return 14; }
 
   const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override {
     const static MCFixupKindInfo Infos[AAP::NumTargetFixupKinds] = {
-        // This table *must* be in the order that the fixup_* kinds are defined
-        // in
-        // AAPFixupKinds.h.
-        //
-        // Name                           Offset (bits) Size (bits) Flags
-        {"fixup_AAP_NONE", 0, 16, 0},
-        {"fixup_AAP_BR16", 6, 3, MCFixupKindInfo::FKF_IsPCRel},
-        {"fixup_AAP_BR32", 6, 3, MCFixupKindInfo::FKF_IsPCRel}};
+      // This table *must* be in the order that the fixup_* kinds are defined
+      // in
+      // AAPFixupKinds.h.
+      //
+      // Name                 offset  size  flags
+      {"fixup_AAP_NONE",        0,    16,     0},
+      {"fixup_AAP_BR16",        0,    9,      MCFixupKindInfo::FKF_IsPCRel},
+      {"fixup_AAP_BR32",        0,    9,      MCFixupKindInfo::FKF_IsPCRel},
+      {"fixup_AAP_BRCC16",      6,    3,      MCFixupKindInfo::FKF_IsPCRel},
+      {"fixup_AAP_BRCC32",      6,    3,      MCFixupKindInfo::FKF_IsPCRel},
+      {"fixup_AAP_BAL16",       0,    3,      MCFixupKindInfo::FKF_IsPCRel},
+      {"fixup_AAP_BAL32",       0,    3,      MCFixupKindInfo::FKF_IsPCRel},
+      {"fixup_AAP_ABS3_SHORT",  0,    3,      0},
+      {"fixup_AAP_ABS6_SHORT",  0,    6,      0},
+      {"fixup_AAP_ABS6",        0,    3,      0},
+      {"fixup_AAP_ABS9",        0,    3,      0},
+      {"fixup_AAP_ABS10",       0,    3,      0},
+      {"fixup_AAP_ABS12",       0,    6,      0},
+      {"fixup_AAP_ABS16",       0,    6,      0}
+    };
 
     if (Kind < FirstTargetFixupKind)
       return MCAsmBackend::getFixupKindInfo(Kind);

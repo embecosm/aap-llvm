@@ -82,11 +82,16 @@ printMemSrcOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O,
     O << '+';
   }
 
-  assert(Offset.isImm() && "Expected immediate offset field");
-  if (Base.getReg()) {
-    O << ", ";
+  O << ", ";
+  if (Offset.isImm()) {
+    O << Offset.getImm();
   }
-  O << Offset.getImm();
+  else if (Offset.isExpr()) {
+    O << *Offset.getExpr();
+  }
+  else {
+    llvm_unreachable("Expected immediate/expression in offset field");
+  }
 }
 
 void AAPInstPrinter::

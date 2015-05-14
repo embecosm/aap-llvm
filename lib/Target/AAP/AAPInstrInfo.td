@@ -12,7 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 // Call
-def sdt_call         : SDTypeProfile<0, -1, [SDTCisVT<0, iPTR>]>;
+//def sdt_call         : SDTypeProfile<0, -1, [SDTCisVT<0, iPTR>]>;
+def sdt_call         : SDTypeProfile<0, -1, [SDTCisVT<1, iPTR>, SDTCisVT<1, i16>]>;
 def sdt_ret          : SDTypeProfile<0,  1, [SDTCisVT<0, i16>]>;
 def callflag         : SDNode<"AAPISD::CALL", sdt_call,
                       [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue, SDNPVariadic]>;
@@ -60,24 +61,56 @@ def memsrcPreDecAsmOperand  : AsmOperandClass { let Name = "MemSrcPreDec"; }
 
 def memsrc : Operand<i16> {
   let EncoderMethod = "encodeMemSrcOperand";
-  //let DecoderMethod = "decodeMemSrcOperand";
+  let DecoderMethod = "decodeMemSrcOperand";
   let PrintMethod = "printMemSrcOperand";
   let ParserMatchClass = memsrcAsmOperand;
-  let MIOperandInfo = (ops GR8, i16imm);
+  let MIOperandInfo = (ops GR64, i16imm);
 }
 def memsrc_postinc : Operand<i16> {
   let EncoderMethod = "encodeMemSrcOperand";
-  //let DecoderMethod = "decodeMemSrcOperand";
+  let DecoderMethod = "decodeMemSrcOperand";
   let PrintMethod = "printMemSrcPostIncOperand";
   let ParserMatchClass = memsrcPostIncAsmOperand;
-  let MIOperandInfo = (ops GR8, i16imm);
+  let MIOperandInfo = (ops GR64, i16imm);
 }
 def memsrc_predec : Operand<i16> {
   let EncoderMethod = "encodeMemSrcOperand";
-  //let DecoderMethod = "decodeMemSrcOperand";
+  let DecoderMethod = "decodeMemSrcOperand";
   let PrintMethod = "printMemSrcPreDecOperand";
   let ParserMatchClass = memsrcPreDecAsmOperand;
-  let MIOperandInfo = (ops GR8, i16imm);
+  let MIOperandInfo = (ops GR64, i16imm);
+}
+
+
+def imm3 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm < 8;
+}]> {
+  let EncoderMethod = "encodeImm3Operand";
+}
+def imm6 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm < 64;
+}]> {
+  let EncoderMethod = "encodeImm6Operand";
+}
+def imm9 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm < 512;
+}]> {
+  let EncoderMethod = "encodeImm9Operand";
+}
+def imm10 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm < 1024;
+}]> {
+  let EncoderMethod = "encodeImm10Operand";
+}
+def imm12 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm < 4094;
+}]> {
+  let EncoderMethod = "encodeImm12Operand";
+}
+def imm16 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm < 65536;
+}]> {
+  let EncoderMethod = "encodeImm16Operand";
 }
 
 
@@ -92,11 +125,11 @@ def MOV_r_short : Inst_rr_short
   <0x0, 0x9, (outs GR8:$rD), (ins GR8:$rA), "mov\t$rD, $rA", []>;
 
 def MOV_i16 : Inst_r_i16
-  <0x0, 0xf, (outs GR64:$rD), (ins i16imm:$imm), "mov\t$rD, $imm",
+  <0x0, 0xf, (outs GR64:$rD), (ins imm16:$imm), "mov\t$rD, $imm",
     [(set GR64:$rD, (i16 imm:$imm))]>;
 
 def MOV_i6_short : Inst_r_i6_short
-  <0x0, 0xf, (outs GR8:$rD), (ins i16imm:$imm), "mov\t$rD, $imm",
+  <0x0, 0xf, (outs GR8:$rD), (ins imm6:$imm), "mov\t$rD, $imm",
     [(set GR8:$rD, (i16 imm:$imm))]>;
 
 
@@ -105,10 +138,10 @@ def MOV_i6_short : Inst_r_i6_short
 //===----------------------------------------------------------------------===//
 
 def NOP : Inst_r_i12
-  <0x0, 0x0, (outs), (ins GR64:$rD, i16imm:$imm), "nop\t$rD, $imm", []>;
+  <0x0, 0x0, (outs), (ins GR64:$rD, imm12:$imm), "nop\t$rD, $imm", []>;
 
 def NOP_short : Inst_r_i6_short
-  <0x0, 0x0, (outs), (ins GR8:$rD, i16imm:$imm), "nop\t$rD, $imm", []>;
+  <0x0, 0x0, (outs), (ins GR8:$rD, imm6:$imm), "nop\t$rD, $imm", []>;
 
 
 // ALU ops with register operands
@@ -156,22 +189,22 @@ def SUBC_r : Inst_rrr
 // ALU ops with immediates
 let Defs = [PSW] in {
 def ADD_i10 : Inst_rr_i10
-  <0x0, 0xa, (outs GR64:$rD), (ins GR64:$rA, i16imm:$imm),
+  <0x0, 0xa, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
     "add\t$rD, $rA, $imm",
     [(set GR64:$rD, (add GR64:$rA, (i16 imm:$imm)))]>;
 
 def ADD_i3_short : Inst_rr_i3_short
-  <0x0, 0xa, (outs GR8:$rD), (ins GR8:$rA, i16imm:$imm),
+  <0x0, 0xa, (outs GR8:$rD), (ins GR8:$rA, imm3:$imm),
     "add\t$rD, $rA, $imm",
     [(set GR8:$rD, (add GR8:$rA, (i16 imm:$imm)))]>;
 
 def SUB_i10 : Inst_rr_i10
-  <0x0, 0xb, (outs GR64:$rD), (ins GR64:$rA, i16imm:$imm),
+  <0x0, 0xb, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
     "sub\t$rD, $rA, $imm",
     [(set GR64:$rD, (sub GR64:$rA, (i16 imm:$imm)))]>;
 
 def SUB_i3_short : Inst_rr_i3_short
-  <0x0, 0xb, (outs GR8:$rD), (ins GR8:$rA, i16imm:$imm),
+  <0x0, 0xb, (outs GR8:$rD), (ins GR8:$rA, imm3:$imm),
     "sub\t$rD, $rA, $imm",
     [(set GR8:$rD, (sub GR8:$rA, (i16 imm:$imm)))]>;
 }
@@ -179,12 +212,12 @@ def SUB_i3_short : Inst_rr_i3_short
 
 multiclass SHIFT_i<bits<8> opcode, string opname, SDNode OpNode> {
   def _i6 : Inst_rr_i6
-    <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, i16imm:$imm),
+    <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, imm6:$imm),
       !strconcat(opname, "\t$rD, $rA, $imm"),
       [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm:$imm)))]>;
 
   def _i3_short : Inst_rr_i3_short
-    <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, i16imm:$imm),
+    <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, imm3:$imm),
       !strconcat(opname, "\t$rD, $rA, $imm"),
       [(set GR8:$rD, (OpNode GR8:$rA, (i16 imm:$imm)))]>;
 }
@@ -196,7 +229,7 @@ defm LSR : SHIFT_i<0xe, "lsr", srl>;
 // Logical operations with immediate
 class LOG_i9<bits<5> opcode, string opname, SDNode OpNode>
     : Inst_rr_i9
-      <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, i16imm:$imm),
+      <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, imm9:$imm),
         !strconcat(opname, "\t$rD, $rA, $imm"),
         [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm:$imm)))]>;
 
@@ -369,14 +402,18 @@ let usesCustomInserter = 1 in {
 //TODO: Add other conditional branches
 let isCall = 1,
   Uses = [R1],
-  Defs = [R0,  R2,  R3,  R4,  R5,  R6,  R7,  R8,  R9, R10, R11, R12,
+  Defs = [R0, R2,  R3,  R4,  R5,  R6,  R7,  R8,  R9, R10, R11, R12,
           R13, R14, R15, R16, R17, R18, R19] in {
-def JAL_short : Inst_r_short
-  <0x2, 0x8, (outs), (ins i16imm:$rD), "jal\t$rD", []>;
+def BAL_short : Inst_i6_r_short
+  <0x2, 0x8, (outs), (ins i16imm:$imm, GR8:$rA), "bal\t$imm, $rA", []>;
 
-def JAL : Inst_r
-  <0x2, 0x8, (outs), (ins i16imm:$rD), "jal\t$rD", [(callflag imm:$rD)]>;
+def BAL : Inst_i16_r
+  <0x2, 0x8, (outs), (ins i16imm:$imm, GR64:$rA), "bal\t$imm, $rA", []>;
 }
+
+// Calls are encoded as a branch through the link register
+def : Pat<(callflag (i16 imm:$imm), GR64:$rA), (BAL imm:$imm, GR64:$rA)>;
+
 
 let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
 def JMP : Inst_r<0x2, 0x9, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
@@ -399,8 +436,8 @@ def ADJCALLSTACKUP : Pseudo
 }
 
 // Call patterns
-def : Pat<(callflag (i16 tglobaladdr:$dst)),  (JAL tglobaladdr:$dst)>;
-def : Pat<(callflag (i16 texternalsym:$dst)), (JAL texternalsym:$dst)>;
+def : Pat<(callflag (i16 tglobaladdr:$dst), GR64:$rA),  (BAL tglobaladdr:$dst, GR64:$rA)>;
+def : Pat<(callflag (i16 texternalsym:$dst), GR64:$rA), (BAL texternalsym:$dst, GR64:$rA)>;
 
 
 //===----------------------------------------------------------------------===//

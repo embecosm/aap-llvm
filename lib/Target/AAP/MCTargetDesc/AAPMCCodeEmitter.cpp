@@ -75,10 +75,16 @@ unsigned AAPMCCodeEmitter::getMachineOpValue(MCInst const &MI,
   assert(Kind == MCExpr::SymbolRef);
 
   AAP::Fixups FixupKind = AAP::Fixups(0);
-
-  // switch(cast<MCSymbolRefExpr>(Expr)->getKind()) {
-  //  default: llvm_unreachable("Unknown fixup kind!");
-  //}
+  const unsigned Opcode = MI.getOpcode();
+  if (Opcode == AAP::BAL) {
+    FixupKind = AAP::fixup_AAP_BAL32;
+  }
+  else if (Opcode == AAP::BAL_short) {
+    FixupKind = AAP::fixup_AAP_BAL16;
+  }
+  else {
+    llvm_unreachable("Unknown fixup kind!");
+  }
 
   // Push fixup, encoding 0 as the current operand
   Fixups.push_back(
@@ -92,6 +98,45 @@ MCCodeEmitter *llvm::createAAPMCCodeEmitter(MCInstrInfo const &MII,
   return new AAPMCCodeEmitter(MII, Context);
 }
 
+
+// TODO: Better way than using LUTs?
+static const unsigned BRCCOpcodes[] = {
+  AAP::BEQ_,  AAP::BNE_,
+  AAP::BLTS_, AAP::BGTS_,
+  AAP::BLTU_, AAP::BGTU_,
+
+  AAP::BEQ_short,  AAP::BNE_short,
+  AAP::BLTS_short, AAP::BGTS_short,
+  AAP::BLTU_short, AAP::BGTU_short
+};
+static const unsigned LoadStoreOpcodes[] = {
+  AAP::LDB, AAP::LDW, AAP::LDD,
+  AAP::LDB_postinc, AAP::LDW_postinc, AAP::LDD_postinc,
+  AAP::LDB_predec, AAP::LDW_predec, AAP::LDD_predec,
+
+  AAP::STB, AAP::STW, AAP::STD,
+  AAP::STB_postinc, AAP::STW_postinc, AAP::STD_postinc,
+  AAP::STB_predec, AAP::STW_predec, AAP::STD_predec,
+
+  AAP::LDB_short, AAP::LDW_short,
+  AAP::LDB_postinc_short, AAP::LDW_postinc_short,
+  AAP::LDB_predec_short,  AAP::LDW_predec_short,
+
+  AAP::STB_short, AAP::STW_short,
+  AAP::STB_postinc_short, AAP::STW_postinc_short,
+  AAP::STB_predec_short,  AAP::STW_predec_short,
+};
+
+static bool findOpcode(unsigned Op, ArrayRef<unsigned> Opcodes) {
+  for (auto It = Opcodes.begin(); It != Opcodes.end(); It++) {
+    if (Op == *It) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
 unsigned
 AAPMCCodeEmitter::encodePCRelImmOperand(const MCInst &MI, unsigned Op,
                                         SmallVectorImpl<MCFixup> &Fixups,
@@ -101,11 +146,31 @@ AAPMCCodeEmitter::encodePCRelImmOperand(const MCInst &MI, unsigned Op,
     return getMachineOpValue(MI, MO, Fixups, STI);
   }
 
+  const unsigned Opcode = MI.getOpcode();
   AAP::Fixups FixupKind;
-  switch (MI.getOpcode()) {
-  default:
+  switch (Opcode) {
+  case AAP::BRA:
     FixupKind = AAP::fixup_AAP_BR32;
     break;
+  case AAP::BRA_short:
+    FixupKind = AAP::fixup_AAP_BR16;
+    break;
+  case AAP::BAL:
+    FixupKind = AAP::fixup_AAP_BAL32;
+    break;
+  case AAP::BAL_short:
+    FixupKind = AAP::fixup_AAP_BAL16;
+    break;
+  default:
+    if (findOpcode(Opcode, BRCCOpcodes)) {
+      const MCInstrDesc& Desc = MCII.get(Opcode);
+      if (Desc.getSize() == 4) {
+        FixupKind = AAP::fixup_AAP_BRCC32;
+      }
+      else {
+        FixupKind = AAP::fixup_AAP_BRCC16;
+      }
+    }
   }
   Fixups.push_back(MCFixup::Create(0, MO.getExpr(), (MCFixupKind)FixupKind));
   return 0;
@@ -124,18 +189,121 @@ AAPMCCodeEmitter::encodeMemSrcOperand(const MCInst &MI, unsigned Op,
   MCOperand imm = MI.getOperand(Op + 1);
 
   if (imm.isImm()) {
-    encoding |= (static_cast<short>(imm.getImm()) & 0xffff);
-  } else {
-    // Not yet an immediate, check for an expression and store as fixup to
-    // be resolved later
-    assert(imm.isExpr() && "Second operand is not an immediate or expression!");
-
-    llvm_unreachable("Not yet implemented fixup");
-    // AAP::Fixups FixupKind = AAP::fixup_AAP_HIGH16;
-    // Fixups.push_back(MCFixup::Create(0, imm.getExpr(),
-    // MCFixupKind(FixupKind)));
+    encoding |= static_cast<unsigned>(imm.getImm()) && 0xffff;
+    return encoding;
   }
+
+  // Not yet an immediate, check for an expression and store as fixup to
+  // be resolved later
+  assert(imm.isExpr());
+
+  AAP::Fixups FixupKind;
+  const unsigned Opcode = MI.getOpcode();
+  if (findOpcode(Opcode, LoadStoreOpcodes)) {
+    const MCInstrDesc& Desc = MCII.get(Opcode);
+
+    FixupKind = 
+      (Desc.getSize() == 4) ? AAP::fixup_AAP_ABS6 : AAP::fixup_AAP_ABS3_SHORT;
+  }
+  else {
+    llvm_unreachable("Unknown opcode!");
+  }
+  Fixups.push_back(MCFixup::Create(0, imm.getExpr(), MCFixupKind(FixupKind)));
   return encoding;
 }
+
+unsigned
+AAPMCCodeEmitter::encodeImm3Operand(const MCInst &MI, unsigned Op,
+                                    SmallVectorImpl<MCFixup> &Fixups,
+                                    const MCSubtargetInfo &STI) const {
+  const MCOperand MO = MI.getOperand(Op);
+  if (MO.isImm()) {
+    return static_cast<unsigned>(MO.getImm());
+  }
+
+  assert(MO.isExpr());
+  AAP::Fixups FixupKind = AAP::fixup_AAP_ABS3_SHORT;
+  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  return 0;
+}
+
+unsigned
+AAPMCCodeEmitter::encodeImm6Operand(const MCInst &MI, unsigned Op,
+                                    SmallVectorImpl<MCFixup> &Fixups,
+                                    const MCSubtargetInfo &STI) const {
+  const MCOperand MO = MI.getOperand(Op);
+  if (MO.isImm()) {
+    return static_cast<unsigned>(MO.getImm());
+  }
+
+  assert(MO.isExpr());
+
+  const MCInstrDesc& Desc = MCII.get(MI.getOpcode());
+  AAP::Fixups FixupKind =
+    (Desc.getSize() == 4) ? AAP::fixup_AAP_ABS6 : AAP::fixup_AAP_ABS6_SHORT;
+  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  return 0;
+}
+
+unsigned
+AAPMCCodeEmitter::encodeImm9Operand(const MCInst &MI, unsigned Op,
+                                    SmallVectorImpl<MCFixup> &Fixups,
+                                    const MCSubtargetInfo &STI) const {
+  const MCOperand MO = MI.getOperand(Op);
+  if (MO.isImm()) {
+    return static_cast<unsigned>(MO.getImm());
+  }
+
+  assert(MO.isExpr());
+  AAP::Fixups FixupKind = AAP::fixup_AAP_ABS9;
+  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  return 0;
+}
+
+unsigned
+AAPMCCodeEmitter::encodeImm10Operand(const MCInst &MI, unsigned Op,
+                                     SmallVectorImpl<MCFixup> &Fixups,
+                                     const MCSubtargetInfo &STI) const {
+  const MCOperand MO = MI.getOperand(Op);
+  if (MO.isImm()) {
+    return static_cast<unsigned>(MO.getImm());
+  }
+
+  assert(MO.isExpr());
+  AAP::Fixups FixupKind = AAP::fixup_AAP_ABS10;
+  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  return 0;
+}
+
+unsigned
+AAPMCCodeEmitter::encodeImm12Operand(const MCInst &MI, unsigned Op,
+                                     SmallVectorImpl<MCFixup> &Fixups,
+                                     const MCSubtargetInfo &STI) const {
+  const MCOperand MO = MI.getOperand(Op);
+  if (MO.isImm()) {
+    return static_cast<unsigned>(MO.getImm());
+  }
+
+  assert(MO.isExpr());
+  AAP::Fixups FixupKind = AAP::fixup_AAP_ABS12;
+  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  return 0;
+}
+
+unsigned
+AAPMCCodeEmitter::encodeImm16Operand(const MCInst &MI, unsigned Op,
+                                     SmallVectorImpl<MCFixup> &Fixups,
+                                     const MCSubtargetInfo &STI) const {
+  const MCOperand MO = MI.getOperand(Op);
+  if (MO.isImm()) {
+    return static_cast<unsigned>(MO.getImm());
+  }
+
+  assert(MO.isExpr());
+  AAP::Fixups FixupKind = AAP::fixup_AAP_ABS16;
+  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  return 0;
+}
+
 
 #include "AAPGenMCCodeEmitter.inc"

@@ -420,8 +420,11 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   // Returns a chain & a flag for retval copy to use.
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
   SmallVector<SDValue, 8> Ops;
+  // Add the link register as a return
   Ops.push_back(Chain);
   Ops.push_back(Callee);
+  Ops.push_back(DAG.getRegister(AAPRegisterInfo::getLinkRegister(), MVT::i16));
+
 
   // Add argument registers to the end of the list so that they are
   // known live into the call.
