@@ -129,7 +129,7 @@ DecodeStatus decodeMemSrcOperand(MCInst &Inst, unsigned Operand,
     return MCDisassembler::Fail;
   }
 
-  Inst.addOperand(MCOperand::CreateImm(SignExtend<16>(Offset)));
+  Inst.addOperand(MCOperand::CreateImm(SignExtend32<16>(Offset)));
   return MCDisassembler::Success;
 }
 
