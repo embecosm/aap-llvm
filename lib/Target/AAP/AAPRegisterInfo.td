@@ -26,9 +26,14 @@ class Ri<bits<5> num, string n> : AAPReg<n> {
 foreach I = 0-63 in
 def R#I : Ri<I, "r"#I>, DwarfRegNum<[I]>;
 
+// PSW holds the carry flag
+def PSW : AAPReg<"psw">, DwarfRegNum<[64]>;
+
+
 // Register classes.
 def GR8 : RegisterClass<"AAP", [i16], 16,
   (add R0, R1, R2, R3, R4, R5, R6, R7)>;
+
 def GR64 : RegisterClass<"AAP", [i16], 16,
   (add R0,  R1,  R2,  R3,  R4,  R5,  R6,  R7,  R8,  R9,  R10, R11, R12,
        R13, R14, R15, R16, R17, R18, R19, R20, R21, R22, R23, R24, R25,

@@ -90,7 +90,7 @@ void AAPInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
          "Impossible register-register copy");
 
   // FIXME: If possible with short insn, build that instead
-  BuildMI(MBB, I, DL, get(AAP::MOV_rrl), DestReg)
+  BuildMI(MBB, I, DL, get(AAP::MOV_r), DestReg)
       .addReg(SrcReg, getKillRegState(KillSrc));
 }
 
@@ -110,21 +110,14 @@ void AAPInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
       MFrameInfo.getObjectSize(FrameIdx),
       MFrameInfo.getObjectAlignment(FrameIdx));
 
-  if (RC == &AAP::GR8RegClass) {
-    BuildMI(MBB, MI, DL, get(AAP::STW_l))
-        .addFrameIndex(FrameIdx)
-        .addImm(0)
-        .addReg(SrcReg, getKillRegState(isKill))
-        .addMemOperand(MMO);
-  } else if (RC == &AAP::GR64RegClass) {
-    BuildMI(MBB, MI, DL, get(AAP::STW_l))
-        .addFrameIndex(FrameIdx)
-        .addImm(0)
-        .addReg(SrcReg, getKillRegState(isKill))
-        .addMemOperand(MMO);
-  } else {
-    llvm_unreachable("Unknown register class to store to stack slot!");
-  }
+  assert((RC == &AAP::GR8RegClass || RC == &AAP::GR64RegClass) &&
+           "Unknown register class to store to stack slot");
+
+  BuildMI(MBB, MI, DL, get(AAP::STW))
+      .addFrameIndex(FrameIdx)
+      .addImm(0)
+      .addReg(SrcReg, getKillRegState(isKill))
+      .addMemOperand(MMO);
 }
 
 void AAPInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
@@ -142,22 +135,14 @@ void AAPInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
       MFrameInfo.getObjectSize(FrameIdx),
       MFrameInfo.getObjectAlignment(FrameIdx));
 
-  if (RC == &AAP::GR8RegClass) {
-    BuildMI(MBB, MI, DL, get(AAP::LDW_l))
-        .addReg(DstReg)
-        .addFrameIndex(FrameIdx)
-        .addImm(0)
-        .addMemOperand(MMO);
+  assert((RC == &AAP::GR8RegClass || RC == &AAP::GR64RegClass) &&
+           "Unknown register class to store to stack slot");
 
-  } else if (RC == &AAP::GR64RegClass) {
-    BuildMI(MBB, MI, DL, get(AAP::LDW_l))
-        .addReg(DstReg)
-        .addFrameIndex(FrameIdx)
-        .addImm(0)
-        .addMemOperand(MMO);
-  } else {
-    llvm_unreachable("Unknown register class to load from stack slot!");
-  }
+  BuildMI(MBB, MI, DL, get(AAP::LDW))
+      .addReg(DstReg)
+      .addFrameIndex(FrameIdx)
+      .addImm(0)
+      .addMemOperand(MMO);
 }
 
 /// ReverseBranchCondition - Return the inverse opcode of the

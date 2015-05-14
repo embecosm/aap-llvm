@@ -76,10 +76,16 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   // Handle conditionals via brcc and selectcc
   setOperationAction(ISD::BRCOND, MVT::i8, Expand);
   setOperationAction(ISD::BRCOND, MVT::i16, Expand);
+  setOperationAction(ISD::BRCOND, MVT::Other, Expand);
+
   setOperationAction(ISD::SELECT, MVT::i8, Expand);
   setOperationAction(ISD::SELECT, MVT::i16, Expand);
+  setOperationAction(ISD::SELECT, MVT::Other, Expand);
+
   setOperationAction(ISD::SETCC, MVT::i8, Expand);
   setOperationAction(ISD::SETCC, MVT::i16, Expand);
+  setOperationAction(ISD::SETCC, MVT::Other, Expand);
+
   setOperationAction(ISD::SELECT_CC, MVT::i8, Promote);
   setOperationAction(ISD::SELECT_CC, MVT::i16, Custom);
   setOperationAction(ISD::BR_CC, MVT::i8, Promote);
@@ -280,6 +286,10 @@ AAPTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
   SDValue Flag;
   SmallVector<SDValue, 4> RetOps(1, Chain);
 
+  // Add the link register as the first operand
+  RetOps.push_back(
+    DAG.getRegister(AAPRegisterInfo::getLinkRegister(), MVT::i16));
+
   // Copy the result values into the output registers.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
     CCValAssign &VA = RVLocs[i];
@@ -299,7 +309,7 @@ AAPTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
   if (Flag.getNode())
     RetOps.push_back(Flag);
 
-  return DAG.getNode(AAPISD::RET_FLAG, dl, MVT::Other, RetOps);
+  return DAG.getNode(AAPISD::RET_FLAG, dl, {MVT::Other, MVT::i16}, RetOps);
 }
 
 /// LowerCCCCallTo - functions arguments are copied from virtual regs to
@@ -359,7 +369,9 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
       assert(VA.isMemLoc());
 
       if (StackPtr.getNode() == 0)
-        StackPtr = DAG.getCopyFromReg(Chain, dl, AAP::R1, getPointerTy());
+        StackPtr = DAG.getCopyFromReg(Chain, dl,
+                                      AAPRegisterInfo::getStackPtrRegister(),
+                                      getPointerTy());
 
       SDValue PtrOff = DAG.getNode(ISD::ADD, dl, getPointerTy(), StackPtr,
                                    DAG.getIntPtrConstant(VA.getLocMemOffset()));
@@ -518,27 +530,27 @@ static std::pair<bool, AAPCC::CondCode> getAAPCondCode(ISD::CondCode CC) {
 // Map the generic BR_CC instruction to a specific branch instruction based
 // on the provided AAP condition code
 static unsigned getBranchOpForCondition(int branchOp, AAPCC::CondCode CC) {
-  assert(branchOp == AAP::BR_CC || branchOp == AAP::BR_CC_l);
+  assert(branchOp == AAP::BR_CC || branchOp == AAP::BR_CC);
 
   if (branchOp == AAP::BR_CC) {
     switch (CC) {
     case AAPCC::COND_EQ:
-      branchOp = AAP::BEQ_s;
+      branchOp = AAP::BEQ_;
       break;
     case AAPCC::COND_NE:
-      branchOp = AAP::BNE_s;
+      branchOp = AAP::BNE_;
       break;
     case AAPCC::COND_LTS:
-      branchOp = AAP::BLTS_s;
+      branchOp = AAP::BLTS_;
       break;
     case AAPCC::COND_GTS:
-      branchOp = AAP::BGTS_s;
+      branchOp = AAP::BGTS_;
       break;
     case AAPCC::COND_LTU:
-      branchOp = AAP::BLTU_s;
+      branchOp = AAP::BLTU_;
       break;
     case AAPCC::COND_GTU:
-      branchOp = AAP::BGTU_s;
+      branchOp = AAP::BGTU_;
       break;
     default:
       llvm_unreachable("Unknown condition code!");
@@ -546,22 +558,22 @@ static unsigned getBranchOpForCondition(int branchOp, AAPCC::CondCode CC) {
   } else {
     switch (CC) {
     case AAPCC::COND_EQ:
-      branchOp = AAP::BEQ_l;
+      branchOp = AAP::BEQ_;
       break;
     case AAPCC::COND_NE:
-      branchOp = AAP::BNE_l;
+      branchOp = AAP::BNE_;
       break;
     case AAPCC::COND_LTS:
-      branchOp = AAP::BLTS_l;
+      branchOp = AAP::BLTS_;
       break;
     case AAPCC::COND_GTS:
-      branchOp = AAP::BGTS_l;
+      branchOp = AAP::BGTS_;
       break;
     case AAPCC::COND_LTU:
-      branchOp = AAP::BLTU_l;
+      branchOp = AAP::BLTU_;
       break;
     case AAPCC::COND_GTU:
-      branchOp = AAP::BGTU_l;
+      branchOp = AAP::BGTU_;
       break;
     default:
       llvm_unreachable("Unknown condition code!");
@@ -641,7 +653,7 @@ AAPTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                MachineBasicBlock *MBB) const {
   switch (MI->getOpcode()) {
   case AAP::BR_CC:
-  case AAP::BR_CC_l:
+  case AAP::BR_CC_short:
     return emitBrCC(MI, MBB);
   case AAP::SELECT_CC:
     return emitSelectCC(MI, MBB);
@@ -703,22 +715,22 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
   unsigned branchOp;
   switch (CC) {
   case AAPCC::COND_EQ:
-    branchOp = AAP::BEQ_l;
+    branchOp = AAP::BEQ_;
     break;
   case AAPCC::COND_NE:
-    branchOp = AAP::BNE_l;
+    branchOp = AAP::BNE_;
     break;
   case AAPCC::COND_LTS:
-    branchOp = AAP::BLTS_l;
+    branchOp = AAP::BLTS_;
     break;
   case AAPCC::COND_GTS:
-    branchOp = AAP::BGTS_l;
+    branchOp = AAP::BGTS_;
     break;
   case AAPCC::COND_LTU:
-    branchOp = AAP::BLTU_l;
+    branchOp = AAP::BLTU_;
     break;
   case AAPCC::COND_GTU:
-    branchOp = AAP::BGTU_l;
+    branchOp = AAP::BGTU_;
     break;
   default:
     llvm_unreachable("Unknown condition code!");

@@ -51,6 +51,9 @@ DecodeStatus DecodeGR8RegisterClass(MCInst &Inst, unsigned RegNo,
 DecodeStatus DecodeGR64RegisterClass(MCInst &Inst, unsigned RegNo,
                                      uint64_t Address, const void *Decoder);
 
+DecodeStatus decodeMemSrcOperand(MCInst &Inst, unsigned Operand,
+                                 uint64_t Address, const void *Decoder);
+
 #include "AAPGenDisassemblerTables.inc"
 
 DecodeStatus AAPDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
@@ -117,3 +120,16 @@ DecodeStatus DecodeGR64RegisterClass(MCInst &Inst, unsigned RegNo,
                                      uint64_t Address, const void *Decoder) {
   return decodeRegisterClass(Inst, RegNo, AAPRegs64);
 }
+DecodeStatus decodeMemSrcOperand(MCInst &Inst, unsigned Operand,
+                                 uint64_t Address, const void *Decoder) {
+  unsigned Reg = (Operand >> 16) && 0x3f;
+  unsigned Offset = Operand && 0xffff;
+
+  if (decodeRegisterClass(Inst, Reg, AAPRegs64) == MCDisassembler::Fail) {
+    return MCDisassembler::Fail;
+  }
+
+  Inst.addOperand(MCOperand::CreateImm(SignExtend<16>(Offset)));
+  return MCDisassembler::Success;
+}
+

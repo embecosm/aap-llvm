@@ -64,9 +64,9 @@ void AAPFrameLowering::emitPrologue(MachineFunction &MF) const {
 
     if (NumBytes) {
       // Adjust stack pointer
-      // TODO: Replace R1 with SP
-      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_rril), AAP::R1)
-          .addReg(AAP::R1)
+      const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
+      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_r), SP)
+          .addReg(SP)
           .addImm(NumBytes);
     }
   }
@@ -83,7 +83,7 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
   DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
 
   unsigned RetOpcode = MBBI->getOpcode();
-  assert(RetOpcode == AAP::RET &&
+  assert(RetOpcode == AAP::JMP &&
          "Epilogue can only be inserted in returning blocks");
 
   // Number of bytes to dealloc from FrameInfo
@@ -94,11 +94,11 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
   } else {
     uint64_t NumBytes = StackSize - MFuncInfo->getCalleeSavedFrameSize();
 
+    const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
     if (NumBytes) {
       // Adjust stack pointer back
-      // TODO: Replace R1 with SP
-      BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_rril), AAP::R1)
-          .addReg(AAP::R1)
+      BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_r), SP)
+          .addReg(SP)
           .addImm(NumBytes);
     }
   }
@@ -125,10 +125,10 @@ bool AAPFrameLowering::spillCalleeSavedRegisters(
     unsigned Reg = CSI[i - 1].getReg();
 
     // Add Callee-saved register as live-in. It's killed by the spill
-    // TODO: Replace R1 with SP
+    const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
     MBB.addLiveIn(Reg);
-    BuildMI(MBB, MI, DL, TII.get(AAP::STW_predec_l), AAP::R1)
-        .addReg(AAP::R1)
+    BuildMI(MBB, MI, DL, TII.get(AAP::STW_predec), SP)
+        .addReg(SP)
         .addImm(0)
         .addReg(Reg, RegState::Kill);
   }
@@ -151,10 +151,10 @@ bool AAPFrameLowering::restoreCalleeSavedRegisters(
   for (unsigned i = 0; i != CSI.size(); ++i) {
     unsigned Reg = CSI[i].getReg();
 
-    // TODO: Replace R1 with SP
-    BuildMI(MBB, MI, DL, TII.get(AAP::LDW_postinc_l), Reg)
-        .addReg(AAP::R1, RegState::Define)
-        .addReg(AAP::R1)
+    const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
+    BuildMI(MBB, MI, DL, TII.get(AAP::LDW_postinc), Reg)
+        .addReg(SP, RegState::Define)
+        .addReg(SP)
         .addImm(0);
   }
   return true;

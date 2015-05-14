@@ -23,12 +23,10 @@ using namespace llvm;
 #include "AAPGenRegisterInfo.inc"
 #include "llvm/CodeGen/MachineFunction.h"
 
-AAPRegisterInfo::AAPRegisterInfo() : AAPGenRegisterInfo(AAP::R1) {}
+AAPRegisterInfo::AAPRegisterInfo() : AAPGenRegisterInfo(getLinkRegister()) {}
 
 const uint16_t *
 AAPRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
-  const TargetFrameLowering *TFI = MF->getSubtarget().getFrameLowering();
-
   return CSR_SaveList;
 }
 
@@ -36,10 +34,10 @@ BitVector AAPRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   BitVector Reserved(getNumRegs());
   const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
 
-  Reserved.set(AAP::R0); // link register
-  Reserved.set(AAP::R1); // stack pointer
+  Reserved.set(getLinkRegister());
+  Reserved.set(getStackPtrRegister());
   if (TFI->hasFP(MF)) {
-    Reserved.set(AAP::R2); // frame pointer
+    Reserved.set(getFramePtrRegister());
   }
 
   return Reserved;
@@ -87,5 +85,17 @@ void AAPRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MBBI,
 unsigned AAPRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
 
-  return TFI->hasFP(MF) ? AAP::R2 : AAP::R1;
+  return TFI->hasFP(MF) ? getFramePtrRegister() : getStackPtrRegister();
 }
+
+
+unsigned AAPRegisterInfo::getLinkRegister() {
+  return AAP::R0;
+}
+unsigned AAPRegisterInfo::getStackPtrRegister() {
+  return AAP::R1;
+}
+unsigned AAPRegisterInfo::getFramePtrRegister() {
+  return AAP::R2;
+}
+

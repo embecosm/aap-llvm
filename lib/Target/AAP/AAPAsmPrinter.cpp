@@ -57,7 +57,7 @@ void AAPAsmPrinter::printOperand(const MachineInstr *MI, int OpNum,
   default:
     llvm_unreachable("Not implemented yet!");
   case MachineOperand::MO_Register:
-    O << AAPInstPrinter::getRegisterName(MO.getReg());
+    O << '$' << AAPInstPrinter::getRegisterName(MO.getReg());
     return;
   case MachineOperand::MO_Immediate:
     O << MO.getImm();

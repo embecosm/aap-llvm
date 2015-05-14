@@ -40,6 +40,10 @@ public:
 
   // Debug information queries.
   unsigned getFrameRegister(const MachineFunction &MF) const override;
+
+  static unsigned getLinkRegister();
+  static unsigned getStackPtrRegister();
+  static unsigned getFramePtrRegister();
 };
 
 } // end namespace llvm

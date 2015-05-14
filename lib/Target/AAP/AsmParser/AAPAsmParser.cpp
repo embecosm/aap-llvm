@@ -82,7 +82,9 @@ struct AAPOperand : public MCParsedAsmOperand {
       const MCExpr *Val;
     } Imm;
     struct {
+      bool WithPreDec;
       unsigned RegNum;
+      bool WithPostInc;
       const MCExpr *Offset;
     } Mem;
   };
@@ -144,8 +146,17 @@ public:
   bool isReg() const { return Kind == Register; }
   bool isImm() const { return Kind == Immediate; }
   bool isToken() const { return Kind == Token; }
-  bool isMemSrc() const { return Kind == MemSrc; }
   bool isMem() const { return false; }
+
+  bool isMemSrc() const {
+    return (Kind == MemSrc) && !Mem.WithPreDec && !Mem.WithPostInc;
+  }
+  bool isMemSrcPostInc() const {
+    return (Kind == MemSrc) && !Mem.WithPreDec && Mem.WithPostInc;
+  }
+  bool isMemSrcPreDec() const {
+    return (Kind == MemSrc) && Mem.WithPreDec && !Mem.WithPostInc;
+  }
 
   void addExpr(MCInst &Inst, const MCExpr *Expr) const {
     // Add as immediates where possible. Null MCExpr = 0
@@ -171,6 +182,14 @@ public:
     assert(N == 2 && "Invalid number of operands!");
     Inst.addOperand(MCOperand::CreateReg(getMemSrcReg()));
     addExpr(Inst, getMemSrcImm());
+  }
+
+  void addMemSrcPostIncOperands(MCInst &Inst, unsigned N) const {
+    addMemSrcOperands(Inst, N);
+  }
+
+  void addMemSrcPreDecOperands(MCInst &Inst, unsigned N) const {
+    addMemSrcOperands(Inst, N);
   }
 
   // FIXME: Implement this
@@ -204,9 +223,12 @@ public:
   }
 
   static std::unique_ptr<AAPOperand>
-  CreateMemSrc(unsigned RegNo, const MCExpr *Offset, SMLoc S, SMLoc E) {
+  CreateMemSrc(unsigned RegNo, const MCExpr *Offset,
+               bool WithPreDec, bool WithPostInc, SMLoc S, SMLoc E) {
     auto Op = make_unique<AAPOperand>(MemSrc);
+    Op->Mem.WithPreDec = WithPreDec;
     Op->Mem.RegNum = RegNo;
+    Op->Mem.WithPostInc = WithPostInc;
     Op->Mem.Offset = Offset;
     Op->StartLoc = S;
     Op->EndLoc = E;
@@ -272,6 +294,12 @@ std::unique_ptr<AAPOperand> AAPAsmParser::ParseRegister(unsigned &RegNo) {
   SMLoc S = Parser.getTok().getLoc();
   SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
 
+  // Registers have '$' prefix
+  if (getLexer().getKind() != AsmToken::Dollar) {
+    return nullptr;
+  }
+  getLexer().Lex();
+
   switch (getLexer().getKind()) {
   default:
     return nullptr;
@@ -285,7 +313,6 @@ std::unique_ptr<AAPOperand> AAPAsmParser::ParseRegister(unsigned &RegNo) {
     getLexer().Lex();
     return AAPOperand::CreateReg(RegNo, S, E);
   }
-  return nullptr;
 }
 
 std::unique_ptr<AAPOperand> AAPAsmParser::ParseImmediate() {
@@ -297,27 +324,20 @@ std::unique_ptr<AAPOperand> AAPAsmParser::ParseImmediate() {
     return AAPOperand::CreateImm(EVal, S, E);
   }
   return nullptr;
-
-  /*
-    const MCExpr *EVal;
-    switch(getLexer().getKind()) {
-      default: return 0;
-      case AsmToken::Plus:
-      case AsmToken::Minus:
-      case AsmToken::Integer:
-        if (getParser().parseExpression(EVal))
-          return 0;
-
-        int64_t ans;
-        EVal->EvaluateAsAbsolute(ans);
-        return AAPOperand::CreateImm(EVal, S, E);
-    }
-  */
 }
 
 std::unique_ptr<AAPOperand> AAPAsmParser::ParseMemSrc() {
   SMLoc S = Parser.getTok().getLoc();
   SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
+
+  bool WithPreDec = false;
+  bool WithPostInc = false;
+
+  // First check for a '-', signifying a predecrement
+  if (getLexer().getKind() == AsmToken::Minus) {
+    getLexer().Lex();
+    WithPreDec = true;
+  }
 
   unsigned RegNo;
   std::unique_ptr<AAPOperand> RegOp = ParseRegister(RegNo);
@@ -326,6 +346,12 @@ std::unique_ptr<AAPOperand> AAPAsmParser::ParseMemSrc() {
     return nullptr;
   }
   RegNo = RegOp->getReg();
+
+  // Check for a '+' signifying a post increment
+  if (getLexer().getKind() == AsmToken::Plus) {
+    getLexer().Lex();
+    WithPostInc = true;
+  }
 
   if (!getLexer().is(AsmToken::Comma)) {
     Error(Parser.getTok().getLoc(), "Missing ',' separator in memsrc operand");
@@ -340,7 +366,7 @@ std::unique_ptr<AAPOperand> AAPAsmParser::ParseMemSrc() {
   }
   const MCExpr *ImmVal = ImmOp->getImm();
 
-  return AAPOperand::CreateMemSrc(RegNo, ImmVal, S, E);
+  return AAPOperand::CreateMemSrc(RegNo, ImmVal, WithPreDec, WithPostInc, S, E);
 }
 
 /// Looks at a token type and creates the relevant operand
@@ -357,12 +383,11 @@ bool AAPAsmParser::ParseOperand(OperandVector &Operands) {
     return false;
   }
 
-  // Attempt to parse token as a memsrc operand
-  // If we see a left bracket, that implies a memsrc follows
-  if (getLexer().getKind() == AsmToken::LParen) {
+  // If we see a '[', that implies a memsrc follows
+  if (getLexer().getKind() == AsmToken::LBrac) {
     SMLoc S = Parser.getTok().getLoc();
-    Operands.push_back(AAPOperand::CreateToken("(", S));
-    Parser.Lex(); // Eat '('
+    Operands.push_back(AAPOperand::CreateToken("[", S));
+    Parser.Lex(); // Eat '['
 
     Op = ParseMemSrc();
 
@@ -370,9 +395,9 @@ bool AAPAsmParser::ParseOperand(OperandVector &Operands) {
       Operands.push_back(std::move(Op));
 
       S = Parser.getTok().getLoc();
-      if (getLexer().getKind() == AsmToken::RParen) {
-        Operands.push_back(AAPOperand::CreateToken(")", S));
-        Parser.Lex(); // Eat ')'
+      if (getLexer().getKind() == AsmToken::RBrac) {
+        Operands.push_back(AAPOperand::CreateToken("]", S));
+        Parser.Lex(); // Eat ']'
       } else {
         Error(S, "Missing closing brace for memsrc operand");
         return true;
@@ -387,15 +412,6 @@ bool AAPAsmParser::ParseOperand(OperandVector &Operands) {
     Operands.push_back(std::move(Op));
     return false;
   }
-
-  // An immediate operand will be an expression
-  // if (!Op) {
-  //  const MCExpr *EVal;
-  //  SMLoc S, E;
-  //  if (!getParser().parseExpression(EVal, E)) {
-  //    Op = AAPOperand::CreateImm(EVal, S, E);
-  //  }
-  //}
 
   // Finally we have exhausted all options and must declare defeat.
   Error(Parser.getTok().getLoc(), "Unknown operand");

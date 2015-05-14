@@ -13,6 +13,7 @@
 
 #include "AAPMCTargetDesc.h"
 #include "InstPrinter/AAPInstPrinter.h"
+#include "AAPRegisterInfo.h"
 #include "AAPMCAsmInfo.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
@@ -39,7 +40,7 @@ static MCInstrInfo *createAAPMCInstrInfo() {
 
 static MCRegisterInfo *createAAPMCRegisterInfo(StringRef TT) {
   MCRegisterInfo *X = new MCRegisterInfo();
-  InitAAPMCRegisterInfo(X, AAP::R1);
+  InitAAPMCRegisterInfo(X, AAP::R0);
   return X;
 }
 
