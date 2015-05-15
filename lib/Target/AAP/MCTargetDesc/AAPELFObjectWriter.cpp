@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AAP.h"
+#include "MCTargetDesc/AAPFixupKinds.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/Support/Debug.h"
@@ -41,12 +42,35 @@ unsigned AAPELFObjectWriter::GetRelocType(MCValue const & /*Target*/,
                                           bool IsPCRel) const {
   llvm::MCFixupKind Kind = Fixup.getKind();
 
-  switch (Kind) {
+  switch ((unsigned)Kind) {
+  case AAP::fixup_AAP_NONE:   return ELF::R_AAP_NONE;
+  case AAP::fixup_AAP_BR32:   return ELF::R_AAP_BR32;
+  case AAP::fixup_AAP_BRCC32: return ELF::R_AAP_BRCC32;
+  case AAP::fixup_AAP_BAL32:  return ELF::R_AAP_BAL32;
+
+  case AAP::fixup_AAP_ABS6:   return ELF::R_AAP_ABS6;
+  case AAP::fixup_AAP_ABS9:   return ELF::R_AAP_ABS9;
+  case AAP::fixup_AAP_ABS10:  return ELF::R_AAP_ABS10;
+  case AAP::fixup_AAP_ABS12:  return ELF::R_AAP_ABS12;
+  case AAP::fixup_AAP_ABS16:  return ELF::R_AAP_ABS16;
+
+  case FK_Data_1:   return ELF::R_AAP_8;
+  case FK_Data_2:   return ELF::R_AAP_16;
+  case FK_Data_4:   return ELF::R_AAP_32;
+  case FK_Data_8:   return ELF::R_AAP_64;
+
+  // Instrs with these fixups should have been relaxed, so for now
+  // we should not be emitting relocations for them.
+  case AAP::fixup_AAP_BR16:
+  case AAP::fixup_AAP_BRCC16:
+  case AAP::fixup_AAP_BAL16:
+  case AAP::fixup_AAP_ABS3_SHORT:
+  case AAP::fixup_AAP_ABS6_SHORT:
+    llvm_unreachable("Cannot emit relocations for short instruction fixups!");
   default:
-    DEBUG(dbgs() << "unrecognized relocation " << Fixup.getKind() << "\n");
-    llvm_unreachable("Unimplemented Fixup kind!");
-    break;
+    llvm_unreachable("Unimplemented fixup kind!");
   }
+  return ELF::R_AAP_NONE;
 }
 
 MCObjectWriter *llvm::createAAPELFObjectWriter(raw_ostream &OS, uint8_t OSABI,

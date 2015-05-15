@@ -33,11 +33,11 @@ enum Fixups {
   fixup_AAP_BRCC16,
   fixup_AAP_BRCC32,
 
-  // Branch and links to other basic blocks
+  // Branch and link fixups
   fixup_AAP_BAL16,
   fixup_AAP_BAL32,
 
-  // Fixup for absolute addresses
+  // Fixup for absolute values
   fixup_AAP_ABS3_SHORT,
   fixup_AAP_ABS6_SHORT,
 

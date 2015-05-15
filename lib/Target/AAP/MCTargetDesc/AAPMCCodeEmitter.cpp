@@ -181,41 +181,45 @@ AAPMCCodeEmitter::encodeMemSrcOperand(const MCInst &MI, unsigned Op,
                                       SmallVectorImpl<MCFixup> &Fixups,
                                       const MCSubtargetInfo &STI) const {
   unsigned encoding;
-  const MCOperand reg = MI.getOperand(Op);
-  assert(reg.isReg() && "First operand is not a register!");
 
-  // Register number map directly to their encoding
-  encoding = (reg.getReg() & 0x3f) << 16;
-  MCOperand imm = MI.getOperand(Op + 1);
+  // Map register number to its encoding, encode in upper 16 bits
+  const MCOperand RegOp = MI.getOperand(Op);
+  assert(RegOp.isReg() && "First operand is not a register!");
 
-  if (imm.isImm()) {
-    encoding |= static_cast<unsigned>(imm.getImm()) && 0xffff;
+  unsigned Reg = MCtx.getRegisterInfo()->getEncodingValue(RegOp.getReg());
+  encoding = (Reg & 0xffff) << 16;
+
+  // Immediates map directly to their encoding, map into lower 16 bits
+  MCOperand ImmOp = MI.getOperand(Op + 1);
+  if (ImmOp.isImm()) {
+    encoding |= static_cast<unsigned>(ImmOp.getImm()) & 0xffff;
     return encoding;
   }
 
-  // Not yet an immediate, check for an expression and store as fixup to
-  // be resolved later
-  assert(imm.isExpr());
+  // Not an immediate, check for an expression and store as fixup to be 
+  // resolved later
+  assert(ImmOp.isExpr() && "Second memsrc op not an immediate or expression!");
 
   AAP::Fixups FixupKind;
   const unsigned Opcode = MI.getOpcode();
   if (findOpcode(Opcode, LoadStoreOpcodes)) {
+    // Fixup to emit depends on whether we're encoding a memsrc for a
+    // short or normal length instruction
     const MCInstrDesc& Desc = MCII.get(Opcode);
-
     FixupKind = 
       (Desc.getSize() == 4) ? AAP::fixup_AAP_ABS6 : AAP::fixup_AAP_ABS3_SHORT;
   }
   else {
     llvm_unreachable("Unknown opcode!");
   }
-  Fixups.push_back(MCFixup::Create(0, imm.getExpr(), MCFixupKind(FixupKind)));
+  Fixups.push_back(MCFixup::Create(0, ImmOp.getExpr(), MCFixupKind(FixupKind)));
   return encoding;
 }
 
 unsigned
-AAPMCCodeEmitter::encodeImm3Operand(const MCInst &MI, unsigned Op,
-                                    SmallVectorImpl<MCFixup> &Fixups,
-                                    const MCSubtargetInfo &STI) const {
+AAPMCCodeEmitter::encodeImm3(const MCInst &MI, unsigned Op,
+                             SmallVectorImpl<MCFixup> &Fixups,
+                             const MCSubtargetInfo &STI) const {
   const MCOperand MO = MI.getOperand(Op);
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
@@ -228,9 +232,9 @@ AAPMCCodeEmitter::encodeImm3Operand(const MCInst &MI, unsigned Op,
 }
 
 unsigned
-AAPMCCodeEmitter::encodeImm6Operand(const MCInst &MI, unsigned Op,
-                                    SmallVectorImpl<MCFixup> &Fixups,
-                                    const MCSubtargetInfo &STI) const {
+AAPMCCodeEmitter::encodeImm6(const MCInst &MI, unsigned Op,
+                             SmallVectorImpl<MCFixup> &Fixups,
+                             const MCSubtargetInfo &STI) const {
   const MCOperand MO = MI.getOperand(Op);
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
@@ -246,9 +250,9 @@ AAPMCCodeEmitter::encodeImm6Operand(const MCInst &MI, unsigned Op,
 }
 
 unsigned
-AAPMCCodeEmitter::encodeImm9Operand(const MCInst &MI, unsigned Op,
-                                    SmallVectorImpl<MCFixup> &Fixups,
-                                    const MCSubtargetInfo &STI) const {
+AAPMCCodeEmitter::encodeImm9(const MCInst &MI, unsigned Op,
+                             SmallVectorImpl<MCFixup> &Fixups,
+                             const MCSubtargetInfo &STI) const {
   const MCOperand MO = MI.getOperand(Op);
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
@@ -261,9 +265,9 @@ AAPMCCodeEmitter::encodeImm9Operand(const MCInst &MI, unsigned Op,
 }
 
 unsigned
-AAPMCCodeEmitter::encodeImm10Operand(const MCInst &MI, unsigned Op,
-                                     SmallVectorImpl<MCFixup> &Fixups,
-                                     const MCSubtargetInfo &STI) const {
+AAPMCCodeEmitter::encodeImm10(const MCInst &MI, unsigned Op,
+                              SmallVectorImpl<MCFixup> &Fixups,
+                              const MCSubtargetInfo &STI) const {
   const MCOperand MO = MI.getOperand(Op);
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
@@ -276,9 +280,9 @@ AAPMCCodeEmitter::encodeImm10Operand(const MCInst &MI, unsigned Op,
 }
 
 unsigned
-AAPMCCodeEmitter::encodeImm12Operand(const MCInst &MI, unsigned Op,
-                                     SmallVectorImpl<MCFixup> &Fixups,
-                                     const MCSubtargetInfo &STI) const {
+AAPMCCodeEmitter::encodeImm12(const MCInst &MI, unsigned Op,
+                              SmallVectorImpl<MCFixup> &Fixups,
+                              const MCSubtargetInfo &STI) const {
   const MCOperand MO = MI.getOperand(Op);
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
@@ -291,9 +295,9 @@ AAPMCCodeEmitter::encodeImm12Operand(const MCInst &MI, unsigned Op,
 }
 
 unsigned
-AAPMCCodeEmitter::encodeImm16Operand(const MCInst &MI, unsigned Op,
-                                     SmallVectorImpl<MCFixup> &Fixups,
-                                     const MCSubtargetInfo &STI) const {
+AAPMCCodeEmitter::encodeImm16(const MCInst &MI, unsigned Op,
+                              SmallVectorImpl<MCFixup> &Fixups,
+                              const MCSubtargetInfo &STI) const {
   const MCOperand MO = MI.getOperand(Op);
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());

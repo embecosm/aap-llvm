@@ -10,6 +10,7 @@
 #include "AAPMCTargetDesc.h"
 #include "MCTargetDesc/AAPFixupKinds.h"
 #include "llvm/MC/MCAsmBackend.h"
+#include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCFixupKindInfo.h"
 
@@ -59,16 +60,98 @@ public:
     return;
   }
 
-  bool mayNeedRelaxation(MCInst const &Inst) const override { return false; }
+  bool mayNeedRelaxation(MCInst const &Inst) const override {
+    switch (Inst.getOpcode()) {
+    case AAP::NOP_short:
+    case AAP::ADD_i3_short:
+    case AAP::SUB_i3_short:
+    case AAP::ASR_i3_short:
+    case AAP::LSL_i3_short:
+    case AAP::LSR_i3_short:
+    case AAP::MOV_i6_short:
+    case AAP::LDB_short:
+    case AAP::LDW_short:
+    case AAP::LDB_postinc_short:
+    case AAP::LDW_postinc_short:
+    case AAP::LDB_predec_short:
+    case AAP::LDW_predec_short:
+    case AAP::STB_short:
+    case AAP::STW_short:
+    case AAP::STB_postinc_short:
+    case AAP::STW_postinc_short:
+    case AAP::STB_predec_short:
+    case AAP::STW_predec_short:
+    case AAP::BRA_short:
+    case AAP::BAL_short:
+    case AAP::BEQ_short:
+    case AAP::BNE_short:
+    case AAP::BLTS_short:
+    case AAP::BGTS_short:
+    case AAP::BLTU_short:
+    case AAP::BGTU_short:
+      return true;
+    default:
+      return false;
+    }
+  }
 
   bool fixupNeedsRelaxation(MCFixup const &Fixup, uint64_t Value,
                             MCRelaxableFragment const *DF,
                             MCAsmLayout const &Layout) const override {
-    llvm_unreachable("fixupNeedsRelaxation() unimplemented");
+    // All instructions with short fixups should be relaxed
+    switch((unsigned)Fixup.getKind()) {
+    case AAP::fixup_AAP_BR16:
+    case AAP::fixup_AAP_BRCC16:
+    case AAP::fixup_AAP_BAL16:
+    case AAP::fixup_AAP_ABS3_SHORT:
+    case AAP::fixup_AAP_ABS6_SHORT:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+
+  // Get the equivalent 
+  static unsigned getRelaxedOpcode(unsigned Opcode) {
+    switch (Opcode) {
+    case AAP::NOP_short:          return AAP::NOP;
+    case AAP::ADD_i3_short:       return AAP::ADD_i10;
+    case AAP::SUB_i3_short:       return AAP::SUB_i10;
+    case AAP::ASR_i3_short:       return AAP::ASR_i6;
+    case AAP::LSL_i3_short:       return AAP::LSL_i6;
+    case AAP::LSR_i3_short:       return AAP::LSR_i6;
+    case AAP::MOV_i6_short:       return AAP::MOV_i16;
+    case AAP::LDB_short:          return AAP::LDB;
+    case AAP::LDW_short:          return AAP::LDW;
+    case AAP::LDB_postinc_short:  return AAP::LDB_postinc;
+    case AAP::LDW_postinc_short:  return AAP::LDW_postinc;
+    case AAP::LDB_predec_short:   return AAP::LDB_predec;
+    case AAP::LDW_predec_short:   return AAP::LDW_predec;
+    case AAP::STB_short:          return AAP::STB;
+    case AAP::STW_short:          return AAP::STW;
+    case AAP::STB_postinc_short:  return AAP::STB_postinc;
+    case AAP::STW_postinc_short:  return AAP::STW_postinc;
+    case AAP::STB_predec_short:   return AAP::STB_predec;
+    case AAP::STW_predec_short:   return AAP::STW_predec;
+    case AAP::BRA_short:          return AAP::BRA;
+    case AAP::BAL_short:          return AAP::BAL;
+    case AAP::BEQ_short:          return AAP::BEQ_;
+    case AAP::BNE_short:          return AAP::BNE_;
+    case AAP::BLTS_short:         return AAP::BLTS_;
+    case AAP::BGTS_short:         return AAP::BGTS_;
+    case AAP::BLTU_short:         return AAP::BLTU_;
+    case AAP::BGTU_short:         return AAP::BGTU_;
+    default:
+      llvm_unreachable("Unknown opcode for relaxation!");
+    }
+    return 0;
   }
 
   void relaxInstruction(MCInst const &Inst, MCInst &Res) const override {
-    llvm_unreachable("relaxInstruction() unimplemented");
+    // Relax all short instructions to their equivalent long instruction
+    Res = Inst;
+    Res.setOpcode(getRelaxedOpcode(Inst.getOpcode()));
   }
 
   bool writeNopData(uint64_t Count, MCObjectWriter *OW) const override {

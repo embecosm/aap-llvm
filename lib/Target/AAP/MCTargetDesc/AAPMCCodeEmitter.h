@@ -45,24 +45,24 @@ public:
                                SmallVectorImpl<MCFixup> &Fixups,
                                MCSubtargetInfo const &STI) const;
 
-  unsigned encodeImm3Operand(const MCInst &MI, unsigned Op,
-                             SmallVectorImpl<MCFixup> &Fixups,
-                             MCSubtargetInfo const &STI) const;
-  unsigned encodeImm6Operand(const MCInst &MI, unsigned Op,
-                             SmallVectorImpl<MCFixup> &Fixups,
-                             MCSubtargetInfo const &STI) const;
-  unsigned encodeImm9Operand(const MCInst &MI, unsigned Op,
-                             SmallVectorImpl<MCFixup> &Fixups,
-                             MCSubtargetInfo const &STI) const;
-  unsigned encodeImm10Operand(const MCInst &MI, unsigned Op,
-                              SmallVectorImpl<MCFixup> &Fixups,
-                              MCSubtargetInfo const &STI) const;
-  unsigned encodeImm12Operand(const MCInst &MI, unsigned Op,
-                              SmallVectorImpl<MCFixup> &Fixups,
-                              MCSubtargetInfo const &STI) const;
-  unsigned encodeImm16Operand(const MCInst &MI, unsigned Op,
-                              SmallVectorImpl<MCFixup> &Fixups,
-                              MCSubtargetInfo const &STI) const;
+  unsigned encodeImm3(const MCInst &MI, unsigned Op,
+                      SmallVectorImpl<MCFixup> &Fixups,
+                      MCSubtargetInfo const &STI) const;
+  unsigned encodeImm6(const MCInst &MI, unsigned Op,
+                      SmallVectorImpl<MCFixup> &Fixups,
+                      MCSubtargetInfo const &STI) const;
+  unsigned encodeImm9(const MCInst &MI, unsigned Op,
+                      SmallVectorImpl<MCFixup> &Fixups,
+                      MCSubtargetInfo const &STI) const;
+  unsigned encodeImm10(const MCInst &MI, unsigned Op,
+                       SmallVectorImpl<MCFixup> &Fixups,
+                       MCSubtargetInfo const &STI) const;
+  unsigned encodeImm12(const MCInst &MI, unsigned Op,
+                       SmallVectorImpl<MCFixup> &Fixups,
+                       MCSubtargetInfo const &STI) const;
+  unsigned encodeImm16(const MCInst &MI, unsigned Op,
+                       SmallVectorImpl<MCFixup> &Fixups,
+                       MCSubtargetInfo const &STI) const;
 
   // TableGen'erated function for getting the
   // binary encoding for an instruction.
