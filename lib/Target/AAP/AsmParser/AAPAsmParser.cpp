@@ -142,20 +142,73 @@ public:
     return Mem.Offset;
   }
 
+
+  // If an MCExpr is a constant immediate, check whether it is in the
+  // provided inclusive range
+  static bool isImmInRange(const MCExpr* Imm, int64_t Min, int64_t Max) {
+    if (Imm->getKind() != MCExpr::Constant) {
+      return true;
+    }
+    int64_t Res;
+    Imm->EvaluateAsAbsolute(Res);
+    return (Res >= Min) && (Res <= Max);
+  }
+  static bool isImm3(const MCExpr* I)  { return isImmInRange(I, 0, 7); }
+  static bool isImm6(const MCExpr* I)  { return isImmInRange(I, 0, 63); }
+  static bool isImm9(const MCExpr* I)  { return isImmInRange(I, 0, 511); }
+  static bool isImm10(const MCExpr* I) { return isImmInRange(I, 0, 1023); }
+  static bool isImm12(const MCExpr* I) { return isImmInRange(I, 0, 4095); }
+  static bool isImm16(const MCExpr* I) { return isImmInRange(I, 0, 65535); }
+
+
   // Functions for testing operand type
   bool isReg() const { return Kind == Register; }
   bool isImm() const { return Kind == Immediate; }
+
+  bool isImm3()  const { return isImm() && isImm6(getImm()); }
+  bool isImm6()  const { return isImm() && isImm6(getImm()); }
+  bool isImm9()  const { return isImm() && isImm6(getImm()); }
+  bool isImm10() const { return isImm() && isImm6(getImm()); }
+  bool isImm12() const { return isImm() && isImm6(getImm()); }
+  bool isImm16() const { return isImm() && isImm6(getImm()); }
+
   bool isToken() const { return Kind == Token; }
   bool isMem() const { return false; }
 
-  bool isMemSrc() const {
-    return (Kind == MemSrc) && !Mem.WithPreDec && !Mem.WithPostInc;
+  // Check that the immediate fits in an imm6
+  bool isMemSrc6() const {
+    if (Kind != MemSrc || Mem.WithPreDec || Mem.WithPostInc) { return false; }
+    return isImm6(getMemSrcImm());
   }
-  bool isMemSrcPostInc() const {
-    return (Kind == MemSrc) && !Mem.WithPreDec && Mem.WithPostInc;
+  bool isMemSrc6PostInc() const {
+    if (Kind != MemSrc)   { return false; }
+    if (Mem.WithPreDec)   { return false; }
+    if (!Mem.WithPostInc) { return false; }
+    return isImm6(getMemSrcImm());
   }
-  bool isMemSrcPreDec() const {
-    return (Kind == MemSrc) && Mem.WithPreDec && !Mem.WithPostInc;
+  bool isMemSrc6PreDec() const {
+    if (Kind != MemSrc)  { return false; }
+    if (!Mem.WithPreDec) { return false; }
+    if (Mem.WithPostInc) { return false; }
+    return isImm6(getMemSrcImm());
+  }
+
+  // Check that the immediate fits in an imm3
+  bool isMemSrc3() const {
+    if (Kind != MemSrc || Mem.WithPreDec || Mem.WithPostInc) { return false; }
+    return isImm3(getMemSrcImm());
+  }
+  bool isMemSrc3PostInc() const {
+    if (Kind != MemSrc)   { return false; }
+    if (Mem.WithPreDec)   { return false; }
+    if (!Mem.WithPostInc) { return false; }
+    return isImm3(getMemSrcImm());
+  }
+  bool isMemSrc3PreDec() const {
+    if (Kind != MemSrc)  { return false; }
+    if (!Mem.WithPreDec) { return false; }
+    if (Mem.WithPostInc) { return false; }
+    return isImm3(getMemSrcImm());
   }
 
   void addExpr(MCInst &Inst, const MCExpr *Expr) const {
@@ -183,12 +236,22 @@ public:
     Inst.addOperand(MCOperand::CreateReg(getMemSrcReg()));
     addExpr(Inst, getMemSrcImm());
   }
-
-  void addMemSrcPostIncOperands(MCInst &Inst, unsigned N) const {
+  void addMemSrc6Operands(MCInst &Inst, unsigned N) const {
     addMemSrcOperands(Inst, N);
   }
-
-  void addMemSrcPreDecOperands(MCInst &Inst, unsigned N) const {
+  void addMemSrc6PostIncOperands(MCInst &Inst, unsigned N) const {
+    addMemSrcOperands(Inst, N);
+  }
+  void addMemSrc6PreDecOperands(MCInst &Inst, unsigned N) const {
+    addMemSrcOperands(Inst, N);
+  }
+  void addMemSrc3Operands(MCInst &Inst, unsigned N) const {
+    addMemSrcOperands(Inst, N);
+  }
+  void addMemSrc3PostIncOperands(MCInst &Inst, unsigned N) const {
+    addMemSrcOperands(Inst, N);
+  }
+  void addMemSrc3PreDecOperands(MCInst &Inst, unsigned N) const {
     addMemSrcOperands(Inst, N);
   }
 

@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 // Call
-//def sdt_call         : SDTypeProfile<0, -1, [SDTCisVT<0, iPTR>]>;
 def sdt_call         : SDTypeProfile<0, -1, [SDTCisVT<1, iPTR>, SDTCisVT<1, i16>]>;
 def sdt_ret          : SDTypeProfile<0,  1, [SDTCisVT<0, i16>]>;
 def callflag         : SDNode<"AAPISD::CALL", sdt_call,
@@ -48,69 +47,112 @@ def brtarget : Operand<OtherVT> {
 }
 
 
-// Memory offsets consist of a 6-bit register field in the low bits, and
-// a 6-bit immediate offset in the high bits.
+// Immediate operands
+let RenderMethod = "addImmOperands" in {
+  def imm3AsmOperand  : AsmOperandClass { let Name = "Imm3";  }
+  def imm6AsmOperand  : AsmOperandClass { let Name = "Imm6";  }
+  def imm9AsmOperand  : AsmOperandClass { let Name = "Imm9";  }
+  def imm10AsmOperand : AsmOperandClass { let Name = "Imm10"; }
+  def imm12AsmOperand : AsmOperandClass { let Name = "Imm12"; }
+  def imm16AsmOperand : AsmOperandClass { let Name = "Imm16"; }
+}
+
+def imm3 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 7;
+}]> {
+  let EncoderMethod = "encodeImm3";
+  let ParserMatchClass = imm3AsmOperand;
+}
+def imm6 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 63;
+}]> {
+  let EncoderMethod = "encodeImm6";
+  let ParserMatchClass = imm6AsmOperand;
+}
+def imm9 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 511;
+}]> {
+  let EncoderMethod = "encodeImm9";
+  let ParserMatchClass = imm9AsmOperand;
+}
+def imm10 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 1023;
+}]> {
+  let EncoderMethod = "encodeImm10";
+  let ParserMatchClass = imm10AsmOperand;
+}
+def imm12 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 4095;
+}]> {
+  let EncoderMethod = "encodeImm12";
+  let ParserMatchClass = imm12AsmOperand;
+}
+def imm16 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 65535;
+}]> {
+  let EncoderMethod = "encodeImm16";
+  let ParserMatchClass = imm16AsmOperand;
+}
+
+
+// Memory offsets consist of a 3 or 6 bit immediate and a register
+// operand
 def addr_MO6 : ComplexPattern<iPTR, 2, "SelectAddr_MO6", [], []>;
+def addr_MO3 : ComplexPattern<iPTR, 2, "SelectAddr_MO3", [], []>;
 
 
-// Memory operands for the various available addressing modes. All memsrc
-// operands have the same encoding and only differ in their asm
-def memsrcAsmOperand : AsmOperandClass { let Name = "MemSrc"; }
-def memsrcPostIncAsmOperand : AsmOperandClass { let Name = "MemSrcPostInc"; }
-def memsrcPreDecAsmOperand  : AsmOperandClass { let Name = "MemSrcPreDec"; }
+// Memsrc operand encodings consist of a 16-bit immediate field in the low
+// bits, and a 3 or 6 bit register field in the high bits. The encoding
+// is exactly the same for predecrement and postincrement address mode.
+def memsrc6AsmOperand : AsmOperandClass { let Name = "MemSrc6"; }
+def memsrc6PostIncAsmOperand : AsmOperandClass { let Name = "MemSrc6PostInc"; }
+def memsrc6PreDecAsmOperand  : AsmOperandClass { let Name = "MemSrc6PreDec"; }
 
-def memsrc : Operand<i16> {
+def memsrc3AsmOperand : AsmOperandClass { let Name = "MemSrc3"; }
+def memsrc3PostIncAsmOperand : AsmOperandClass { let Name = "MemSrc3PostInc"; }
+def memsrc3PreDecAsmOperand  : AsmOperandClass { let Name = "MemSrc3PreDec"; }
+
+def memsrc6 : Operand<i16> {
   let EncoderMethod = "encodeMemSrcOperand";
   let DecoderMethod = "decodeMemSrcOperand";
   let PrintMethod = "printMemSrcOperand";
-  let ParserMatchClass = memsrcAsmOperand;
-  let MIOperandInfo = (ops GR64, i16imm);
+  let ParserMatchClass = memsrc6AsmOperand;
+  let MIOperandInfo = (ops GR64, imm6);
 }
-def memsrc_postinc : Operand<i16> {
+def memsrc6_postinc : Operand<i16> {
   let EncoderMethod = "encodeMemSrcOperand";
   let DecoderMethod = "decodeMemSrcOperand";
   let PrintMethod = "printMemSrcPostIncOperand";
-  let ParserMatchClass = memsrcPostIncAsmOperand;
-  let MIOperandInfo = (ops GR64, i16imm);
+  let ParserMatchClass = memsrc6PostIncAsmOperand;
+  let MIOperandInfo = (ops GR64, imm6);
 }
-def memsrc_predec : Operand<i16> {
+def memsrc6_predec : Operand<i16> {
   let EncoderMethod = "encodeMemSrcOperand";
   let DecoderMethod = "decodeMemSrcOperand";
   let PrintMethod = "printMemSrcPreDecOperand";
-  let ParserMatchClass = memsrcPreDecAsmOperand;
-  let MIOperandInfo = (ops GR64, i16imm);
+  let ParserMatchClass = memsrc6PreDecAsmOperand;
+  let MIOperandInfo = (ops GR64, imm6);
 }
-
-
-def imm3 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm < 8;
-}]> {
-  let EncoderMethod = "encodeImm3Operand";
+def memsrc3 : Operand<i16> {
+  let EncoderMethod = "encodeMemSrcOperand";
+  let DecoderMethod = "decodeMemSrcOperand";
+  let PrintMethod = "printMemSrcOperand";
+  let ParserMatchClass = memsrc3AsmOperand;
+  let MIOperandInfo = (ops GR8, imm3);
 }
-def imm6 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm < 64;
-}]> {
-  let EncoderMethod = "encodeImm6Operand";
+def memsrc3_postinc : Operand<i16> {
+  let EncoderMethod = "encodeMemSrcOperand";
+  let DecoderMethod = "decodeMemSrcOperand";
+  let PrintMethod = "printMemSrcPostIncOperand";
+  let ParserMatchClass = memsrc3PostIncAsmOperand;
+  let MIOperandInfo = (ops GR8, imm3);
 }
-def imm9 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm < 512;
-}]> {
-  let EncoderMethod = "encodeImm9Operand";
-}
-def imm10 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm < 1024;
-}]> {
-  let EncoderMethod = "encodeImm10Operand";
-}
-def imm12 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm < 4094;
-}]> {
-  let EncoderMethod = "encodeImm12Operand";
-}
-def imm16 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm < 65536;
-}]> {
-  let EncoderMethod = "encodeImm16Operand";
+def memsrc3_predec : Operand<i16> {
+  let EncoderMethod = "encodeMemSrcOperand";
+  let DecoderMethod = "decodeMemSrcOperand";
+  let PrintMethod = "printMemSrcPreDecOperand";
+  let ParserMatchClass = memsrc3PreDecAsmOperand;
+  let MIOperandInfo = (ops GR8, imm3);
 }
 
 
@@ -250,38 +292,38 @@ class LOAD<bits<8> opcode, string opname, dag outs, dag ins>
     : InstAAP
       <0x1, opcode, outs, ins, !strconcat(opname, "\t$rD, [$src]"), []> {
   bits<6> rD;
-  bits<12> src;
+  bits<22> src; // 16 bit imm field, 6 bit reg field
 
   let Inst{8-6} = rD{2-0};
   let Inst{24-22} = rD{5-3};
 
-  let Inst{5-3} = src{2-0};
-  let Inst{21-19} = src{5-3};
-  let Inst{2-0} = src{8-6};
-  let Inst{18-16} = src{11-9};
+  let Inst{5-3} = src{18-16};
+  let Inst{21-19} = src{21-19};
+  let Inst{2-0} = src{2-0};
+  let Inst{18-16} = src{5-3};
 }
 
 class LOAD_short<bits<4> opcode, string opname, dag outs, dag ins>
     : InstAAP_short
       <0x1, opcode, outs, ins, !strconcat(opname, "\t$rD, [$src]"), []> {
   bits<3> rD;
-  bits<6> src;
+  bits<19> src; // 16 bit imm field, 3 bit reg field
 
   let Inst{8-6} = rD;
-  let Inst{5-3} = src{2-0};
-  let Inst{2-0} = src{5-3};
+  let Inst{5-3} = src{18-16};
+  let Inst{2-0} = src{2-0};
 }
 
 class STORE<bits<8> opcode, string opname, dag outs, dag ins>
     : InstAAP
       <0x1, opcode, outs, ins, !strconcat(opname, "\t[$dst], $rA"), []> {
-  bits<12> dst;
+  bits<22> dst; // 16 bit imm field, 6 bit reg field
   bits<6> rA;
 
-  let Inst{8-6} = dst{2-0};
-  let Inst{24-22} = dst{5-3};
-  let Inst{2-0} = dst{8-6};
-  let Inst{18-16} = dst{11-9};
+  let Inst{8-6} = dst{18-16};
+  let Inst{24-22} = dst{21-19};
+  let Inst{2-0} = dst{2-0};
+  let Inst{18-16} = dst{5-3};
 
   let Inst{5-3} = rA{2-0};
   let Inst{21-19} = rA{5-3};
@@ -290,54 +332,56 @@ class STORE<bits<8> opcode, string opname, dag outs, dag ins>
 class STORE_short<bits<4> opcode, string opname, dag outs, dag ins>
     : InstAAP_short
       <0x1, opcode, outs, ins, !strconcat(opname, "\t[$dst], $rA"), []> {
-  bits<6> dst;
+  bits<19> dst; // 16 bit imm field, 3 bit reg field
   bits<3> rA;
 
-  let Inst{8-6} = dst{2-0};
-  let Inst{2-0} = dst{5-3};
+  let Inst{8-6} = dst{18-16};
+  let Inst{2-0} = dst{2-0};
   let Inst{5-3} = rA;
 }
 
 
+// Short instructions use the memsrc3 operand type, which uses a different
+// fixup when encoding and a different matching class when parsing assembly.
 let mayLoad = 1 in {
-def LDB : LOAD<0x0,  "ldb", (outs GR64:$rD), (ins memsrc:$src)>;
-def LDW : LOAD<0x4,  "ldw", (outs GR64:$rD), (ins memsrc:$src)>;
-def LDD : LOAD<0x40, "ldd", (outs GR64:$rD), (ins memsrc:$src)>;
-def LDB_postinc : LOAD<0x1,  "ldb", (outs GR64:$rD), (ins memsrc_postinc:$src)>;
-def LDW_postinc : LOAD<0x5,  "ldw", (outs GR64:$rD), (ins memsrc_postinc:$src)>;
-def LDD_postinc : LOAD<0x41, "ldd", (outs GR64:$rD), (ins memsrc_postinc:$src)>;
-def LDB_predec  : LOAD<0x2,  "ldb", (outs GR64:$rD), (ins memsrc_predec:$src)>;
-def LDW_predec  : LOAD<0x6,  "ldw", (outs GR64:$rD), (ins memsrc_predec:$src)>;
-def LDD_predec  : LOAD<0x42, "ldd", (outs GR64:$rD), (ins memsrc_predec:$src)>;
+def LDB : LOAD<0x0,  "ldb", (outs GR64:$rD), (ins memsrc6:$src)>;
+def LDW : LOAD<0x4,  "ldw", (outs GR64:$rD), (ins memsrc6:$src)>;
+def LDD : LOAD<0x40, "ldd", (outs GR64:$rD), (ins memsrc6:$src)>;
+def LDB_postinc : LOAD<0x1,  "ldb", (outs GR64:$rD), (ins memsrc6_postinc:$src)>;
+def LDW_postinc : LOAD<0x5,  "ldw", (outs GR64:$rD), (ins memsrc6_postinc:$src)>;
+def LDD_postinc : LOAD<0x41, "ldd", (outs GR64:$rD), (ins memsrc6_postinc:$src)>;
+def LDB_predec  : LOAD<0x2,  "ldb", (outs GR64:$rD), (ins memsrc6_predec:$src)>;
+def LDW_predec  : LOAD<0x6,  "ldw", (outs GR64:$rD), (ins memsrc6_predec:$src)>;
+def LDD_predec  : LOAD<0x42, "ldd", (outs GR64:$rD), (ins memsrc6_predec:$src)>;
 
-def LDB_short : LOAD_short<0x0, "ldb", (outs GR8:$rD), (ins memsrc:$src)>;
-def LDW_short : LOAD_short<0x4, "ldw", (outs GR8:$rD), (ins memsrc:$src)>;
-def LDB_postinc_short : LOAD_short<0x1, "ldb", (outs GR8:$rD), (ins memsrc_postinc:$src)>;
-def LDW_postinc_short : LOAD_short<0x5, "ldw", (outs GR8:$rD), (ins memsrc_postinc:$src)>;
-def LDB_predec_short  : LOAD_short<0x2, "ldb", (outs GR8:$rD), (ins memsrc_predec:$src)>;
-def LDW_predec_short  : LOAD_short<0x6, "ldw", (outs GR8:$rD), (ins memsrc_predec:$src)>;
+def LDB_short : LOAD_short<0x0, "ldb", (outs GR8:$rD), (ins memsrc3:$src)>;
+def LDW_short : LOAD_short<0x4, "ldw", (outs GR8:$rD), (ins memsrc3:$src)>;
+def LDB_postinc_short : LOAD_short<0x1, "ldb", (outs GR8:$rD), (ins memsrc3_postinc:$src)>;
+def LDW_postinc_short : LOAD_short<0x5, "ldw", (outs GR8:$rD), (ins memsrc3_postinc:$src)>;
+def LDB_predec_short  : LOAD_short<0x2, "ldb", (outs GR8:$rD), (ins memsrc3_predec:$src)>;
+def LDW_predec_short  : LOAD_short<0x6, "ldw", (outs GR8:$rD), (ins memsrc3_predec:$src)>;
 }
 
 // Load patterns
 def : Pat<(i16 (load addr_MO6:$src)), (LDW addr_MO6:$src)>;
 
 let mayStore = 1 in {
-def STB : STORE<0x8,  "stb", (outs), (ins memsrc:$dst, GR64:$rA)>;
-def STW : STORE<0xc,  "stw", (outs), (ins memsrc:$dst, GR64:$rA)>;
-def STD : STORE<0x48, "std", (outs), (ins memsrc:$dst, GR64:$rA)>;
-def STB_postinc : STORE<0x9,  "stb", (outs), (ins memsrc_postinc:$dst, GR64:$rA)>;
-def STW_postinc : STORE<0xd,  "stw", (outs), (ins memsrc_postinc:$dst, GR64:$rA)>;
-def STD_postinc : STORE<0x49, "std", (outs), (ins memsrc_postinc:$dst, GR64:$rA)>;
-def STB_predec  : STORE<0xa,  "stb", (outs), (ins memsrc_predec:$dst, GR64:$rA)>;
-def STW_predec  : STORE<0xe,  "stw", (outs), (ins memsrc_predec:$dst, GR64:$rA)>;
-def STD_predec  : STORE<0x4a, "std", (outs), (ins memsrc_predec:$dst, GR64:$rA)>;
+def STB : STORE<0x8,  "stb", (outs), (ins memsrc6:$dst, GR64:$rA)>;
+def STW : STORE<0xc,  "stw", (outs), (ins memsrc6:$dst, GR64:$rA)>;
+def STD : STORE<0x48, "std", (outs), (ins memsrc6:$dst, GR64:$rA)>;
+def STB_postinc : STORE<0x9,  "stb", (outs), (ins memsrc6_postinc:$dst, GR64:$rA)>;
+def STW_postinc : STORE<0xd,  "stw", (outs), (ins memsrc6_postinc:$dst, GR64:$rA)>;
+def STD_postinc : STORE<0x49, "std", (outs), (ins memsrc6_postinc:$dst, GR64:$rA)>;
+def STB_predec  : STORE<0xa,  "stb", (outs), (ins memsrc6_predec:$dst, GR64:$rA)>;
+def STW_predec  : STORE<0xe,  "stw", (outs), (ins memsrc6_predec:$dst, GR64:$rA)>;
+def STD_predec  : STORE<0x4a, "std", (outs), (ins memsrc6_predec:$dst, GR64:$rA)>;
 
-def STB_short : STORE_short<0x8, "stb", (outs), (ins memsrc:$dst, GR8:$rA)>;
-def STW_short : STORE_short<0xc, "stw", (outs), (ins memsrc:$dst, GR8:$rA)>;
-def STB_postinc_short : STORE_short<0x9, "stb", (outs), (ins memsrc_postinc:$dst, GR8:$rA)>;
-def STW_postinc_short : STORE_short<0xd, "stw", (outs), (ins memsrc_postinc:$dst, GR8:$rA)>;
-def STB_predec_short  : STORE_short<0xa, "stb", (outs), (ins memsrc_predec:$dst, GR8:$rA)>;
-def STW_predec_short  : STORE_short<0xe, "stw", (outs), (ins memsrc_predec:$dst, GR8:$rA)>;
+def STB_short : STORE_short<0x8, "stb", (outs), (ins memsrc3:$dst, GR8:$rA)>;
+def STW_short : STORE_short<0xc, "stw", (outs), (ins memsrc3:$dst, GR8:$rA)>;
+def STB_postinc_short : STORE_short<0x9, "stb", (outs), (ins memsrc3_postinc:$dst, GR8:$rA)>;
+def STW_postinc_short : STORE_short<0xd, "stw", (outs), (ins memsrc3_postinc:$dst, GR8:$rA)>;
+def STB_predec_short  : STORE_short<0xa, "stb", (outs), (ins memsrc3_predec:$dst, GR8:$rA)>;
+def STW_predec_short  : STORE_short<0xe, "stw", (outs), (ins memsrc3_predec:$dst, GR8:$rA)>;
 }
 
 // Store patterns
