@@ -29,6 +29,8 @@ struct AAPOperand;
 
 class AAPAsmParser : public MCTargetAsmParser {
   MCAsmParser &Parser;
+  const MCRegisterInfo *MRI;
+
   MCAsmParser &getParser() const { return Parser; }
   MCAsmLexer &getLexer() const { return Parser.getLexer(); }
   MCSubtargetInfo &STI;
@@ -60,6 +62,40 @@ public:
                const MCInstrInfo &MII, const MCTargetOptions &Options)
       : MCTargetAsmParser(), Parser(_Parser), STI(sti) {
     setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
+
+    // Cache the machine register info for later
+    MRI = Parser.getContext().getRegisterInfo();
+  }
+
+  unsigned checkTargetMatchPredicate(MCInst &Inst) override {
+    // If this is a short load/store instruction, then we must check that
+    // its register operands are all in the GR8 reg class.
+    const MCRegisterClass& MRC = MRI->getRegClass(AAP::GR8RegClassID);
+
+    switch (Inst.getOpcode()) {
+    default:
+      return Match_Success;
+    case AAP::LDB_short:
+    case AAP::LDW_short:
+    case AAP::LDB_postinc_short:
+    case AAP::LDW_postinc_short:
+    case AAP::LDB_predec_short:
+    case AAP::LDW_predec_short:
+    case AAP::STB_short:
+    case AAP::STW_short:
+    case AAP::STB_postinc_short:
+    case AAP::STW_postinc_short:
+    case AAP::STB_predec_short:
+    case AAP::STW_predec_short:
+      break;
+    }
+
+    for (MCInst::iterator I = Inst.begin(); I != Inst.end(); ++I) {
+      if (I->isReg() && !MRC.contains(I->getReg())) {
+        return Match_InvalidOperand;
+      }
+    }
+    return Match_Success;
   }
 };
 
@@ -165,12 +201,12 @@ public:
   bool isReg() const { return Kind == Register; }
   bool isImm() const { return Kind == Immediate; }
 
-  bool isImm3()  const { return isImm() && isImm6(getImm()); }
+  bool isImm3()  const { return isImm() && isImm3(getImm()); }
   bool isImm6()  const { return isImm() && isImm6(getImm()); }
-  bool isImm9()  const { return isImm() && isImm6(getImm()); }
-  bool isImm10() const { return isImm() && isImm6(getImm()); }
-  bool isImm12() const { return isImm() && isImm6(getImm()); }
-  bool isImm16() const { return isImm() && isImm6(getImm()); }
+  bool isImm9()  const { return isImm() && isImm9(getImm()); }
+  bool isImm10() const { return isImm() && isImm10(getImm()); }
+  bool isImm12() const { return isImm() && isImm12(getImm()); }
+  bool isImm16() const { return isImm() && isImm16(getImm()); }
 
   bool isToken() const { return Kind == Token; }
   bool isMem() const { return false; }
@@ -178,36 +214,42 @@ public:
   // Check that the immediate fits in an imm6
   bool isMemSrc6() const {
     if (Kind != MemSrc || Mem.WithPreDec || Mem.WithPostInc) { return false; }
+    // FIXME: Check against the GR64 register class
     return isImm6(getMemSrcImm());
   }
   bool isMemSrc6PostInc() const {
     if (Kind != MemSrc)   { return false; }
     if (Mem.WithPreDec)   { return false; }
     if (!Mem.WithPostInc) { return false; }
+    // FIXME: Check against the GR64 register class
     return isImm6(getMemSrcImm());
   }
   bool isMemSrc6PreDec() const {
     if (Kind != MemSrc)  { return false; }
     if (!Mem.WithPreDec) { return false; }
     if (Mem.WithPostInc) { return false; }
+    // FIXME: Check against the GR64 register class
     return isImm6(getMemSrcImm());
   }
 
   // Check that the immediate fits in an imm3
   bool isMemSrc3() const {
     if (Kind != MemSrc || Mem.WithPreDec || Mem.WithPostInc) { return false; }
+    // FIXME: Check against the GR8 register class
     return isImm3(getMemSrcImm());
   }
   bool isMemSrc3PostInc() const {
     if (Kind != MemSrc)   { return false; }
     if (Mem.WithPreDec)   { return false; }
     if (!Mem.WithPostInc) { return false; }
+    // FIXME: Check against the GR8 register class
     return isImm3(getMemSrcImm());
   }
   bool isMemSrc3PreDec() const {
     if (Kind != MemSrc)  { return false; }
     if (!Mem.WithPreDec) { return false; }
     if (Mem.WithPostInc) { return false; }
+    // FIXME: Check against the GR8 register class
     return isImm3(getMemSrcImm());
   }
 

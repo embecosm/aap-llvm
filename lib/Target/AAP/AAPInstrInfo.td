@@ -47,14 +47,29 @@ def brtarget : Operand<OtherVT> {
 }
 
 
-// Immediate operands
+// Immediate operands. Smaller operands are subclasses of larger ones so they
+// are correctly prioritized when disassembling.
+// Currently we have no custom 'signed' immediates, but it will likely
+// be needed in the future to handle branches properly.
 let RenderMethod = "addImmOperands" in {
-  def imm3AsmOperand  : AsmOperandClass { let Name = "Imm3";  }
-  def imm6AsmOperand  : AsmOperandClass { let Name = "Imm6";  }
-  def imm9AsmOperand  : AsmOperandClass { let Name = "Imm9";  }
-  def imm10AsmOperand : AsmOperandClass { let Name = "Imm10"; }
-  def imm12AsmOperand : AsmOperandClass { let Name = "Imm12"; }
-  def imm16AsmOperand : AsmOperandClass { let Name = "Imm16"; }
+  def imm16AsmOperand : AsmOperandClass {
+    let Name = "Imm16"; let SuperClasses = [ImmAsmOperand];
+  }
+  def imm12AsmOperand : AsmOperandClass {
+    let Name = "Imm12"; let SuperClasses = [imm16AsmOperand];
+  }
+  def imm10AsmOperand : AsmOperandClass {
+    let Name = "Imm10"; let SuperClasses = [imm12AsmOperand];
+  }
+  def imm9AsmOperand  : AsmOperandClass {
+    let Name = "Imm9"; let SuperClasses = [imm10AsmOperand];
+  }
+  def imm6AsmOperand  : AsmOperandClass {
+    let Name = "Imm6"; let SuperClasses = [imm9AsmOperand];
+  }
+  def imm3AsmOperand  : AsmOperandClass {
+    let Name = "Imm3"; let SuperClasses = [imm6AsmOperand];
+  }
 }
 
 def imm3 : Operand<i16>, ImmLeaf<i16, [{
@@ -108,51 +123,53 @@ def memsrc6AsmOperand : AsmOperandClass { let Name = "MemSrc6"; }
 def memsrc6PostIncAsmOperand : AsmOperandClass { let Name = "MemSrc6PostInc"; }
 def memsrc6PreDecAsmOperand  : AsmOperandClass { let Name = "MemSrc6PreDec"; }
 
-def memsrc3AsmOperand : AsmOperandClass { let Name = "MemSrc3"; }
-def memsrc3PostIncAsmOperand : AsmOperandClass { let Name = "MemSrc3PostInc"; }
-def memsrc3PreDecAsmOperand  : AsmOperandClass { let Name = "MemSrc3PreDec"; }
+// short memsrc operands subclass the longer ones, as this means they will
+// be prioritized when matching assembly.
+def memsrc3AsmOperand : AsmOperandClass {
+  let Name = "MemSrc3";
+  let SuperClasses = [memsrc6AsmOperand];
+}
+def memsrc3PostIncAsmOperand : AsmOperandClass {
+  let Name = "MemSrc3PostInc";
+  let SuperClasses = [memsrc6PostIncAsmOperand];
+}
+def memsrc3PreDecAsmOperand  : AsmOperandClass {
+  let Name = "MemSrc3PreDec";
+  let SuperClasses = [memsrc6PreDecAsmOperand];
+}
 
-def memsrc6 : Operand<i16> {
-  let EncoderMethod = "encodeMemSrcOperand";
-  let DecoderMethod = "decodeMemSrcOperand";
-  let PrintMethod = "printMemSrcOperand";
-  let ParserMatchClass = memsrc6AsmOperand;
-  let MIOperandInfo = (ops GR64, imm6);
-}
-def memsrc6_postinc : Operand<i16> {
-  let EncoderMethod = "encodeMemSrcOperand";
-  let DecoderMethod = "decodeMemSrcOperand";
-  let PrintMethod = "printMemSrcPostIncOperand";
-  let ParserMatchClass = memsrc6PostIncAsmOperand;
-  let MIOperandInfo = (ops GR64, imm6);
-}
-def memsrc6_predec : Operand<i16> {
-  let EncoderMethod = "encodeMemSrcOperand";
-  let DecoderMethod = "decodeMemSrcOperand";
-  let PrintMethod = "printMemSrcPreDecOperand";
-  let ParserMatchClass = memsrc6PreDecAsmOperand;
-  let MIOperandInfo = (ops GR64, imm6);
-}
-def memsrc3 : Operand<i16> {
-  let EncoderMethod = "encodeMemSrcOperand";
-  let DecoderMethod = "decodeMemSrcOperand";
-  let PrintMethod = "printMemSrcOperand";
-  let ParserMatchClass = memsrc3AsmOperand;
-  let MIOperandInfo = (ops GR8, imm3);
-}
-def memsrc3_postinc : Operand<i16> {
-  let EncoderMethod = "encodeMemSrcOperand";
-  let DecoderMethod = "decodeMemSrcOperand";
-  let PrintMethod = "printMemSrcPostIncOperand";
-  let ParserMatchClass = memsrc3PostIncAsmOperand;
-  let MIOperandInfo = (ops GR8, imm3);
-}
-def memsrc3_predec : Operand<i16> {
-  let EncoderMethod = "encodeMemSrcOperand";
-  let DecoderMethod = "decodeMemSrcOperand";
-  let PrintMethod = "printMemSrcPreDecOperand";
-  let ParserMatchClass = memsrc3PreDecAsmOperand;
-  let MIOperandInfo = (ops GR8, imm3);
+let EncoderMethod = "encodeMemSrcOperand",
+    DecoderMethod = "decodeMemSrcOperand" in {
+  def memsrc6 : Operand<i16> {
+    let PrintMethod = "printMemSrcOperand";
+    let ParserMatchClass = memsrc6AsmOperand;
+    let MIOperandInfo = (ops GR64, imm6);
+  }
+  def memsrc6_postinc : Operand<i16> {
+    let PrintMethod = "printMemSrcPostIncOperand";
+    let ParserMatchClass = memsrc6PostIncAsmOperand;
+    let MIOperandInfo = (ops GR64, imm6);
+  }
+  def memsrc6_predec : Operand<i16> {
+    let PrintMethod = "printMemSrcPreDecOperand";
+    let ParserMatchClass = memsrc6PreDecAsmOperand;
+    let MIOperandInfo = (ops GR64, imm6);
+  }
+  def memsrc3 : Operand<i16> {
+    let PrintMethod = "printMemSrcOperand";
+    let ParserMatchClass = memsrc3AsmOperand;
+    let MIOperandInfo = (ops GR8, imm3);
+  }
+  def memsrc3_postinc : Operand<i16> {
+    let PrintMethod = "printMemSrcPostIncOperand";
+    let ParserMatchClass = memsrc3PostIncAsmOperand;
+    let MIOperandInfo = (ops GR8, imm3);
+  }
+  def memsrc3_predec : Operand<i16> {
+    let PrintMethod = "printMemSrcPreDecOperand";
+    let ParserMatchClass = memsrc3PreDecAsmOperand;
+    let MIOperandInfo = (ops GR8, imm3);
+  }
 }
 
 

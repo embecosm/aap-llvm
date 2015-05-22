@@ -65,7 +65,7 @@ void AAPFrameLowering::emitPrologue(MachineFunction &MF) const {
     if (NumBytes) {
       // Adjust stack pointer
       const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
-      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_r), SP)
+      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), SP)
           .addReg(SP)
           .addImm(NumBytes);
     }
@@ -97,7 +97,7 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
     const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
     if (NumBytes) {
       // Adjust stack pointer back
-      BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_r), SP)
+      BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_i10), SP)
           .addReg(SP)
           .addImm(NumBytes);
     }
