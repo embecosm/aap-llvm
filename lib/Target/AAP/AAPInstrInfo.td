@@ -380,6 +380,13 @@ def LDW_predec_short  : LOAD_short<0x6, "ldw", (outs GR8:$rD), (ins memsrc3_pred
 }
 
 // Load patterns
+def : Pat<(i16 (zextloadi8 GR64:$src)), (LDB GR64:$src, (i16 0))>;
+def : Pat<(i16 (zextloadi8 addr_MO6:$src)), (LDB addr_MO6:$src)>;
+
+def : Pat<(i16 (extloadi8 GR64:$src)), (LDB GR64:$src, (i16 0))>;
+def : Pat<(i16 (extloadi8 addr_MO6:$src)), (LDB addr_MO6:$src)>;
+
+def : Pat<(i16 (load GR64:$src)), (LDW GR64:$src, (i16 0))>;
 def : Pat<(i16 (load addr_MO6:$src)), (LDW addr_MO6:$src)>;
 
 let mayStore = 1 in {
@@ -402,7 +409,11 @@ def STW_predec_short  : STORE_short<0xe, "stw", (outs), (ins memsrc3_predec:$dst
 }
 
 // Store patterns
-def : Pat<(store GR64:$rA, addr_MO6:$dst), (STW addr_MO6:$dst, GR64:$rA)>;
+def : Pat<(truncstorei8 GR64:$src, GR64:$dst), (STB GR64:$dst, (i16 0), GR64:$src)>;
+def : Pat<(truncstorei8 GR64:$src, addr_MO6:$dst), (STB addr_MO6:$dst, GR64:$src)>;
+
+def : Pat<(store GR64:$src, GR64:$dst), (STW GR64:$dst, (i16 0), GR64:$src)>;
+def : Pat<(store GR64:$src, addr_MO6:$dst), (STW addr_MO6:$dst, GR64:$src)>;
 
 
 //===----------------------------------------------------------------------===//
@@ -504,6 +515,6 @@ def : Pat<(callflag (i16 texternalsym:$dst), GR64:$rA), (BAL texternalsym:$dst, 
 //===----------------------------------------------------------------------===//
 // Peephole Patterns
 //===----------------------------------------------------------------------===//
-def : Pat<(i16 (aapwrapper tglobaladdr:$dst)), (MOV_r tglobaladdr:$dst)>;
-def : Pat<(i16 (aapwrapper texternalsym:$dst)), (MOV_r texternalsym:$dst)>;
-def : Pat<(i16 (aapwrapper tblockaddress:$dst)), (MOV_r tblockaddress:$dst)>;
+def : Pat<(i16 (aapwrapper tglobaladdr:$dst)), (MOV_i16 tglobaladdr:$dst)>;
+def : Pat<(i16 (aapwrapper texternalsym:$dst)), (MOV_i16 texternalsym:$dst)>;
+def : Pat<(i16 (aapwrapper tblockaddress:$dst)), (MOV_i16 tblockaddress:$dst)>;

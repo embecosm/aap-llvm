@@ -102,6 +102,16 @@ SDNode *AAPDAGToDAGISel::Select(SDNode *Node) {
   // tablegen selection should be handled here.
   ///
   switch (Opcode) {
+  case ISD::FrameIndex: {
+    assert(Node->getValueType(0) == MVT::i16);
+
+    int FI = cast<FrameIndexSDNode>(Node)->getIndex();
+    SDValue TFI = CurDAG->getTargetFrameIndex(FI, MVT::i16);
+
+    // Handle single use
+    return CurDAG->getMachineNode(AAP::ADD_i10, dl, MVT::i16,
+                                  TFI, CurDAG->getTargetConstant(0, MVT::i16));
+  }
   default:
     break;
   }
@@ -124,7 +134,7 @@ static bool isImm6(int64_t Imm) { return (Imm >= 0 && Imm <= 63); }
 bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {
   // if Address is FI, get the TargetFrameIndex
   if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
-    Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), MVT::i16);
+    Base   = CurDAG->getTargetFrameIndex(FIN->getIndex(), MVT::i16);
     Offset = CurDAG->getTargetConstant(0, MVT::i16);
     return true;
   }
