@@ -93,13 +93,19 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::BR_CC,     MVT::i8,   Promote);
   setOperationAction(ISD::BR_CC,     MVT::i16,  Custom);
 
-  // Currentl no support for indirect branches
+  // Currently no support for indirect branches
   setOperationAction(ISD::BRIND,     MVT::Other,  Expand);
 
   // No support for jump tables
   setOperationAction(ISD::JumpTable, MVT::i8,     Expand);
   setOperationAction(ISD::JumpTable, MVT::i16,    Expand);
   setOperationAction(ISD::BR_JT,     MVT::Other,  Expand);
+
+  // vaarg
+  setOperationAction(ISD::VASTART,  MVT::Other, Custom);
+  setOperationAction(ISD::VAARG,    MVT::Other, Expand);
+  setOperationAction(ISD::VAEND,    MVT::Other, Expand);
+  setOperationAction(ISD::VACOPY,   MVT::Other, Expand);
 
   // ALU operations unsupported by the architecture
   setOperationAction(ISD::SDIV,     MVT::i8,  Expand);
@@ -156,6 +162,7 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::GlobalAddress:  return LowerGlobalAddress(Op, DAG);
   case ISD::BR_CC:          return LowerBR_CC(Op, DAG);
   case ISD::SELECT_CC:      return LowerSELECT_CC(Op, DAG);
+  case ISD::VASTART:        return LowerVASTART(Op, DAG);
   }
   llvm_unreachable("unimplemented operand");
 }
@@ -691,6 +698,21 @@ SDValue AAPTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
   Ops.push_back(FalseValue);
   Ops.push_back(DAG.getConstant(TargetCC, MVT::i16));
   return DAG.getNode(AAPISD::SELECT_CC, dl, Op.getValueType(), Ops);
+}
+
+SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
+  MachineFunction &MF = DAG.getMachineFunction();
+  AAPMachineFunctionInfo *MFI = MF.getInfo<AAPMachineFunctionInfo>();
+
+  // Frame index of first vaarg argument
+  SDValue FrameIndex = DAG.getFrameIndex(MFI->getVarArgsFrameIndex(),
+                                         getPointerTy());
+  const Value *Src = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
+
+  // Create a store of the frame index to the location operand
+  return DAG.getStore(Op.getOperand(0), SDLoc(Op), FrameIndex,
+                      Op.getOperand(1), MachinePointerInfo(Src),
+                      false, false, 0);
 }
 
 SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,

@@ -127,7 +127,7 @@ bool AAPFrameLowering::spillCalleeSavedRegisters(
     // Add Callee-saved register as live-in. It's killed by the spill
     const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
     MBB.addLiveIn(Reg);
-    BuildMI(MBB, MI, DL, TII.get(AAP::STW_predec), SP)
+    BuildMI(MBB, MI, DL, TII.get(AAP::STW_predec))
         .addReg(SP)
         .addImm(0)
         .addReg(Reg, RegState::Kill);
@@ -153,7 +153,6 @@ bool AAPFrameLowering::restoreCalleeSavedRegisters(
 
     const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
     BuildMI(MBB, MI, DL, TII.get(AAP::LDW_postinc), Reg)
-        .addReg(SP, RegState::Define)
         .addReg(SP)
         .addImm(0);
   }

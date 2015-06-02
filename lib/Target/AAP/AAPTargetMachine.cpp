@@ -27,7 +27,7 @@ AAPTargetMachine::AAPTargetMachine(const Target &T, StringRef TT, StringRef CPU,
                                    StringRef FS, const TargetOptions &Options,
                                    Reloc::Model RM, CodeModel::Model CM,
                                    CodeGenOpt::Level OL)
-    : LLVMTargetMachine(T, "e-m:e-p:16:16-n16", TT, CPU, FS, Options, RM, CM,
+    : LLVMTargetMachine(T, "e-m:e-p:16:16-i32:16-i64:16-f32:16-f64:16-n16", TT, CPU, FS, Options, RM, CM,
                         OL),
       TLOF(make_unique<TargetLoweringObjectFileELF>()),
       Subtarget(TT, CPU, FS, *this) {

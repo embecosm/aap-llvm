@@ -477,10 +477,16 @@ let isCall = 1,
   Defs = [R0, R2,  R3,  R4,  R5,  R6,  R7,  R8,  R9, R10, R11, R12,
           R13, R14, R15, R16, R17, R18, R19] in {
 def BAL_short : Inst_i6_r_short
-  <0x2, 0x8, (outs), (ins i16imm:$imm, GR8:$rA), "bal\t$imm, $rA", []>;
+  <0x2, 0x1, (outs), (ins i16imm:$imm, GR8:$rA), "bal\t$imm, $rA", []>;
 
 def BAL : Inst_i16_r
-  <0x2, 0x8, (outs), (ins i16imm:$imm, GR64:$rA), "bal\t$imm, $rA", []>;
+  <0x2, 0x1, (outs), (ins i16imm:$imm, GR64:$rA), "bal\t$imm, $rA", []>;
+
+def JAL_short : Inst_rr_short
+  <0x2, 0x9, (outs), (ins GR8:$rD, GR64:$rA), "jal\t$rD, $rA", []>;
+
+def JAL : Inst_rr
+  <0x2, 0x9, (outs), (ins GR64:$rD, GR64:$rA), "jal\t$rD, $rA", []>;
 }
 
 // Calls are encoded as a branch through the link register
@@ -488,9 +494,14 @@ def : Pat<(callflag (i16 imm:$imm), GR64:$rA), (BAL imm:$imm, GR64:$rA)>;
 
 
 let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
-def JMP : Inst_r<0x2, 0x9, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
-def JMP_short : Inst_r_short<0x2, 0x9, (outs), (ins GR8:$rD), "jmp\t$rD", []>;
+def JMP : Inst_r<0x2, 0x8, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
+def JMP_short : Inst_r_short<0x2, 0x8, (outs), (ins GR8:$rD), "jmp\t$rD", []>;
 }
+
+
+// Indirect calls are a jump through a register
+def : Pat<(callflag GR64:$rD, GR64:$rA), (JAL GR64:$rD, GR64:$rA)>;
+
 
 // Returns are encoded as a jump through the link register
 def : Pat<(retflag GR64:$rD), (JMP GR64:$rD)>;
