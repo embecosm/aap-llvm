@@ -118,6 +118,14 @@ private:
                       const SmallVectorImpl<ISD::OutputArg> &Outs,
                       const SmallVectorImpl<SDValue> &OutVals, SDLoc dl,
                       SelectionDAG &DAG) const override;
+
+  TargetLowering::ConstraintType
+  getConstraintType(const std::string &Constraint) const;
+
+  std::pair<unsigned, const TargetRegisterClass*>
+  getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                               const std::string &Constraint,
+                               MVT VT) const;
 };
 }
 

@@ -726,6 +726,44 @@ SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
   return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), getPointerTy(), Result);
 }
 
+
+//===----------------------------------------------------------------------===//
+//                      AAP Inline Assembly Support
+//===----------------------------------------------------------------------===//
+
+/// getConstraintType - Given a constraint letter, return the type of
+/// constraint it is for this target
+TargetLowering::ConstraintType
+AAPTargetLowering::getConstraintType(const std::string &Constraint) const {
+  if (Constraint.size() == 1) {
+    switch (Constraint[0]) {
+    default:
+      break;
+    case 'r':
+      return C_RegisterClass;
+    }
+  }
+  return TargetLowering::getConstraintType(Constraint);
+}
+
+std::pair<unsigned, const TargetRegisterClass*>
+AAPTargetLowering::
+getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                             const std::string &Constraint,
+                             MVT VT) const {
+  if (Constraint.size() == 1) {
+    switch (Constraint[0]) {
+    default:
+      break;
+    case 'r':
+      // General purpose registers
+      return std::make_pair(0U, &AAP::GR64RegClass);
+    }
+  }
+  return TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
+}
+
+
 MachineBasicBlock *
 AAPTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                MachineBasicBlock *MBB) const {

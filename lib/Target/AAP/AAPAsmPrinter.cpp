@@ -46,6 +46,11 @@ public:
 
   void printOperand(const MachineInstr *MI, int OpNum, raw_ostream &O,
                     const char *Modifier = nullptr);
+
+  bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
+                       unsigned AsmVariant,
+                       const char *ExtraCode, raw_ostream &O) override;
+
   void EmitInstruction(const MachineInstr *MI) override;
 };
 } // end of anonymous namespace
@@ -87,6 +92,13 @@ void AAPAsmPrinter::printOperand(const MachineInstr *MI, int OpNum,
     return;
   }
   }
+}
+
+bool AAPAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
+                                    unsigned AsmVariant,
+                                    const char *ExtraCode, raw_ostream &O) {
+  printOperand(MI, OpNo, O);
+  return false;
 }
 
 void AAPAsmPrinter::EmitInstruction(const MachineInstr *MI) {
