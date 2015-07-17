@@ -60,7 +60,7 @@ unsigned AAPELFObjectWriter::GetRelocType(MCValue const & /*Target*/,
   case FK_Data_4:   return ELF::R_AAP_32;
   case FK_Data_8:   return ELF::R_AAP_64;
 
-  // Instrs with these fixups should have been relaxed, so for now
+  // Instrs with these fixups should never be generated or parsed, so for now
   // we should not be emitting relocations for them.
   case AAP::fixup_AAP_BR16:
   case AAP::fixup_AAP_BRCC16:

@@ -90,7 +90,9 @@ public:
     case AAP::BGTS_short:
     case AAP::BLTU_short:
     case AAP::BGTU_short:
-      return true;
+      // Currently, these instructions should not generate fixups so they do
+      // not need to be relaxed.
+      return false;
     default:
       return false;
     }
@@ -106,7 +108,10 @@ public:
     case AAP::fixup_AAP_BAL16:
     case AAP::fixup_AAP_ABS3_SHORT:
     case AAP::fixup_AAP_ABS6_SHORT:
-      return true;
+      // At the moment, we should never generate or parse short instructions
+      // with these fixups.
+      llvm_unreachable("Cannot relax short instruction fixups!");
+      return false;
     default:
       return false;
     }
@@ -150,9 +155,10 @@ public:
   }
 
   void relaxInstruction(MCInst const &Inst, MCInst &Res) const override {
-    // Relax all short instructions to their equivalent long instruction
-    Res = Inst;
-    Res.setOpcode(getRelaxedOpcode(Inst.getOpcode()));
+    // The only instructions which should require relaxation are short
+    // instructions with fixups, and at the moment these instructions should
+    // not be selected or parsed
+    llvm_unreachable("Unexpected short instruction with fixup");
   }
 
   bool writeNopData(uint64_t Count, MCObjectWriter *OW) const override {
