@@ -440,9 +440,12 @@ multiclass BRCC<bits<4> cc, string opname> {
     <0x2, cc, (outs), (ins brtarget:$imm, GR64:$rA, GR64:$rB),
       !strconcat(opname, "\t$imm, $rA, $rB"), []>;
 
-  def _short : Inst_i3_rr_short
-    <0x2, cc, (outs), (ins brtarget:$imm, GR8:$rA, GR8:$rB),
-      !strconcat(opname, "\t$imm, $rA, $rB"), []>;
+  // Don't assemble short branch instructions
+  let isCodeGenOnly = 1 in {
+    def _short : Inst_i3_rr_short
+      <0x2, cc, (outs), (ins brtarget:$imm, GR8:$rA, GR8:$rB),
+        !strconcat(opname, "\t$imm, $rA, $rB"), []>;
+  }
 }
 
 let isBranch = 1, isTerminator = 1, isBarrier = 1 in {
@@ -456,8 +459,11 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1 in {
   def BRA : Inst_i18
     <0x2, 0x0, (outs), (ins brtarget:$imm), "bra\t$imm", [(br bb:$imm)]>;
 
-  def BRA_short : Inst_i9_short
-    <0x2, 0x0, (outs), (ins brtarget:$imm), "bra\t$imm", []>;
+  // Don't assemble short branch instructions
+  let isCodeGenOnly = 1 in {
+    def BRA_short : Inst_i9_short
+      <0x2, 0x0, (outs), (ins brtarget:$imm), "bra\t$imm", []>;
+  }
 }
 
 // Implements the BR_CC DAG node. Expanded into one of the above branches.
@@ -491,14 +497,19 @@ let isCall = 1,
   Uses = [R1],
   Defs = [R0, R2,  R3,  R4,  R5,  R6,  R7,  R8,  R9, R10, R11, R12,
           R13, R14, R15, R16, R17, R18, R19] in {
-def BAL_short : Inst_i6_r_short
-  <0x2, 0x1, (outs), (ins i16imm:$imm, GR8:$rA), "bal\t$imm, $rA", []>;
+
+let isCodeGenOnly = 1 in {
+  def BAL_short : Inst_i6_r_short
+    <0x2, 0x1, (outs), (ins i16imm:$imm, GR8:$rA), "bal\t$imm, $rA", []>;
+}
 
 def BAL : Inst_i16_r
   <0x2, 0x1, (outs), (ins i16imm:$imm, GR64:$rA), "bal\t$imm, $rA", []>;
 
-def JAL_short : Inst_rr_short
-  <0x2, 0x9, (outs), (ins GR8:$rD, GR64:$rA), "jal\t$rD, $rA", []>;
+let isCodeGenOnly = 1 in {
+  def JAL_short : Inst_rr_short
+    <0x2, 0x9, (outs), (ins GR8:$rD, GR64:$rA), "jal\t$rD, $rA", []>;
+}
 
 def JAL : Inst_rr
   <0x2, 0x9, (outs), (ins GR64:$rD, GR64:$rA), "jal\t$rD, $rA", []>;
@@ -510,7 +521,10 @@ def : Pat<(callflag (i16 imm:$imm), GR64:$rA), (BAL imm:$imm, GR64:$rA)>;
 
 let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
 def JMP : Inst_r<0x2, 0x8, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
-def JMP_short : Inst_r_short<0x2, 0x8, (outs), (ins GR8:$rD), "jmp\t$rD", []>;
+
+let isCodeGenOnly = 1 in {
+  def JMP_short : Inst_r_short<0x2, 0x8, (outs), (ins GR8:$rD), "jmp\t$rD", []>;
+}
 }
 
 
