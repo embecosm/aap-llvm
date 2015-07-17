@@ -123,7 +123,7 @@ DecodeStatus DecodeGR64RegisterClass(MCInst &Inst, unsigned RegNo,
 DecodeStatus decodeMemSrcOperand(MCInst &Inst, unsigned Operand,
                                  uint64_t Address, const void *Decoder) {
   unsigned Reg = (Operand >> 16) && 0x3f;
-  unsigned Offset = Operand && 0xffff;
+  unsigned Offset = Operand & 0xffff;
 
   if (decodeRegisterClass(Inst, Reg, AAPRegs64) == MCDisassembler::Fail) {
     return MCDisassembler::Fail;
