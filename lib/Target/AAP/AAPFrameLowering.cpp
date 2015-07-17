@@ -60,14 +60,24 @@ void AAPFrameLowering::emitPrologue(MachineFunction &MF) const {
   if (hasFP(MF)) {
     llvm_unreachable("Cannot handle the presence of a frame pointer!");
   } else {
-    uint64_t NumBytes = StackSize - MFuncInfo->getCalleeSavedFrameSize();
+    const uint64_t NumBytes = StackSize - MFuncInfo->getCalleeSavedFrameSize();
 
+    const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
     if (NumBytes) {
-      // Adjust stack pointer
-      const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
-      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), SP)
-          .addReg(SP)
-          .addImm(NumBytes);
+      const uint64_t Addend = NumBytes % 1023;
+      const uint64_t NumChunks = NumBytes / 1023;
+
+      // Adjust the stack pointer
+      for (uint64_t i = 0; i < NumChunks; ++i) {
+        BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), SP)
+            .addReg(SP)
+            .addImm(1023);
+      }
+      if (Addend) {
+        BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), SP)
+            .addReg(SP)
+            .addImm(Addend);
+      }
     }
   }
 }
@@ -92,14 +102,24 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
   if (hasFP(MF)) {
     llvm_unreachable("Cannot handle the presence of a frame pointer!");
   } else {
-    uint64_t NumBytes = StackSize - MFuncInfo->getCalleeSavedFrameSize();
+    const uint64_t NumBytes = StackSize - MFuncInfo->getCalleeSavedFrameSize();
 
     const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
     if (NumBytes) {
-      // Adjust stack pointer back
-      BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_i10), SP)
-          .addReg(SP)
-          .addImm(NumBytes);
+      const uint64_t Addend = NumBytes % 1023;
+      const uint64_t NumChunks = NumBytes / 1023;
+
+      // Adjust the stack pointer back
+      for (uint64_t i = 0; i < NumChunks; ++i) {
+        BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_i10), SP)
+            .addReg(SP)
+            .addImm(1023);
+      }
+      if (Addend) {
+        BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_i10), SP)
+            .addReg(SP)
+            .addImm(Addend);
+      }
     }
   }
 }
