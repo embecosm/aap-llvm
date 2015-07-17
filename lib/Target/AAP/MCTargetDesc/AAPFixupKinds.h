@@ -44,6 +44,7 @@ enum Fixups {
   fixup_AAP_ABS6,
   fixup_AAP_ABS9,
   fixup_AAP_ABS10,
+  fixup_AAP_OFF10,
   fixup_AAP_ABS12,
   fixup_AAP_ABS16,
 

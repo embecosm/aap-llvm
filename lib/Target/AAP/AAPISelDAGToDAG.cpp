@@ -73,7 +73,7 @@ private:
   // Complex Pattern for address selection.
   bool SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset);
   bool SelectAddr_MO3(SDValue Addr, SDValue &Base, SDValue &Offset);
-  bool SelectAddr_MO6(SDValue Addr, SDValue &Base, SDValue &Offset);
+  bool SelectAddr_MO10(SDValue Addr, SDValue &Base, SDValue &Offset);
 
   // getI32Imm - Return a target constant with the specified value, of type i32.
   inline SDValue getI32Imm(unsigned Imm) {
@@ -129,7 +129,7 @@ SDNode *AAPDAGToDAGISel::Select(SDNode *Node) {
 }
 
 static bool isImm3(int64_t Imm) { return (Imm >= 0 && Imm <= 7); }
-static bool isImm6(int64_t Imm) { return (Imm >= 0 && Imm <= 63); }
+static bool isOff10(int64_t Imm) { return (Imm >= -512 && Imm <= 511); }
 
 bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {
   // if Address is FI, get the TargetFrameIndex
@@ -177,13 +177,13 @@ bool AAPDAGToDAGISel::SelectAddr_MO3(SDValue Addr, SDValue &Base,
   }
   return false;
 }
-bool AAPDAGToDAGISel::SelectAddr_MO6(SDValue Addr, SDValue &Base,
+bool AAPDAGToDAGISel::SelectAddr_MO10(SDValue Addr, SDValue &Base,
                                      SDValue &Offset) {
   SDValue B, O;
   bool ret = SelectAddr(Addr, B, O);
   if (ret && isa<ConstantSDNode>(O)) {
     int64_t c = dyn_cast<ConstantSDNode>(O)->getSExtValue();
-    if (isImm6(c)) {
+    if (isOff10(c)) {
       Base = B;
       Offset = O;
       return true;

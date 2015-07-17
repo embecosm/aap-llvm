@@ -68,6 +68,9 @@ public:
   }
 
   unsigned checkTargetMatchPredicate(MCInst &Inst) override {
+    // Check instructions with memsrc operands here, as they cannot be
+    // checked through the instruction match classes.
+
     // If this is a short load/store instruction, then we must check that
     // its register operands are all in the GR8 reg class.
     const MCRegisterClass& MRC = MRI->getRegClass(AAP::GR8RegClassID);
@@ -207,6 +210,7 @@ public:
   static bool isImm10(const MCExpr* I) { return isImmInRange(I, 0, 1023); }
   static bool isImm12(const MCExpr* I) { return isImmInRange(I, 0, 4095); }
   static bool isImm16(const MCExpr* I) { return isImmInRange(I, -32768, 65535); }
+  static bool isOff10(const MCExpr* I) { return isImmInRange(I, -512, 511); }
 
 
   // Functions for testing operand type
@@ -220,29 +224,33 @@ public:
   bool isImm10() const { return isImm() && isImm10(getImm()); }
   bool isImm12() const { return isImm() && isImm12(getImm()); }
   bool isImm16() const { return isImm() && isImm16(getImm()); }
+  bool isOff10() const { return isImm() && isOff10(getImm()); }
 
   bool isToken() const { return Kind == Token; }
   bool isMem() const { return false; }
 
   // Check that the immediate fits in an imm6
-  bool isMemSrc6() const {
+  bool isMemSrc10() const {
     if (Kind != MemSrc || Mem.WithPreDec || Mem.WithPostInc) { return false; }
-    // FIXME: Check against the GR64 register class
-    return isImm6(getMemSrcImm());
+    // AAPAsmParser::checkTargetMatchPredicate checks that the register is
+    // is in the GR64 class
+    return isOff10(getMemSrcImm());
   }
-  bool isMemSrc6PostInc() const {
+  bool isMemSrc10PostInc() const {
     if (Kind != MemSrc)   { return false; }
     if (Mem.WithPreDec)   { return false; }
     if (!Mem.WithPostInc) { return false; }
-    // FIXME: Check against the GR64 register class
-    return isImm6(getMemSrcImm());
+    // AAPAsmParser::checkTargetMatchPredicate checks that the register is
+    // is in the GR64 class
+    return isOff10(getMemSrcImm());
   }
-  bool isMemSrc6PreDec() const {
+  bool isMemSrc10PreDec() const {
     if (Kind != MemSrc)  { return false; }
     if (!Mem.WithPreDec) { return false; }
     if (Mem.WithPostInc) { return false; }
-    // FIXME: Check against the GR64 register class
-    return isImm6(getMemSrcImm());
+    // AAPAsmParser::checkTargetMatchPredicate checks that the register is
+    // is in the GR64 class
+    return isOff10(getMemSrcImm());
   }
 
   // Check that the immediate fits in an const3. A memsrc3 operand may only
@@ -295,13 +303,13 @@ public:
     Inst.addOperand(MCOperand::CreateReg(getMemSrcReg()));
     addExpr(Inst, getMemSrcImm());
   }
-  void addMemSrc6Operands(MCInst &Inst, unsigned N) const {
+  void addMemSrc10Operands(MCInst &Inst, unsigned N) const {
     addMemSrcOperands(Inst, N);
   }
-  void addMemSrc6PostIncOperands(MCInst &Inst, unsigned N) const {
+  void addMemSrc10PostIncOperands(MCInst &Inst, unsigned N) const {
     addMemSrcOperands(Inst, N);
   }
-  void addMemSrc6PreDecOperands(MCInst &Inst, unsigned N) const {
+  void addMemSrc10PreDecOperands(MCInst &Inst, unsigned N) const {
     addMemSrcOperands(Inst, N);
   }
   void addMemSrc3Operands(MCInst &Inst, unsigned N) const {

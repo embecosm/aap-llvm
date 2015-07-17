@@ -62,6 +62,9 @@ let RenderMethod = "addImmOperands" in {
   def imm12AsmOperand : AsmOperandClass {
     let Name = "Imm12"; let SuperClasses = [imm16AsmOperand];
   }
+  def off10AsmOperand : AsmOperandClass {
+    let Name = "Off10"; let SuperClasses = [ImmAsmOperand];
+  }
   def imm10AsmOperand : AsmOperandClass {
     let Name = "Imm10"; let SuperClasses = [imm12AsmOperand];
   }
@@ -110,6 +113,12 @@ def imm10 : Operand<i16>, ImmLeaf<i16, [{
   let EncoderMethod = "encodeImm10";
   let ParserMatchClass = imm10AsmOperand;
 }
+def off10 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= -512 && Imm <= 511;
+}]> {
+  let EncoderMethod = "encodeOff10";
+  let ParserMatchClass = off10AsmOperand;
+}
 def imm12 : Operand<i16>, ImmLeaf<i16, [{
   return Imm >= 0 && Imm <= 4095;
 }]> {
@@ -124,50 +133,55 @@ def imm16 : Operand<i16>, ImmLeaf<i16, [{
 }
 
 
-// Memory offsets consist of a 3 or 6 bit immediate and a register
-// operand
-def addr_MO6 : ComplexPattern<iPTR, 2, "SelectAddr_MO6", [], []>;
-def addr_MO3 : ComplexPattern<iPTR, 2, "SelectAddr_MO3", [], []>;
+// Memory offsets consist of a 3 or 10 bit offset and a register operand
+def addr_MO3  : ComplexPattern<iPTR, 2, "SelectAddr_MO3",  [], []>;
+def addr_MO10 : ComplexPattern<iPTR, 2, "SelectAddr_MO10", [], []>;
 
 
 // Memsrc operand encodings consist of a 16-bit immediate field in the low
 // bits, and a 3 or 6 bit register field in the high bits. The encoding
 // is exactly the same for predecrement and postincrement address mode.
-def memsrc6AsmOperand : AsmOperandClass { let Name = "MemSrc6"; }
-def memsrc6PostIncAsmOperand : AsmOperandClass { let Name = "MemSrc6PostInc"; }
-def memsrc6PreDecAsmOperand  : AsmOperandClass { let Name = "MemSrc6PreDec"; }
+def memsrc10AsmOperand : AsmOperandClass {
+  let Name = "MemSrc10";
+}
+def memsrc10PostIncAsmOperand : AsmOperandClass {
+  let Name = "MemSrc10PostInc";
+}
+def memsrc10PreDecAsmOperand  : AsmOperandClass {
+  let Name = "MemSrc10PreDec";
+}
 
 // short memsrc operands subclass the longer ones, as this means they will
 // be prioritized when matching assembly.
 def memsrc3AsmOperand : AsmOperandClass {
   let Name = "MemSrc3";
-  let SuperClasses = [memsrc6AsmOperand];
+  let SuperClasses = [memsrc10AsmOperand];
 }
 def memsrc3PostIncAsmOperand : AsmOperandClass {
   let Name = "MemSrc3PostInc";
-  let SuperClasses = [memsrc6PostIncAsmOperand];
+  let SuperClasses = [memsrc10PostIncAsmOperand];
 }
 def memsrc3PreDecAsmOperand  : AsmOperandClass {
   let Name = "MemSrc3PreDec";
-  let SuperClasses = [memsrc6PreDecAsmOperand];
+  let SuperClasses = [memsrc10PreDecAsmOperand];
 }
 
 let EncoderMethod = "encodeMemSrcOperand",
     DecoderMethod = "decodeMemSrcOperand" in {
-  def memsrc6 : Operand<i16> {
+  def memsrc10 : Operand<i16> {
     let PrintMethod = "printMemSrcOperand";
-    let ParserMatchClass = memsrc6AsmOperand;
-    let MIOperandInfo = (ops GR64, imm6);
+    let ParserMatchClass = memsrc10AsmOperand;
+    let MIOperandInfo = (ops GR64, off10);
   }
-  def memsrc6_postinc : Operand<i16> {
+  def memsrc10_postinc : Operand<i16> {
     let PrintMethod = "printMemSrcPostIncOperand";
-    let ParserMatchClass = memsrc6PostIncAsmOperand;
-    let MIOperandInfo = (ops GR64, imm6);
+    let ParserMatchClass = memsrc10PostIncAsmOperand;
+    let MIOperandInfo = (ops GR64, off10);
   }
-  def memsrc6_predec : Operand<i16> {
+  def memsrc10_predec : Operand<i16> {
     let PrintMethod = "printMemSrcPreDecOperand";
-    let ParserMatchClass = memsrc6PreDecAsmOperand;
-    let MIOperandInfo = (ops GR64, imm6);
+    let ParserMatchClass = memsrc10PreDecAsmOperand;
+    let MIOperandInfo = (ops GR64, off10);
   }
   def memsrc3 : Operand<i16> {
     let PrintMethod = "printMemSrcOperand";
@@ -324,7 +338,7 @@ class LOAD<bits<8> opcode, string opname, dag outs, dag ins>
     : InstAAP
       <0x1, opcode, outs, ins, !strconcat(opname, "\t$rD, [$src]"), []> {
   bits<6> rD;
-  bits<22> src; // 16 bit imm field, 6 bit reg field
+  bits<22> src; // 6-bit reg field, 16 bit imm field
 
   let Inst{8-6} = rD{2-0};
   let Inst{24-22} = rD{5-3};
@@ -333,13 +347,14 @@ class LOAD<bits<8> opcode, string opname, dag outs, dag ins>
   let Inst{21-19} = src{21-19};
   let Inst{2-0} = src{2-0};
   let Inst{18-16} = src{5-3};
+  let Inst{28-25} = src{9-6}; // reuse second word opcode field for offset
 }
 
 class LOAD_short<bits<4> opcode, string opname, dag outs, dag ins>
     : InstAAP_short
       <0x1, opcode, outs, ins, !strconcat(opname, "\t$rD, [$src]"), []> {
   bits<3> rD;
-  bits<19> src; // 16 bit imm field, 3 bit reg field
+  bits<19> src; // 3-bit reg field, 16 bit imm field
 
   let Inst{8-6} = rD;
   let Inst{5-3} = src{18-16};
@@ -349,13 +364,14 @@ class LOAD_short<bits<4> opcode, string opname, dag outs, dag ins>
 class STORE<bits<8> opcode, string opname, dag outs, dag ins>
     : InstAAP
       <0x1, opcode, outs, ins, !strconcat(opname, "\t[$dst], $rA"), []> {
-  bits<22> dst; // 16 bit imm field, 6 bit reg field
+  bits<22> dst; // 6-bit reg field, 16 bit imm field
   bits<6> rA;
 
   let Inst{8-6} = dst{18-16};
   let Inst{24-22} = dst{21-19};
   let Inst{2-0} = dst{2-0};
   let Inst{18-16} = dst{5-3};
+  let Inst{28-25} = dst{9-6}; // reuse second word opcode field for offset
 
   let Inst{5-3} = rA{2-0};
   let Inst{21-19} = rA{5-3};
@@ -364,7 +380,7 @@ class STORE<bits<8> opcode, string opname, dag outs, dag ins>
 class STORE_short<bits<4> opcode, string opname, dag outs, dag ins>
     : InstAAP_short
       <0x1, opcode, outs, ins, !strconcat(opname, "\t[$dst], $rA"), []> {
-  bits<19> dst; // 16 bit imm field, 3 bit reg field
+  bits<19> dst; // 3-bit reg field, 16 bit imm field
   bits<3> rA;
 
   let Inst{8-6} = dst{18-16};
@@ -396,13 +412,13 @@ def LDW_predec_short  : LOAD_short<0x6, "ldw", (outs GR8:$rD), (ins memsrc3_pred
 
 // Load patterns
 def : Pat<(i16 (zextloadi8 GR64:$src)), (LDB GR64:$src, (i16 0))>;
-def : Pat<(i16 (zextloadi8 addr_MO6:$src)), (LDB addr_MO6:$src)>;
+def : Pat<(i16 (zextloadi8 addr_MO10:$src)), (LDB addr_MO10:$src)>;
 
 def : Pat<(i16 (extloadi8 GR64:$src)), (LDB GR64:$src, (i16 0))>;
-def : Pat<(i16 (extloadi8 addr_MO6:$src)), (LDB addr_MO6:$src)>;
+def : Pat<(i16 (extloadi8 addr_MO10:$src)), (LDB addr_MO10:$src)>;
 
 def : Pat<(i16 (load GR64:$src)), (LDW GR64:$src, (i16 0))>;
-def : Pat<(i16 (load addr_MO6:$src)), (LDW addr_MO6:$src)>;
+def : Pat<(i16 (load addr_MO10:$src)), (LDW addr_MO10:$src)>;
 
 let mayStore = 1 in {
 def STB : STORE<0x8,  "stb", (outs), (ins memsrc10:$dst, GR64:$rA)>;
@@ -425,10 +441,10 @@ def STW_predec_short  : STORE_short<0xe, "stw", (outs), (ins memsrc3_predec:$dst
 
 // Store patterns
 def : Pat<(truncstorei8 GR64:$src, GR64:$dst), (STB GR64:$dst, (i16 0), GR64:$src)>;
-def : Pat<(truncstorei8 GR64:$src, addr_MO6:$dst), (STB addr_MO6:$dst, GR64:$src)>;
+def : Pat<(truncstorei8 GR64:$src, addr_MO10:$dst), (STB addr_MO10:$dst, GR64:$src)>;
 
 def : Pat<(store GR64:$src, GR64:$dst), (STW GR64:$dst, (i16 0), GR64:$src)>;
-def : Pat<(store GR64:$src, addr_MO6:$dst), (STW addr_MO6:$dst, GR64:$src)>;
+def : Pat<(store GR64:$src, addr_MO10:$dst), (STW addr_MO10:$dst, GR64:$src)>;
 
 
 //===----------------------------------------------------------------------===//

@@ -51,6 +51,7 @@ unsigned AAPELFObjectWriter::GetRelocType(MCValue const & /*Target*/,
   case AAP::fixup_AAP_ABS6:   return ELF::R_AAP_ABS6;
   case AAP::fixup_AAP_ABS9:   return ELF::R_AAP_ABS9;
   case AAP::fixup_AAP_ABS10:  return ELF::R_AAP_ABS10;
+  case AAP::fixup_AAP_OFF10:  return ELF::R_AAP_OFF10;
   case AAP::fixup_AAP_ABS12:  return ELF::R_AAP_ABS12;
   case AAP::fixup_AAP_ABS16:  return ELF::R_AAP_ABS16;
 

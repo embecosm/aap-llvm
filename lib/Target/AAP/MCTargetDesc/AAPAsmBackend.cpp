@@ -22,7 +22,7 @@ class AAPAsmBackend : public MCAsmBackend {
 public:
   AAPAsmBackend(Target const &T) {}
 
-  unsigned getNumFixupKinds() const override { return 14; }
+  unsigned getNumFixupKinds() const override { return 15; }
 
   const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override {
     const static MCFixupKindInfo Infos[AAP::NumTargetFixupKinds] = {
@@ -43,6 +43,7 @@ public:
       {"fixup_AAP_ABS6",        0,    3,      0},
       {"fixup_AAP_ABS9",        0,    3,      0},
       {"fixup_AAP_ABS10",       0,    3,      0},
+      {"fixup_AAP_OFF10",       0,    3,      0},
       {"fixup_AAP_ABS12",       0,    6,      0},
       {"fixup_AAP_ABS16",       0,    6,      0}
     };
