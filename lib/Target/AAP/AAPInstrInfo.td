@@ -506,10 +506,8 @@ let isCodeGenOnly = 1 in {
 def BAL : Inst_i16_r
   <0x2, 0x1, (outs), (ins i16imm:$imm, GR64:$rA), "bal\t$imm, $rA", []>;
 
-let isCodeGenOnly = 1 in {
-  def JAL_short : Inst_rr_short
-    <0x2, 0x9, (outs), (ins GR8:$rD, GR64:$rA), "jal\t$rD, $rA", []>;
-}
+def JAL_short : Inst_rr_short
+  <0x2, 0x9, (outs), (ins GR8:$rD, GR64:$rA), "jal\t$rD, $rA", []>;
 
 def JAL : Inst_rr
   <0x2, 0x9, (outs), (ins GR64:$rD, GR64:$rA), "jal\t$rD, $rA", []>;
@@ -522,9 +520,7 @@ def : Pat<(callflag (i16 imm:$imm), GR64:$rA), (BAL imm:$imm, GR64:$rA)>;
 let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
 def JMP : Inst_r<0x2, 0x8, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
 
-let isCodeGenOnly = 1 in {
-  def JMP_short : Inst_r_short<0x2, 0x8, (outs), (ins GR8:$rD), "jmp\t$rD", []>;
-}
+def JMP_short : Inst_r_short<0x2, 0x8, (outs), (ins GR8:$rD), "jmp\t$rD", []>;
 }
 
 
