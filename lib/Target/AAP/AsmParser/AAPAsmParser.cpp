@@ -179,17 +179,29 @@ public:
   }
 
 
-  // If an MCExpr is a constant immediate, check whether it is in the
-  // provided inclusive range
+  // If an MCExpr is a constant immediate, check whether it is in the provided
+  // inclusive range. If we are checking for an immediate, then arbitrary
+  // expressions are also allowed.
   static bool isImmInRange(const MCExpr* Imm, int64_t Min, int64_t Max) {
     if (Imm->getKind() != MCExpr::Constant) {
-      return true;
+      return true;    // allow arbitrary expressions
     }
     int64_t Res;
     Imm->EvaluateAsAbsolute(Res);
     return (Res >= Min) && (Res <= Max);
   }
-  static bool isImm3(const MCExpr* I)  { return isImmInRange(I, 0, 7); }
+
+  static bool isConstInRange(const MCExpr* Imm, int64_t Min, int64_t Max) {
+    if (Imm->getKind() != MCExpr::Constant) {
+      return false;   // only allow constants
+    }
+    int64_t Res;
+    Imm->EvaluateAsAbsolute(Res);
+    return (Res >= Min) && (Res <= Max);
+  }
+
+  static bool isConst3(const MCExpr* I) { return isConstInRange(I, 0, 7); }
+  static bool isConst6(const MCExpr* I) { return isConstInRange(I, 0, 63); }
   static bool isImm6(const MCExpr* I)  { return isImmInRange(I, 0, 63); }
   static bool isImm9(const MCExpr* I)  { return isImmInRange(I, 0, 511); }
   static bool isImm10(const MCExpr* I) { return isImmInRange(I, 0, 1023); }
@@ -201,7 +213,8 @@ public:
   bool isReg() const { return Kind == Register; }
   bool isImm() const { return Kind == Immediate; }
 
-  bool isImm3()  const { return isImm() && isImm3(getImm()); }
+  bool isConst3() const { return isImm() && isConst3(getImm()); }
+  bool isConst6() const { return isImm() && isConst6(getImm()); }
   bool isImm6()  const { return isImm() && isImm6(getImm()); }
   bool isImm9()  const { return isImm() && isImm9(getImm()); }
   bool isImm10() const { return isImm() && isImm10(getImm()); }
@@ -232,25 +245,29 @@ public:
     return isImm6(getMemSrcImm());
   }
 
-  // Check that the immediate fits in an imm3
+  // Check that the immediate fits in an const3. A memsrc3 operand may only
+  // have a constant in its immediate field.
   bool isMemSrc3() const {
     if (Kind != MemSrc || Mem.WithPreDec || Mem.WithPostInc) { return false; }
-    // FIXME: Check against the GR8 register class
-    return isImm3(getMemSrcImm());
+    // AAPAsmParser::checkTargetMatchPredicate checks that the register is
+    // is in the GR8 class
+    return isConst3(getMemSrcImm());
   }
   bool isMemSrc3PostInc() const {
     if (Kind != MemSrc)   { return false; }
     if (Mem.WithPreDec)   { return false; }
     if (!Mem.WithPostInc) { return false; }
-    // FIXME: Check against the GR8 register class
-    return isImm3(getMemSrcImm());
+    // AAPAsmParser::checkTargetMatchPredicate checks that the register is
+    // is in the GR8 class
+    return isConst3(getMemSrcImm());
   }
   bool isMemSrc3PreDec() const {
     if (Kind != MemSrc)  { return false; }
     if (!Mem.WithPreDec) { return false; }
     if (Mem.WithPostInc) { return false; }
-    // FIXME: Check against the GR8 register class
-    return isImm3(getMemSrcImm());
+    // AAPAsmParser::checkTargetMatchPredicate checks that the register is
+    // is in the GR8 class
+    return isConst3(getMemSrcImm());
   }
 
   void addExpr(MCInst &Inst, const MCExpr *Expr) const {

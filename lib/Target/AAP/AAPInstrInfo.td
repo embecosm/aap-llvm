@@ -49,8 +49,12 @@ def brtarget : Operand<OtherVT> {
 
 // Immediate operands. Smaller operands are subclasses of larger ones so they
 // are correctly prioritized when disassembling.
+//
 // Currently we have no custom 'signed' immediates, but it will likely
 // be needed in the future to handle branches properly.
+//
+// A constant immediate is an immediate which cannot be an expression, only
+// a constant value.
 let RenderMethod = "addImmOperands" in {
   def imm16AsmOperand : AsmOperandClass {
     let Name = "Imm16"; let SuperClasses = [ImmAsmOperand];
@@ -64,25 +68,35 @@ let RenderMethod = "addImmOperands" in {
   def imm9AsmOperand  : AsmOperandClass {
     let Name = "Imm9"; let SuperClasses = [imm10AsmOperand];
   }
-  def imm6AsmOperand  : AsmOperandClass {
-    let Name = "Imm6"; let SuperClasses = [imm9AsmOperand];
+  def const6AsmOperand  : AsmOperandClass {
+    let Name = "Const6"; let SuperClasses = [imm9AsmOperand];
   }
-  def imm3AsmOperand  : AsmOperandClass {
-    let Name = "Imm3"; let SuperClasses = [imm6AsmOperand];
+  def imm6AsmOperand  : AsmOperandClass {
+    let Name = "Imm6"; let SuperClasses = [const6AsmOperand];
+  }
+  def const3AsmOperand  : AsmOperandClass {
+    let Name = "Const3"; let SuperClasses = [imm6AsmOperand];
   }
 }
 
-def imm3 : Operand<i16>, ImmLeaf<i16, [{
+// A constant immediate cannot be an expression, only an absolute value
+def const3 : Operand<i16>, ImmLeaf<i16, [{
   return Imm >= 0 && Imm <= 7;
 }]> {
   let EncoderMethod = "encodeImm3";
-  let ParserMatchClass = imm3AsmOperand;
+  let ParserMatchClass = const3AsmOperand;
 }
 def imm6 : Operand<i16>, ImmLeaf<i16, [{
   return Imm >= 0 && Imm <= 63;
 }]> {
   let EncoderMethod = "encodeImm6";
   let ParserMatchClass = imm6AsmOperand;
+}
+def const6 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 63;
+}]> {
+  let EncoderMethod = "encodeImm6";
+  let ParserMatchClass = const6AsmOperand;
 }
 def imm9 : Operand<i16>, ImmLeaf<i16, [{
   return Imm >= 0 && Imm <= 511;
@@ -158,17 +172,17 @@ let EncoderMethod = "encodeMemSrcOperand",
   def memsrc3 : Operand<i16> {
     let PrintMethod = "printMemSrcOperand";
     let ParserMatchClass = memsrc3AsmOperand;
-    let MIOperandInfo = (ops GR8, imm3);
+    let MIOperandInfo = (ops GR8, const3);
   }
   def memsrc3_postinc : Operand<i16> {
     let PrintMethod = "printMemSrcPostIncOperand";
     let ParserMatchClass = memsrc3PostIncAsmOperand;
-    let MIOperandInfo = (ops GR8, imm3);
+    let MIOperandInfo = (ops GR8, const3);
   }
   def memsrc3_predec : Operand<i16> {
     let PrintMethod = "printMemSrcPreDecOperand";
     let ParserMatchClass = memsrc3PreDecAsmOperand;
-    let MIOperandInfo = (ops GR8, imm3);
+    let MIOperandInfo = (ops GR8, const3);
   }
 }
 
@@ -185,11 +199,11 @@ def MOV_r_short : Inst_rr_short
 
 def MOV_i16 : Inst_r_i16
   <0x0, 0xf, (outs GR64:$rD), (ins imm16:$imm), "mov\t$rD, $imm",
-    [(set GR64:$rD, (i16 imm:$imm))]>;
+    [(set GR64:$rD, (i16 imm16:$imm))]>;
 
 def MOV_i6_short : Inst_r_i6_short
-  <0x0, 0xf, (outs GR8:$rD), (ins imm6:$imm), "mov\t$rD, $imm",
-    [(set GR8:$rD, (i16 imm:$imm))]>;
+  <0x0, 0xf, (outs GR8:$rD), (ins const6:$imm), "mov\t$rD, $imm",
+    [(set GR8:$rD, (i16 const6:$imm))]>;
 
 
 //===----------------------------------------------------------------------===//
@@ -200,7 +214,7 @@ def NOP : Inst_r_i12
   <0x0, 0x0, (outs), (ins GR64:$rD, imm12:$imm), "nop\t$rD, $imm", []>;
 
 def NOP_short : Inst_r_i6_short
-  <0x0, 0x0, (outs), (ins GR8:$rD, imm6:$imm), "nop\t$rD, $imm", []>;
+  <0x0, 0x0, (outs), (ins GR8:$rD, const6:$imm), "nop\t$rD, $imm", []>;
 
 
 // ALU ops with register operands
@@ -247,25 +261,26 @@ def SUBC_r : Inst_rrr
 
 // ALU ops with immediates
 let Defs = [PSW] in {
+
 def ADD_i10 : Inst_rr_i10
   <0x0, 0xa, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
     "add\t$rD, $rA, $imm",
-    [(set GR64:$rD, (add GR64:$rA, (i16 imm:$imm)))]>;
+    [(set GR64:$rD, (add GR64:$rA, (i16 imm10:$imm)))]>;
 
 def ADD_i3_short : Inst_rr_i3_short
-  <0x0, 0xa, (outs GR8:$rD), (ins GR8:$rA, imm3:$imm),
+  <0x0, 0xa, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
     "add\t$rD, $rA, $imm",
-    [(set GR8:$rD, (add GR8:$rA, (i16 imm:$imm)))]>;
+    [(set GR8:$rD, (add GR8:$rA, (i16 const3:$imm)))]>;
 
 def SUB_i10 : Inst_rr_i10
   <0x0, 0xb, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
     "sub\t$rD, $rA, $imm",
-    [(set GR64:$rD, (sub GR64:$rA, (i16 imm:$imm)))]>;
+    [(set GR64:$rD, (sub GR64:$rA, (i16 imm10:$imm)))]>;
 
 def SUB_i3_short : Inst_rr_i3_short
-  <0x0, 0xb, (outs GR8:$rD), (ins GR8:$rA, imm3:$imm),
+  <0x0, 0xb, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
     "sub\t$rD, $rA, $imm",
-    [(set GR8:$rD, (sub GR8:$rA, (i16 imm:$imm)))]>;
+    [(set GR8:$rD, (sub GR8:$rA, (i16 const3:$imm)))]>;
 }
 
 
@@ -273,12 +288,12 @@ multiclass SHIFT_i<bits<8> opcode, string opname, SDNode OpNode> {
   def _i6 : Inst_rr_i6
     <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, imm6:$imm),
       !strconcat(opname, "\t$rD, $rA, $imm"),
-      [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm:$imm)))]>;
+      [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm6:$imm)))]>;
 
   def _i3_short : Inst_rr_i3_short
-    <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, imm3:$imm),
+    <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
       !strconcat(opname, "\t$rD, $rA, $imm"),
-      [(set GR8:$rD, (OpNode GR8:$rA, (i16 imm:$imm)))]>;
+      [(set GR8:$rD, (OpNode GR8:$rA, (i16 const3:$imm)))]>;
 }
 defm ASR : SHIFT_i<0xc, "asr", sra>;
 defm LSL : SHIFT_i<0xd, "lsl", shl>;
@@ -290,7 +305,7 @@ class LOG_i9<bits<5> opcode, string opname, SDNode OpNode>
     : Inst_rr_i9
       <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, imm9:$imm),
         !strconcat(opname, "\t$rD, $rA, $imm"),
-        [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm:$imm)))]>;
+        [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm9:$imm)))]>;
 
 def AND_i9 : LOG_i9<0x13, "and", and>;
 def OR_i9  : LOG_i9<0x14, "or",  or>;
