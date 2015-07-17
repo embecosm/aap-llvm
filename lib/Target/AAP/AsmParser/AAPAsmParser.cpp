@@ -206,7 +206,7 @@ public:
   static bool isImm9(const MCExpr* I)  { return isImmInRange(I, 0, 511); }
   static bool isImm10(const MCExpr* I) { return isImmInRange(I, 0, 1023); }
   static bool isImm12(const MCExpr* I) { return isImmInRange(I, 0, 4095); }
-  static bool isImm16(const MCExpr* I) { return isImmInRange(I, 0, 65535); }
+  static bool isImm16(const MCExpr* I) { return isImmInRange(I, -32768, 65535); }
 
 
   // Functions for testing operand type

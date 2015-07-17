@@ -117,7 +117,7 @@ def imm12 : Operand<i16>, ImmLeaf<i16, [{
   let ParserMatchClass = imm12AsmOperand;
 }
 def imm16 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm <= 65535;
+  return Imm >= -32768 && Imm <= 65535;
 }]> {
   let EncoderMethod = "encodeImm16";
   let ParserMatchClass = imm16AsmOperand;
