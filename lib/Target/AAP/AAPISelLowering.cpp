@@ -153,6 +153,18 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::BSWAP, MVT::i8,  Expand);
   setOperationAction(ISD::BSWAP, MVT::i16, Expand);
 
+  setOperationAction(ISD::CTTZ,  MVT::i8,  Expand);
+  setOperationAction(ISD::CTTZ,  MVT::i16, Expand);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF,  MVT::i8,  Expand);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF,  MVT::i16, Expand);
+  setOperationAction(ISD::CTLZ,  MVT::i8,  Expand);
+  setOperationAction(ISD::CTLZ,  MVT::i16, Expand);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF,  MVT::i8,  Expand);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF,  MVT::i16, Expand);
+  setOperationAction(ISD::CTPOP, MVT::i8,  Expand);
+  setOperationAction(ISD::CTPOP, MVT::i16, Expand);
+
+
   setMinFunctionAlignment(1);
   setPrefFunctionAlignment(2);
 }
