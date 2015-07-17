@@ -361,15 +361,15 @@ class STORE_short<bits<4> opcode, string opname, dag outs, dag ins>
 // Short instructions use the memsrc3 operand type, which uses a different
 // fixup when encoding and a different matching class when parsing assembly.
 let mayLoad = 1 in {
-def LDB : LOAD<0x0,  "ldb", (outs GR64:$rD), (ins memsrc6:$src)>;
-def LDW : LOAD<0x4,  "ldw", (outs GR64:$rD), (ins memsrc6:$src)>;
-def LDD : LOAD<0x40, "ldd", (outs GR64:$rD), (ins memsrc6:$src)>;
-def LDB_postinc : LOAD<0x1,  "ldb", (outs GR64:$rD), (ins memsrc6_postinc:$src)>;
-def LDW_postinc : LOAD<0x5,  "ldw", (outs GR64:$rD), (ins memsrc6_postinc:$src)>;
-def LDD_postinc : LOAD<0x41, "ldd", (outs GR64:$rD), (ins memsrc6_postinc:$src)>;
-def LDB_predec  : LOAD<0x2,  "ldb", (outs GR64:$rD), (ins memsrc6_predec:$src)>;
-def LDW_predec  : LOAD<0x6,  "ldw", (outs GR64:$rD), (ins memsrc6_predec:$src)>;
-def LDD_predec  : LOAD<0x42, "ldd", (outs GR64:$rD), (ins memsrc6_predec:$src)>;
+def LDB : LOAD<0x0,  "ldb", (outs GR64:$rD), (ins memsrc10:$src)>;
+def LDW : LOAD<0x4,  "ldw", (outs GR64:$rD), (ins memsrc10:$src)>;
+//def LDD : LOAD<0x40, "ldd", (outs GR64:$rD), (ins memsrc10:$src)>;
+def LDB_postinc : LOAD<0x1,  "ldb", (outs GR64:$rD), (ins memsrc10_postinc:$src)>;
+def LDW_postinc : LOAD<0x5,  "ldw", (outs GR64:$rD), (ins memsrc10_postinc:$src)>;
+//def LDD_postinc : LOAD<0x41, "ldd", (outs GR64:$rD), (ins memsrc10_postinc:$src)>;
+def LDB_predec  : LOAD<0x2,  "ldb", (outs GR64:$rD), (ins memsrc10_predec:$src)>;
+def LDW_predec  : LOAD<0x6,  "ldw", (outs GR64:$rD), (ins memsrc10_predec:$src)>;
+//def LDD_predec  : LOAD<0x42, "ldd", (outs GR64:$rD), (ins memsrc10_predec:$src)>;
 
 def LDB_short : LOAD_short<0x0, "ldb", (outs GR8:$rD), (ins memsrc3:$src)>;
 def LDW_short : LOAD_short<0x4, "ldw", (outs GR8:$rD), (ins memsrc3:$src)>;
@@ -390,15 +390,15 @@ def : Pat<(i16 (load GR64:$src)), (LDW GR64:$src, (i16 0))>;
 def : Pat<(i16 (load addr_MO6:$src)), (LDW addr_MO6:$src)>;
 
 let mayStore = 1 in {
-def STB : STORE<0x8,  "stb", (outs), (ins memsrc6:$dst, GR64:$rA)>;
-def STW : STORE<0xc,  "stw", (outs), (ins memsrc6:$dst, GR64:$rA)>;
-def STD : STORE<0x48, "std", (outs), (ins memsrc6:$dst, GR64:$rA)>;
-def STB_postinc : STORE<0x9,  "stb", (outs), (ins memsrc6_postinc:$dst, GR64:$rA)>;
-def STW_postinc : STORE<0xd,  "stw", (outs), (ins memsrc6_postinc:$dst, GR64:$rA)>;
-def STD_postinc : STORE<0x49, "std", (outs), (ins memsrc6_postinc:$dst, GR64:$rA)>;
-def STB_predec  : STORE<0xa,  "stb", (outs), (ins memsrc6_predec:$dst, GR64:$rA)>;
-def STW_predec  : STORE<0xe,  "stw", (outs), (ins memsrc6_predec:$dst, GR64:$rA)>;
-def STD_predec  : STORE<0x4a, "std", (outs), (ins memsrc6_predec:$dst, GR64:$rA)>;
+def STB : STORE<0x8,  "stb", (outs), (ins memsrc10:$dst, GR64:$rA)>;
+def STW : STORE<0xc,  "stw", (outs), (ins memsrc10:$dst, GR64:$rA)>;
+//def STD : STORE<0x48, "std", (outs), (ins memsrc10:$dst, GR64:$rA)>;
+def STB_postinc : STORE<0x9,  "stb", (outs), (ins memsrc10_postinc:$dst, GR64:$rA)>;
+def STW_postinc : STORE<0xd,  "stw", (outs), (ins memsrc10_postinc:$dst, GR64:$rA)>;
+//def STD_postinc : STORE<0x49, "std", (outs), (ins memsrc10_postinc:$dst, GR64:$rA)>;
+def STB_predec  : STORE<0xa,  "stb", (outs), (ins memsrc10_predec:$dst, GR64:$rA)>;
+def STW_predec  : STORE<0xe,  "stw", (outs), (ins memsrc10_predec:$dst, GR64:$rA)>;
+//def STD_predec  : STORE<0x4a, "std", (outs), (ins memsrc10_predec:$dst, GR64:$rA)>;
 
 def STB_short : STORE_short<0x8, "stb", (outs), (ins memsrc3:$dst, GR8:$rA)>;
 def STW_short : STORE_short<0xc, "stw", (outs), (ins memsrc3:$dst, GR8:$rA)>;

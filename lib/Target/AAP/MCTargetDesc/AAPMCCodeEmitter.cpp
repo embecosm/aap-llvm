@@ -110,13 +110,13 @@ static const unsigned BRCCOpcodes[] = {
   AAP::BLTU_short, AAP::BGTU_short
 };
 static const unsigned LoadStoreOpcodes[] = {
-  AAP::LDB, AAP::LDW, AAP::LDD,
-  AAP::LDB_postinc, AAP::LDW_postinc, AAP::LDD_postinc,
-  AAP::LDB_predec, AAP::LDW_predec, AAP::LDD_predec,
+  AAP::LDB, AAP::LDW, //AAP::LDD,
+  AAP::LDB_postinc, AAP::LDW_postinc, //AAP::LDD_postinc,
+  AAP::LDB_predec, AAP::LDW_predec, //AAP::LDD_predec,
 
-  AAP::STB, AAP::STW, AAP::STD,
-  AAP::STB_postinc, AAP::STW_postinc, AAP::STD_postinc,
-  AAP::STB_predec, AAP::STW_predec, AAP::STD_predec,
+  AAP::STB, AAP::STW, //AAP::STD,
+  AAP::STB_postinc, AAP::STW_postinc, //AAP::STD_postinc,
+  AAP::STB_predec, AAP::STW_predec, //AAP::STD_predec,
 
   AAP::LDB_short, AAP::LDW_short,
   AAP::LDB_postinc_short, AAP::LDW_postinc_short,
