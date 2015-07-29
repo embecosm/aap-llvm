@@ -28,7 +28,7 @@ def CC_AAP : CallingConv<[
   CCIfType<[i8], CCPromoteToType<i16>>,
 
   // All arguments get passed into registers if there is space.
-  CCIfType<[i16], CCAssignToReg<[R3, R4, R5, R6]>>,
+  CCIfType<[i16], CCAssignToReg<[R3, R4]>>,
 
   // Alternatively they are added to the stack.
   CCAssignToStack<2, 2>

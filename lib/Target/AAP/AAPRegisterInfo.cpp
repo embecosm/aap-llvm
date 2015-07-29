@@ -36,13 +36,19 @@ BitVector AAPRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
   Reserved.set(getLinkRegister());
   Reserved.set(getStackPtrRegister());
+
+  // Mark frame pointer as reserved if necessary
   if (TFI->hasFP(MF)) {
     Reserved.set(getFramePtrRegister());
   }
 
-  return Reserved;
+  // Restrict the size of the register set
+  for (unsigned i = AAP::R5; i <= AAP::R63; i++) {
+    Reserved.set(i);
+  }
 
-  // TODO: Reserve unused registers here?
+  return Reserved;
+  // TODO: Potentially restrict number of registers here
 }
 
 bool AAPRegisterInfo::requiresRegisterScavenging(
@@ -67,13 +73,15 @@ void AAPRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MBBI,
            "Instr does not have a Frame Index operand!");
   }
 
-  assert(!TFI->hasFP(MF) && "Frame pointer not supported!");
+  //assert(!TFI->hasFP(MF) && "Frame pointer not supported!");
 
   int FrameIdx = MI.getOperand(i).getIndex();
   unsigned BaseReg = getFrameRegister(MF);
 
   int Offset = MF.getFrameInfo()->getObjectOffset(FrameIdx);
-  Offset += MF.getFrameInfo()->getStackSize();
+  if (!TFI->hasFP(MF)) {
+    Offset += MF.getFrameInfo()->getStackSize();
+  }
 
   // fold imm into offset
   Offset += MI.getOperand(i + 1).getImm();
