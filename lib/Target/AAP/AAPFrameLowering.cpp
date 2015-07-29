@@ -76,9 +76,7 @@ void AAPFrameLowering::emitPrologue(MachineFunction &MF) const {
     NumBytes += 2;
 
     // Update the frame pointer to point at the new top of stack
-    BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), FP)
-      .addReg(SP)
-      .addImm(2);
+    BuildMI(MBB, MBBI, DL, TII.get(AAP::MOV_r), FP).addReg(SP);
 
     // Mark the frame pointer as live-in in every block except the first
     // FIXME: Does this ensure that a caller saved FP reg saves at call sites?

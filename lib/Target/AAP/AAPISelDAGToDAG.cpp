@@ -109,9 +109,7 @@ SDNode *AAPDAGToDAGISel::Select(SDNode *Node) {
     SDValue TFI = CurDAG->getTargetFrameIndex(FI, MVT::i16);
 
     // Handle single use
-    // This is not correct if we have a frame pointer, as the offset will be
-    // negative
-    return CurDAG->getMachineNode(AAP::ADD_i10, dl, MVT::i16,
+    return CurDAG->getMachineNode(AAP::LEA, dl, MVT::i16,
                                   TFI, CurDAG->getTargetConstant(0, MVT::i16));
   }
   default:
