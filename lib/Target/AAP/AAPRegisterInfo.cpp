@@ -97,7 +97,7 @@ void AAPRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MBBI,
         .addReg(BaseReg)
         .addImm(Offset);
     }
-    else if (Offset < 0) {                                                           
+    else if (Offset < 0) {
       BuildMI(MBB, &MI, DL, TII->get(AAP::SUB_i10), DstReg)
         .addReg(BaseReg)
         .addImm(-Offset);
