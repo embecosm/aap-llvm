@@ -312,7 +312,7 @@ SDValue AAPTargetLowering::LowerCCCArguments(
       if (Flags.isByVal()) {
         int FI = MFI->CreateFixedObject(Flags.getByValSize(),
                                         VA.getLocMemOffset(), true);
-        InVal = DAG.getFrameIndex(FI, getPointerTy());
+        InVal = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
       } else {
         // Load the argument to a virtual register
         unsigned ObjSize = VA.getLocVT().getSizeInBits() / 8;
@@ -393,6 +393,8 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
     const SmallVectorImpl<SDValue> &OutVals,
     const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc dl, SelectionDAG &DAG,
     SmallVectorImpl<SDValue> &InVals) const {
+  const DataLayout& DL = DAG.getDataLayout();
+
   // Analyze operands of the call, assigning locations to each operand.
   SmallVector<CCValAssign, 16> ArgLocs;
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(), ArgLocs,
@@ -404,7 +406,7 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   unsigned NumBytes = CCInfo.getNextStackOffset();
 
   Chain = DAG.getCALLSEQ_START(
-      Chain, DAG.getConstant(NumBytes, getPointerTy(), true), dl);
+      Chain, DAG.getConstant(NumBytes, dl, getPointerTy(DL), true), dl);
 
   SmallVector<std::pair<unsigned, SDValue>, 4> RegsToPass;
   SmallVector<SDValue, 12> MemOpChains;
@@ -443,20 +445,22 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
       if (StackPtr.getNode() == 0)
         StackPtr = DAG.getCopyFromReg(Chain, dl,
                                       AAPRegisterInfo::getStackPtrRegister(),
-                                      getPointerTy());
+                                      getPointerTy(DL));
 
-      SDValue PtrOff = DAG.getNode(ISD::ADD, dl, getPointerTy(), StackPtr,
-                                   DAG.getIntPtrConstant(VA.getLocMemOffset()));
+      SDValue PtrOff = DAG.getNode(ISD::ADD, dl, getPointerTy(DL), StackPtr,
+                                   DAG.getIntPtrConstant(
+                                     VA.getLocMemOffset(), dl));
 
       SDValue MemOp;
       ISD::ArgFlagsTy Flags = Outs[i].Flags;
 
       if (Flags.isByVal()) {
-        SDValue SizeNode = DAG.getConstant(Flags.getByValSize(), MVT::i16);
+        SDValue SizeNode = DAG.getConstant(Flags.getByValSize(), dl, MVT::i16);
         MemOp = DAG.getMemcpy(
             Chain, dl, PtrOff, Arg, SizeNode, Flags.getByValAlign(),
             /*isVolatile*/ false,
-            /*AlwaysInline=*/true, MachinePointerInfo(), MachinePointerInfo());
+            /*AlwaysInline*/ true, 
+            /*isTailCall*/ false, MachinePointerInfo(), MachinePointerInfo());
       } else {
         MemOp = DAG.getStore(Chain, dl, Arg, PtrOff, MachinePointerInfo(),
                              false, false, 0);
@@ -512,8 +516,10 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
 
   // Create the CALLSEQ_END node.
   Chain =
-      DAG.getCALLSEQ_END(Chain, DAG.getConstant(NumBytes, getPointerTy(), true),
-                         DAG.getConstant(0, getPointerTy(), true), InFlag, dl);
+      DAG.getCALLSEQ_END(Chain,
+                         DAG.getConstant(NumBytes, dl, getPointerTy(DL), true),
+                         DAG.getConstant(0, dl, getPointerTy(DL), true),
+                         InFlag, dl);
   InFlag = Chain.getValue(1);
 
   // Handle result values, copying them out of physregs into vregs that we
@@ -672,7 +678,7 @@ SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
 
   SmallVector<SDValue, 5> Ops;
   Ops.push_back(Chain);
-  Ops.push_back(DAG.getConstant(TargetCC, MVT::i16));
+  Ops.push_back(DAG.getConstant(TargetCC, dl, MVT::i16));
   if (!SwapOperands) {
     Ops.push_back(LHS);
     Ops.push_back(RHS);
@@ -708,17 +714,18 @@ SDValue AAPTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
   }
   Ops.push_back(TrueValue);
   Ops.push_back(FalseValue);
-  Ops.push_back(DAG.getConstant(TargetCC, MVT::i16));
+  Ops.push_back(DAG.getConstant(TargetCC, dl, MVT::i16));
   return DAG.getNode(AAPISD::SELECT_CC, dl, Op.getValueType(), Ops);
 }
 
 SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
   MachineFunction &MF = DAG.getMachineFunction();
   AAPMachineFunctionInfo *MFI = MF.getInfo<AAPMachineFunctionInfo>();
+  const DataLayout& DL = DAG.getDataLayout();
 
   // Frame index of first vaarg argument
   SDValue FrameIndex = DAG.getFrameIndex(MFI->getVarArgsFrameIndex(),
-                                         getPointerTy());
+                                         getPointerTy(DL));
   const Value *Src = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
 
   // Create a store of the frame index to the location operand
@@ -729,13 +736,14 @@ SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
 
 SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
                                               SelectionDAG &DAG) const {
+  const DataLayout DL = DAG.getDataLayout();
   const GlobalValue *GV = cast<GlobalAddressSDNode>(Op)->getGlobal();
   int64_t Offset = cast<GlobalAddressSDNode>(Op)->getOffset();
 
   // Create the TargetGlobalAddress node, folding in the constant offset.
   SDValue Result =
-      DAG.getTargetGlobalAddress(GV, SDLoc(Op), getPointerTy(), Offset);
-  return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), getPointerTy(), Result);
+      DAG.getTargetGlobalAddress(GV, SDLoc(Op), getPointerTy(DL), Offset);
+  return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), getPointerTy(DL), Result);
 }
 
 

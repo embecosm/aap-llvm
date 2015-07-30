@@ -175,7 +175,7 @@ public:
   ELFAAPAsmBackend(Target const &T, uint8_t OSABI)
       : AAPAsmBackend(T), OSABI(OSABI) {}
 
-  MCObjectWriter *createObjectWriter(raw_ostream &OS) const override {
+  MCObjectWriter *createObjectWriter(raw_pwrite_stream &OS) const override {
     StringRef CPU("Default");
     return createAAPELFObjectWriter(OS, OSABI, CPU);
   }
@@ -184,7 +184,7 @@ public:
 
 namespace llvm {
 MCAsmBackend *createAAPAsmBackend(Target const &T, MCRegisterInfo const &MRI,
-                                  StringRef TT, StringRef CPU) {
+                                  const Triple &TT, StringRef CPU) {
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(Triple(TT).getOS());
   return new ELFAAPAsmBackend(T, OSABI);
 }

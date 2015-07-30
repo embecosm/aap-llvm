@@ -12,12 +12,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "AAPMCAsmInfo.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Triple.h"
+
 using namespace llvm;
 
 void AAPMCAsmInfo::anchor() {}
 
-AAPMCAsmInfo::AAPMCAsmInfo(StringRef TT) {
+AAPMCAsmInfo::AAPMCAsmInfo(const llvm::Triple &TT) {
   PointerSize = CalleeSaveStackSlotSize = 2;
   CommentString = ";";
   UsesELFSectionDirectiveForBSS = true;

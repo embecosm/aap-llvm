@@ -16,6 +16,6 @@
 using namespace llvm;
 
 AAPSelectionDAGInfo::AAPSelectionDAGInfo(const DataLayout &DL)
-    : TargetSelectionDAGInfo(&DL) {}
+    : TargetSelectionDAGInfo() {}
 
 AAPSelectionDAGInfo::~AAPSelectionDAGInfo() {}

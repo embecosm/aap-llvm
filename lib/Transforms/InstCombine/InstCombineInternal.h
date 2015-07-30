@@ -15,6 +15,7 @@
 #ifndef LLVM_LIB_TRANSFORMS_INSTCOMBINE_INSTCOMBINEINTERNAL_H
 #define LLVM_LIB_TRANSFORMS_INSTCOMBINE_INSTCOMBINEINTERNAL_H
 
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/TargetFolder.h"
@@ -38,17 +39,6 @@ class TargetLibraryInfo;
 class DbgDeclareInst;
 class MemIntrinsic;
 class MemSetInst;
-
-/// \brief Specific patterns of select instructions we can match.
-enum SelectPatternFlavor {
-  SPF_UNKNOWN = 0,
-  SPF_SMIN,
-  SPF_UMIN,
-  SPF_SMAX,
-  SPF_UMAX,
-  SPF_ABS,
-  SPF_NABS
-};
 
 /// \brief Assign a complexity or rank value to LLVM Values.
 ///
@@ -110,6 +100,41 @@ static inline bool IsFreeToInvert(Value *V, bool WillInvertAllUses) {
   return false;
 }
 
+
+/// \brief Specific patterns of overflow check idioms that we match.
+enum OverflowCheckFlavor {
+  OCF_UNSIGNED_ADD,
+  OCF_SIGNED_ADD,
+  OCF_UNSIGNED_SUB,
+  OCF_SIGNED_SUB,
+  OCF_UNSIGNED_MUL,
+  OCF_SIGNED_MUL,
+
+  OCF_INVALID
+};
+
+/// \brief Returns the OverflowCheckFlavor corresponding to a overflow_with_op
+/// intrinsic.
+static inline OverflowCheckFlavor
+IntrinsicIDToOverflowCheckFlavor(unsigned ID) {
+  switch (ID) {
+  default:
+    return OCF_INVALID;
+  case Intrinsic::uadd_with_overflow:
+    return OCF_UNSIGNED_ADD;
+  case Intrinsic::sadd_with_overflow:
+    return OCF_SIGNED_ADD;
+  case Intrinsic::usub_with_overflow:
+    return OCF_UNSIGNED_SUB;
+  case Intrinsic::ssub_with_overflow:
+    return OCF_SIGNED_SUB;
+  case Intrinsic::umul_with_overflow:
+    return OCF_UNSIGNED_MUL;
+  case Intrinsic::smul_with_overflow:
+    return OCF_SIGNED_MUL;
+  }
+}
+
 /// \brief An IRBuilder inserter that adds new instructions to the instcombine
 /// worklist.
 class LLVM_LIBRARY_VISIBILITY InstCombineIRInserter
@@ -153,6 +178,8 @@ private:
   // Mode in which we are running the combiner.
   const bool MinimizeSize;
 
+  AliasAnalysis *AA;
+
   // Required analyses.
   // FIXME: These can never be null and should be references.
   AssumptionCache *AC;
@@ -168,10 +195,11 @@ private:
 
 public:
   InstCombiner(InstCombineWorklist &Worklist, BuilderTy *Builder,
-               bool MinimizeSize, AssumptionCache *AC, TargetLibraryInfo *TLI,
+               bool MinimizeSize, AliasAnalysis *AA,
+               AssumptionCache *AC, TargetLibraryInfo *TLI,
                DominatorTree *DT, const DataLayout &DL, LoopInfo *LI)
       : Worklist(Worklist), Builder(Builder), MinimizeSize(MinimizeSize),
-        AC(AC), TLI(TLI), DT(DT), DL(DL), LI(LI), MadeIRChange(false) {}
+        AA(AA), AC(AC), TLI(TLI), DT(DT), DL(DL), LI(LI), MadeIRChange(false) {}
 
   /// \brief Run the combiner over the entire worklist until it is empty.
   ///
@@ -329,6 +357,17 @@ private:
   bool ShouldOptimizeCast(Instruction::CastOps opcode, const Value *V,
                           Type *Ty);
 
+  /// \brief Try to optimize a sequence of instructions checking if an operation
+  /// on LHS and RHS overflows.
+  ///
+  /// If a simplification is possible, stores the simplified result of the
+  /// operation in OperationResult and result of the overflow check in
+  /// OverflowResult, and return true.  If no simplification is possible,
+  /// returns false.
+  bool OptimizeOverflowCheck(OverflowCheckFlavor OCF, Value *LHS, Value *RHS,
+                             Instruction &CtxI, Value *&OperationResult,
+                             Constant *&OverflowResult);
+
   Instruction *visitCallSite(CallSite CS);
   Instruction *tryOptimizeCall(CallInst *CI);
   bool transformConstExprCastCall(CallSite CS);
@@ -391,14 +430,10 @@ public:
   }
 
   /// Creates a result tuple for an overflow intrinsic \p II with a given
-  /// \p Result and a constant \p Overflow value. If \p ReUseName is true the
-  /// \p Result's name is taken from \p II.
+  /// \p Result and a constant \p Overflow value.
   Instruction *CreateOverflowTuple(IntrinsicInst *II, Value *Result,
-                                   bool Overflow, bool ReUseName = true) {
-    if (ReUseName)
-      Result->takeName(II);
-    Constant *V[] = {UndefValue::get(Result->getType()),
-                     Overflow ? Builder->getTrue() : Builder->getFalse()};
+                                   Constant *Overflow) {
+    Constant *V[] = {UndefValue::get(Result->getType()), Overflow};
     StructType *ST = cast<StructType>(II->getType());
     Constant *Struct = ConstantStruct::get(ST, V);
     return InsertValueInst::Create(Struct, Result, 0);

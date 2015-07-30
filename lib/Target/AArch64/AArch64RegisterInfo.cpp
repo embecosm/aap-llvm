@@ -90,7 +90,7 @@ AArch64RegisterInfo::getThisReturnPreservedMask(const MachineFunction &MF,
 
 BitVector
 AArch64RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
-  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
+  const AArch64FrameLowering *TFI = getFrameLowering(MF);
 
   // FIXME: avoid re-calculating this every time.
   BitVector Reserved(getNumRegs());
@@ -119,7 +119,7 @@ AArch64RegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
 bool AArch64RegisterInfo::isReservedReg(const MachineFunction &MF,
                                       unsigned Reg) const {
-  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
+  const AArch64FrameLowering *TFI = getFrameLowering(MF);
 
   switch (Reg) {
   default:
@@ -165,7 +165,12 @@ bool AArch64RegisterInfo::hasBasePointer(const MachineFunction &MF) const {
   // large enough that referencing from the FP won't result in things being
   // in range relatively often, we can use a base pointer to allow access
   // from the other direction like the SP normally works.
+  // Furthermore, if both variable sized objects are present, and the
+  // stack needs to be dynamically re-aligned, the base pointer is the only
+  // reliable way to reference the locals.
   if (MFI->hasVarSizedObjects()) {
+    if (needsStackRealignment(MF))
+      return true;
     // Conservatively estimate whether the negative offset from the frame
     // pointer will be sufficient to reach. If a function has a smallish
     // frame, it's less likely to have lots of spills and callee saved
@@ -181,10 +186,32 @@ bool AArch64RegisterInfo::hasBasePointer(const MachineFunction &MF) const {
   return false;
 }
 
+bool AArch64RegisterInfo::canRealignStack(const MachineFunction &MF) const {
+
+  if (MF.getFunction()->hasFnAttribute("no-realign-stack"))
+    return false;
+
+  return true;
+}
+
+// FIXME: share this with other backends with identical implementation?
+bool
+AArch64RegisterInfo::needsStackRealignment(const MachineFunction &MF) const {
+  const MachineFrameInfo *MFI = MF.getFrameInfo();
+  const AArch64FrameLowering *TFI = getFrameLowering(MF);
+  const Function *F = MF.getFunction();
+  unsigned StackAlign = TFI->getStackAlignment();
+  bool requiresRealignment =
+      ((MFI->getMaxAlignment() > StackAlign) ||
+       F->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                       Attribute::StackAlignment));
+
+  return requiresRealignment && canRealignStack(MF);
+}
+
 unsigned
 AArch64RegisterInfo::getFrameRegister(const MachineFunction &MF) const {
-  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
-
+  const AArch64FrameLowering *TFI = getFrameLowering(MF);
   return TFI->hasFP(MF) ? AArch64::FP : AArch64::SP;
 }
 
@@ -250,7 +277,7 @@ bool AArch64RegisterInfo::needsFrameBaseReg(MachineInstr *MI,
   // Note that the incoming offset is based on the SP value at function entry,
   // so it'll be negative.
   MachineFunction &MF = *MI->getParent()->getParent();
-  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
+  const AArch64FrameLowering *TFI = getFrameLowering(MF);
   MachineFrameInfo *MFI = MF.getFrameInfo();
 
   // Estimate an offset from the frame pointer.
@@ -346,8 +373,7 @@ void AArch64RegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   MachineFunction &MF = *MBB.getParent();
   const AArch64InstrInfo *TII =
       MF.getSubtarget<AArch64Subtarget>().getInstrInfo();
-  const AArch64FrameLowering *TFI = static_cast<const AArch64FrameLowering *>(
-      MF.getSubtarget().getFrameLowering());
+  const AArch64FrameLowering *TFI = getFrameLowering(MF);
 
   int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
   unsigned FrameReg;
@@ -385,7 +411,7 @@ namespace llvm {
 
 unsigned AArch64RegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
                                                   MachineFunction &MF) const {
-  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
+  const AArch64FrameLowering *TFI = getFrameLowering(MF);
 
   switch (RC->getID()) {
   default:

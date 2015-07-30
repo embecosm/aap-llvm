@@ -43,9 +43,8 @@ bool AAPFrameLowering::hasFP(const MachineFunction &MF) const {
          MF.getFrameInfo()->hasVarSizedObjects();
 }
 
-void AAPFrameLowering::emitPrologue(MachineFunction &MF) const {
-  MachineBasicBlock &MBB = MF.front(); // Prolog in entry BB
-
+void AAPFrameLowering::emitPrologue(MachineFunction &MF,
+                                    MachineBasicBlock &MBB) const {
   MachineFrameInfo *MFrameInfo = MF.getFrameInfo();
   AAPMachineFunctionInfo *MFuncInfo = MF.getInfo<AAPMachineFunctionInfo>();
   const AAPInstrInfo &TII =
@@ -188,8 +187,6 @@ void AAPFrameLowering::eliminateCallFramePseudoInstr(
   MBB.erase(I);
 }
 
-void AAPFrameLowering::processFunctionBeforeCalleeSavedScan(
-    MachineFunction &MF, RegScavenger *RS) const {}
-
 void AAPFrameLowering::processFunctionBeforeFrameFinalized(
     MachineFunction &MF, RegScavenger *RS) const {}
+

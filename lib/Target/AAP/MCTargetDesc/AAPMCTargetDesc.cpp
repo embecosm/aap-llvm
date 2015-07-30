@@ -38,24 +38,23 @@ static MCInstrInfo *createAAPMCInstrInfo() {
   return X;
 }
 
-static MCRegisterInfo *createAAPMCRegisterInfo(StringRef TT) {
+static MCRegisterInfo *createAAPMCRegisterInfo(const Triple &TT) {
   MCRegisterInfo *X = new MCRegisterInfo();
   InitAAPMCRegisterInfo(X, AAP::R0);
   return X;
 }
 
-static MCSubtargetInfo *createAAPMCSubtargetInfo(StringRef TT, StringRef CPU,
+static MCSubtargetInfo *createAAPMCSubtargetInfo(const Triple &TT,
+                                                 StringRef CPU,
                                                  StringRef FS) {
-  MCSubtargetInfo *X = new MCSubtargetInfo();
-  InitAAPMCSubtargetInfo(X, TT, CPU, FS);
-  return X;
+  return createAAPMCSubtargetInfoImpl(TT, CPU, FS);
 }
 
-static MCCodeGenInfo *createAAPMCCodeGenInfo(StringRef TT, Reloc::Model RM,
+static MCCodeGenInfo *createAAPMCCodeGenInfo(const Triple &TT, Reloc::Model RM,
                                              CodeModel::Model CM,
                                              CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
-  X->InitMCCodeGenInfo(RM, CM, OL);
+  X->initMCCodeGenInfo(RM, CM, OL);
   return X;
 }
 

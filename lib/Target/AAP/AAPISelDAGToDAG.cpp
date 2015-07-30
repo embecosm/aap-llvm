@@ -74,11 +74,6 @@ private:
   bool SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset);
   bool SelectAddr_MO3(SDValue Addr, SDValue &Base, SDValue &Offset);
   bool SelectAddr_MO10(SDValue Addr, SDValue &Base, SDValue &Offset);
-
-  // getI32Imm - Return a target constant with the specified value, of type i32.
-  inline SDValue getI32Imm(unsigned Imm) {
-    return CurDAG->getTargetConstant(Imm, MVT::i32);
-  }
 };
 } // end anonymous namespace
 
@@ -109,8 +104,8 @@ SDNode *AAPDAGToDAGISel::Select(SDNode *Node) {
     SDValue TFI = CurDAG->getTargetFrameIndex(FI, MVT::i16);
 
     // Handle single use
-    return CurDAG->getMachineNode(AAP::ADD_i10, dl, MVT::i16,
-                                  TFI, CurDAG->getTargetConstant(0, MVT::i16));
+    return CurDAG->getMachineNode(AAP::ADD_i10, dl, MVT::i16, TFI, 
+                                  CurDAG->getTargetConstant(0, dl, MVT::i16));
   }
   default:
     break;
@@ -134,8 +129,9 @@ static bool isOff10(int64_t Imm) { return (Imm >= -512 && Imm <= 511); }
 bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {
   // if Address is FI, get the TargetFrameIndex
   if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
+    SDLoc dl(FIN);
     Base   = CurDAG->getTargetFrameIndex(FIN->getIndex(), MVT::i16);
-    Offset = CurDAG->getTargetConstant(0, MVT::i16);
+    Offset = CurDAG->getTargetConstant(0, dl, MVT::i16);
     return true;
   }
 
@@ -147,6 +143,8 @@ bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {
   // Addresses of the form FI+const or FI|const
   if (CurDAG->isBaseWithConstantOffset(Addr)) {
     ConstantSDNode *CN = dyn_cast<ConstantSDNode>(Addr.getOperand(1));
+    SDLoc dl(CN);
+
     if (isInt<16>(CN->getSExtValue())) {
       // If the first operand is a FI, get the TargetFI Node
       if (FrameIndexSDNode *FIN =
@@ -156,7 +154,7 @@ bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {
         Base = Addr.getOperand(0);
       }
 
-      Offset = CurDAG->getTargetConstant(CN->getZExtValue(), MVT::i16);
+      Offset = CurDAG->getTargetConstant(CN->getZExtValue(), dl, MVT::i16);
       return true;
     }
   }

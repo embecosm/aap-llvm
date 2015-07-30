@@ -18,6 +18,7 @@
 #include "AAPISelLowering.h"
 #include "AAPInstrInfo.h"
 #include "AAPSelectionDAGInfo.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
@@ -40,7 +41,7 @@ public:
   /// This constructor initializes the data members to match that
   /// of the specified triple.
   ///
-  AAPSubtarget(const std::string &TT, const std::string &CPU,
+  AAPSubtarget(const Triple &TT, const std::string &CPU,
                const std::string &FS, const TargetMachine &TM);
 
   /// ParseSubtargetFeatures - Parses features string setting specified

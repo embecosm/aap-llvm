@@ -25,7 +25,8 @@ class MCObjectWriter;
 class MCRegisterInfo;
 class StringRef;
 class Target;
-class raw_ostream;
+class Triple;
+class raw_pwrite_stream;
 
 extern Target TheAAPTarget;
 
@@ -34,9 +35,9 @@ MCCodeEmitter *createAAPMCCodeEmitter(MCInstrInfo const &MCII,
                                       MCContext &Context);
 
 MCAsmBackend *createAAPAsmBackend(Target const &T, MCRegisterInfo const &MRI,
-                                  StringRef TT, StringRef CPU);
+                                  const Triple &TT, StringRef CPU);
 
-MCObjectWriter *createAAPELFObjectWriter(raw_ostream &OS, uint8_t OSABI,
+MCObjectWriter *createAAPELFObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI,
                                          StringRef CPU);
 
 } // End llvm namespace

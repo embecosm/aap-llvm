@@ -820,8 +820,6 @@ public:
   inline RegionNode(Region *Parent, BasicBlock *Entry, bool isSubRegion = false)
       : RegionNodeBase<RegionTraits<Function>>(Parent, Entry, isSubRegion) {}
 
-  ~RegionNode() {}
-
   bool operator==(const Region &RN) const {
     return this == reinterpret_cast<const RegionNode *>(&RN);
   }
@@ -842,7 +840,7 @@ class RegionInfo : public RegionInfoBase<RegionTraits<Function>> {
 public:
   explicit RegionInfo();
 
-  virtual ~RegionInfo();
+  ~RegionInfo() override;
 
   // updateStatistics - Update statistic about created regions.
   void updateStatistics(Region *R) final;
@@ -858,7 +856,7 @@ public:
   static char ID;
   explicit RegionInfoPass();
 
-  ~RegionInfoPass();
+  ~RegionInfoPass() override;
 
   RegionInfo &getRegionInfo() { return RI; }
 
@@ -904,9 +902,9 @@ inline raw_ostream &operator<<(raw_ostream &OS,
     return OS << Node.template getNodeAs<BlockT>()->getName();
 }
 
-EXTERN_TEMPLATE_INSTANTIATION(class RegionBase<RegionTraits<Function>>);
-EXTERN_TEMPLATE_INSTANTIATION(class RegionNodeBase<RegionTraits<Function>>);
-EXTERN_TEMPLATE_INSTANTIATION(class RegionInfoBase<RegionTraits<Function>>);
+extern template class RegionBase<RegionTraits<Function>>;
+extern template class RegionNodeBase<RegionTraits<Function>>;
+extern template class RegionInfoBase<RegionTraits<Function>>;
 
 } // End llvm namespace
 #endif

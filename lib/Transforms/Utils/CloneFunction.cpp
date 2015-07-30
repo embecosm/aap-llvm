@@ -17,6 +17,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfo.h"
@@ -154,23 +155,26 @@ void llvm::CloneFunctionInto(Function *NewFunc, const Function *OldFunc,
                        TypeMapper, Materializer);
 }
 
-// Find the MDNode which corresponds to the DISubprogram data that described F.
-static MDNode* FindSubprogram(const Function *F, DebugInfoFinder &Finder) {
-  for (DISubprogram Subprogram : Finder.subprograms()) {
-    if (Subprogram.describes(F)) return Subprogram;
+// Find the MDNode which corresponds to the subprogram data that described F.
+static DISubprogram *FindSubprogram(const Function *F,
+                                    DebugInfoFinder &Finder) {
+  for (DISubprogram *Subprogram : Finder.subprograms()) {
+    if (Subprogram->describes(F))
+      return Subprogram;
   }
   return nullptr;
 }
 
 // Add an operand to an existing MDNode. The new operand will be added at the
 // back of the operand list.
-static void AddOperand(DICompileUnit CU, DIArray SPs, Metadata *NewSP) {
+static void AddOperand(DICompileUnit *CU, DISubprogramArray SPs,
+                       Metadata *NewSP) {
   SmallVector<Metadata *, 16> NewSPs;
-  NewSPs.reserve(SPs->getNumOperands() + 1);
-  for (unsigned I = 0, E = SPs->getNumOperands(); I != E; ++I)
-    NewSPs.push_back(SPs->getOperand(I));
+  NewSPs.reserve(SPs.size() + 1);
+  for (auto *SP : SPs)
+    NewSPs.push_back(SP);
   NewSPs.push_back(NewSP);
-  CU.replaceSubprograms(DIArray(MDNode::get(CU->getContext(), NewSPs)));
+  CU->replaceSubprograms(MDTuple::get(CU->getContext(), NewSPs));
 }
 
 // Clone the module-level debug info associated with OldFunc. The cloned data
@@ -180,21 +184,21 @@ static void CloneDebugInfoMetadata(Function *NewFunc, const Function *OldFunc,
   DebugInfoFinder Finder;
   Finder.processModule(*OldFunc->getParent());
 
-  const MDNode *OldSubprogramMDNode = FindSubprogram(OldFunc, Finder);
+  const DISubprogram *OldSubprogramMDNode = FindSubprogram(OldFunc, Finder);
   if (!OldSubprogramMDNode) return;
 
   // Ensure that OldFunc appears in the map.
   // (if it's already there it must point to NewFunc anyway)
   VMap[OldFunc] = NewFunc;
-  DISubprogram NewSubprogram(MapMetadata(OldSubprogramMDNode, VMap));
+  auto *NewSubprogram =
+      cast<DISubprogram>(MapMetadata(OldSubprogramMDNode, VMap));
 
-  for (DICompileUnit CU : Finder.compile_units()) {
-    DIArray Subprograms(CU.getSubprograms());
-
+  for (auto *CU : Finder.compile_units()) {
+    auto Subprograms = CU->getSubprograms();
     // If the compile unit's function list contains the old function, it should
     // also contain the new one.
-    for (unsigned i = 0; i < Subprograms.getNumElements(); i++) {
-      if ((MDNode*)Subprograms.getElement(i) == OldSubprogramMDNode) {
+    for (auto *SP : Subprograms) {
+      if (SP == OldSubprogramMDNode) {
         AddOperand(CU, Subprograms, NewSubprogram);
         break;
       }
@@ -395,7 +399,7 @@ void PruningFunctionCloner::CloneBlock(const BasicBlock *BB,
     if (Action == CloningDirector::CloneSuccessors) {
       // If the director says to skip with a terminate instruction, we still
       // need to clone this block's successors.
-      const TerminatorInst *TI = BB->getTerminator();
+      const TerminatorInst *TI = NewBB->getTerminator();
       for (unsigned i = 0, e = TI->getNumSuccessors(); i != e; ++i)
         ToClone.push_back(TI->getSuccessor(i));
       return;
@@ -716,4 +720,69 @@ void llvm::CloneAndPruneFunctionInto(Function *NewFunc, const Function *OldFunc,
   CloneAndPruneIntoFromInst(NewFunc, OldFunc, OldFunc->front().begin(), VMap,
                             ModuleLevelChanges, Returns, NameSuffix, CodeInfo,
                             nullptr);
+}
+
+/// \brief Remaps instructions in \p Blocks using the mapping in \p VMap.
+void llvm::remapInstructionsInBlocks(
+    const SmallVectorImpl<BasicBlock *> &Blocks, ValueToValueMapTy &VMap) {
+  // Rewrite the code to refer to itself.
+  for (auto *BB : Blocks)
+    for (auto &Inst : *BB)
+      RemapInstruction(&Inst, VMap,
+                       RF_NoModuleLevelChanges | RF_IgnoreMissingEntries);
+}
+
+/// \brief Clones a loop \p OrigLoop.  Returns the loop and the blocks in \p
+/// Blocks.
+///
+/// Updates LoopInfo and DominatorTree assuming the loop is dominated by block
+/// \p LoopDomBB.  Insert the new blocks before block specified in \p Before.
+Loop *llvm::cloneLoopWithPreheader(BasicBlock *Before, BasicBlock *LoopDomBB,
+                                   Loop *OrigLoop, ValueToValueMapTy &VMap,
+                                   const Twine &NameSuffix, LoopInfo *LI,
+                                   DominatorTree *DT,
+                                   SmallVectorImpl<BasicBlock *> &Blocks) {
+  Function *F = OrigLoop->getHeader()->getParent();
+  Loop *ParentLoop = OrigLoop->getParentLoop();
+
+  Loop *NewLoop = new Loop();
+  if (ParentLoop)
+    ParentLoop->addChildLoop(NewLoop);
+  else
+    LI->addTopLevelLoop(NewLoop);
+
+  BasicBlock *OrigPH = OrigLoop->getLoopPreheader();
+  assert(OrigPH && "No preheader");
+  BasicBlock *NewPH = CloneBasicBlock(OrigPH, VMap, NameSuffix, F);
+  // To rename the loop PHIs.
+  VMap[OrigPH] = NewPH;
+  Blocks.push_back(NewPH);
+
+  // Update LoopInfo.
+  if (ParentLoop)
+    ParentLoop->addBasicBlockToLoop(NewPH, *LI);
+
+  // Update DominatorTree.
+  DT->addNewBlock(NewPH, LoopDomBB);
+
+  for (BasicBlock *BB : OrigLoop->getBlocks()) {
+    BasicBlock *NewBB = CloneBasicBlock(BB, VMap, NameSuffix, F);
+    VMap[BB] = NewBB;
+
+    // Update LoopInfo.
+    NewLoop->addBasicBlockToLoop(NewBB, *LI);
+
+    // Update DominatorTree.
+    BasicBlock *IDomBB = DT->getNode(BB)->getIDom()->getBlock();
+    DT->addNewBlock(NewBB, cast<BasicBlock>(VMap[IDomBB]));
+
+    Blocks.push_back(NewBB);
+  }
+
+  // Move them physically from the end of the block list.
+  F->getBasicBlockList().splice(Before, F->getBasicBlockList(), NewPH);
+  F->getBasicBlockList().splice(Before, F->getBasicBlockList(),
+                                NewLoop->getHeader(), F->end());
+
+  return NewLoop;
 }

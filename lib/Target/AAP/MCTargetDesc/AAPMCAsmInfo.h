@@ -15,6 +15,7 @@
 #define LLVM_LIB_TARGET_AAP_MCTARGETDESC_AAPMCASMINFO_H
 
 #include "llvm/MC/MCAsmInfoELF.h"
+#include "llvm/ADT/Triple.h"
 
 namespace llvm {
 class StringRef;
@@ -23,7 +24,7 @@ class AAPMCAsmInfo : public MCAsmInfoELF {
   void anchor() override;
 
 public:
-  explicit AAPMCAsmInfo(StringRef TT);
+  explicit AAPMCAsmInfo(const Triple &TT);
 };
 
 } // namespace llvm

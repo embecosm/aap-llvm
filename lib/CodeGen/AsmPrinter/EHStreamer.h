@@ -30,7 +30,7 @@ template <typename T>
 class SmallVectorImpl;
 
 /// Emits exception handling directives.
-class EHStreamer : public AsmPrinterHandler {
+class LLVM_LIBRARY_VISIBILITY EHStreamer : public AsmPrinterHandler {
 protected:
   /// Target of directive emission.
   AsmPrinter *Asm;
@@ -125,7 +125,7 @@ protected:
 
 public:
   EHStreamer(AsmPrinter *A);
-  virtual ~EHStreamer();
+  ~EHStreamer() override;
 
   // Unused.
   void setSymbolSize(const MCSymbol *Sym, uint64_t Size) override {}

@@ -16,7 +16,7 @@
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCSection.h"
-#include "llvm/MC/MCSymbol.h"
+#include "llvm/MC/MCSymbolELF.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/raw_ostream.h"
@@ -46,16 +46,23 @@ class MCSectionELF : public MCSection {
   /// section does not contain fixed-sized entries 'EntrySize' will be 0.
   unsigned EntrySize;
 
-  const MCSymbol *Group;
+  const MCSymbolELF *Group;
+
+  /// Depending on the type of the section this is sh_link or sh_info.
+  const MCSectionELF *Associated;
 
 private:
   friend class MCContext;
   MCSectionELF(StringRef Section, unsigned type, unsigned flags, SectionKind K,
-               unsigned entrySize, const MCSymbol *group, unsigned UniqueID,
-               MCSymbol *Begin)
+               unsigned entrySize, const MCSymbolELF *group, unsigned UniqueID,
+               MCSymbol *Begin, const MCSectionELF *Associated)
       : MCSection(SV_ELF, K, Begin), SectionName(Section), Type(type),
-        Flags(flags), UniqueID(UniqueID), EntrySize(entrySize), Group(group) {}
-  ~MCSectionELF();
+        Flags(flags), UniqueID(UniqueID), EntrySize(entrySize), Group(group),
+        Associated(Associated) {
+    if (Group)
+      Group->setIsSignature();
+  }
+  ~MCSectionELF() override;
 
   void setSectionName(StringRef Name) { SectionName = Name; }
 
@@ -69,7 +76,7 @@ public:
   unsigned getType() const { return Type; }
   unsigned getFlags() const { return Flags; }
   unsigned getEntrySize() const { return EntrySize; }
-  const MCSymbol *getGroup() const { return Group; }
+  const MCSymbolELF *getGroup() const { return Group; }
 
   void PrintSwitchToSection(const MCAsmInfo &MAI, raw_ostream &OS,
                             const MCExpr *Subsection) const override;
@@ -78,6 +85,8 @@ public:
 
   bool isUnique() const { return UniqueID != ~0U; }
   unsigned getUniqueID() const { return UniqueID; }
+
+  const MCSectionELF *getAssociatedSection() const { return Associated; }
 
   static bool classof(const MCSection *S) {
     return S->getVariant() == SV_ELF;

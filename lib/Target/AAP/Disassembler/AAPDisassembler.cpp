@@ -108,7 +108,7 @@ static DecodeStatus decodeRegisterClass(MCInst &Inst, uint64_t RegNo,
                                         const unsigned(&Regs)[N]) {
   if (RegNo >= N)
     return MCDisassembler::Fail;
-  Inst.addOperand(MCOperand::CreateReg(Regs[RegNo]));
+  Inst.addOperand(MCOperand::createReg(Regs[RegNo]));
   return MCDisassembler::Success;
 }
 
@@ -129,7 +129,7 @@ DecodeStatus decodeMemSrcOperand(MCInst &Inst, unsigned Operand,
     return MCDisassembler::Fail;
   }
 
-  Inst.addOperand(MCOperand::CreateImm(SignExtend32<16>(Offset)));
+  Inst.addOperand(MCOperand::createImm(SignExtend32<16>(Offset)));
   return MCDisassembler::Success;
 }
 

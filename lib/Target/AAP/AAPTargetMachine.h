@@ -15,6 +15,7 @@
 #define AAP_TARGETMACHINE_H
 
 #include "AAPSubtarget.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -25,7 +26,7 @@ class AAPTargetMachine : public LLVMTargetMachine {
   AAPSubtarget Subtarget;
 
 public:
-  AAPTargetMachine(const Target &T, StringRef TT, StringRef CPU, StringRef FS,
+  AAPTargetMachine(const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
                    const TargetOptions &Options, Reloc::Model RM,
                    CodeModel::Model CM, CodeGenOpt::Level OL);
   ~AAPTargetMachine() override;

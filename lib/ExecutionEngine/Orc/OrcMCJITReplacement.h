@@ -107,11 +107,12 @@ class OrcMCJITReplacement : public ExecutionEngine {
   public:
     LinkingResolver(OrcMCJITReplacement &M) : M(M) {}
 
-    RuntimeDyld::SymbolInfo findSymbol(const std::string &Name) {
+    RuntimeDyld::SymbolInfo findSymbol(const std::string &Name) override {
       return M.findMangledSymbol(Name);
     }
 
-    RuntimeDyld::SymbolInfo findSymbolInLogicalDylib(const std::string &Name) {
+    RuntimeDyld::SymbolInfo
+    findSymbolInLogicalDylib(const std::string &Name) override {
       return M.ClientResolver->findSymbolInLogicalDylib(Name);
     }
 
@@ -141,7 +142,6 @@ public:
                     std::unique_ptr<TargetMachine> TM)
       : TM(std::move(TM)), MemMgr(*this, std::move(MemMgr)),
         Resolver(*this), ClientResolver(std::move(ClientResolver)),
-        Mang(this->TM->getDataLayout()),
         NotifyObjectLoaded(*this), NotifyFinalized(*this),
         ObjectLayer(NotifyObjectLoaded, NotifyFinalized),
         CompileLayer(ObjectLayer, SimpleCompiler(*this->TM)),
@@ -228,7 +228,7 @@ public:
   }
 
   GenericValue runFunction(Function *F,
-                           const std::vector<GenericValue> &ArgValues) override;
+                           ArrayRef<GenericValue> ArgValues) override;
 
   void setObjectCache(ObjectCache *NewCache) override {
     CompileLayer.setObjectCache(NewCache);
@@ -310,7 +310,7 @@ private:
     std::string MangledName;
     {
       raw_string_ostream MangledNameStream(MangledName);
-      Mang.getNameWithPrefix(MangledNameStream, Name);
+      Mang.getNameWithPrefix(MangledNameStream, Name, *TM->getDataLayout());
     }
     return MangledName;
   }

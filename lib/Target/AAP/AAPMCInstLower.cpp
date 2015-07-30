@@ -67,7 +67,7 @@ MCSymbol *AAPMCInstLower::GetJumpTableSymbol(const MachineOperand &MO) const {
   }
 
   // Create a symbol for the name.
-  return Ctx.GetOrCreateSymbol(Name);
+  return Ctx.getOrCreateSymbol(Name);
 }
 
 MCSymbol *
@@ -86,7 +86,7 @@ AAPMCInstLower::GetConstantPoolIndexSymbol(const MachineOperand &MO) const {
   }
 
   // Create a symbol for the name.
-  return Ctx.GetOrCreateSymbol(Name);
+  return Ctx.getOrCreateSymbol(Name);
 }
 
 MCSymbol *
@@ -105,7 +105,7 @@ MCOperand AAPMCInstLower::LowerSymbolOperand(const MachineOperand &MO,
                                              MCSymbol *Sym) const {
   // FIXME: We would like an efficient form for this, so we don't have to do a
   // lot of extra uniquing.
-  const MCExpr *Expr = MCSymbolRefExpr::Create(Sym, Ctx);
+  const MCExpr *Expr = MCSymbolRefExpr::create(Sym, Ctx);
 
   switch (MO.getTargetFlags()) {
   default:
@@ -115,9 +115,9 @@ MCOperand AAPMCInstLower::LowerSymbolOperand(const MachineOperand &MO,
   }
 
   if (!MO.isJTI() && MO.getOffset())
-    Expr = MCBinaryExpr::CreateAdd(
-        Expr, MCConstantExpr::Create(MO.getOffset(), Ctx), Ctx);
-  return MCOperand::CreateExpr(Expr);
+    Expr = MCBinaryExpr::createAdd(
+        Expr, MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
+  return MCOperand::createExpr(Expr);
 }
 
 void AAPMCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
@@ -135,14 +135,14 @@ void AAPMCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
       // Ignore all implicit register operands.
       if (MO.isImplicit())
         continue;
-      MCOp = MCOperand::CreateReg(MO.getReg());
+      MCOp = MCOperand::createReg(MO.getReg());
       break;
     case MachineOperand::MO_Immediate:
-      MCOp = MCOperand::CreateImm(MO.getImm());
+      MCOp = MCOperand::createImm(MO.getImm());
       break;
     case MachineOperand::MO_MachineBasicBlock:
-      MCOp = MCOperand::CreateExpr(
-          MCSymbolRefExpr::Create(MO.getMBB()->getSymbol(), Ctx));
+      MCOp = MCOperand::createExpr(
+          MCSymbolRefExpr::create(MO.getMBB()->getSymbol(), Ctx));
       break;
     case MachineOperand::MO_GlobalAddress:
       MCOp = LowerSymbolOperand(MO, GetGlobalAddressSymbol(MO));

@@ -13,6 +13,7 @@
 
 #include "AAP.h"
 #include "AAPTargetMachine.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -23,7 +24,7 @@ extern "C" void LLVMInitializeAAPTarget() {
   RegisterTargetMachine<AAPTargetMachine> X(TheAAPTarget);
 }
 
-AAPTargetMachine::AAPTargetMachine(const Target &T, StringRef TT, StringRef CPU,
+AAPTargetMachine::AAPTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                                    StringRef FS, const TargetOptions &Options,
                                    Reloc::Model RM, CodeModel::Model CM,
                                    CodeGenOpt::Level OL)

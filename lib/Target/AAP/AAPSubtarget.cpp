@@ -13,6 +13,7 @@
 
 #include "AAPSubtarget.h"
 #include "AAP.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/Support/TargetRegistry.h"
 
 using namespace llvm;
@@ -25,7 +26,7 @@ using namespace llvm;
 
 void AAPSubtarget::anchor() {}
 
-AAPSubtarget::AAPSubtarget(const std::string &TT, const std::string &CPU,
+AAPSubtarget::AAPSubtarget(const Triple &TT, const std::string &CPU,
                            const std::string &FS, const TargetMachine &TM)
     : AAPGenSubtargetInfo(TT, CPU, FS), InstrInfo(*this), FrameLowering(),
       TLInfo(TM, *this), TSInfo(*TM.getDataLayout()) {}

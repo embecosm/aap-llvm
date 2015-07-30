@@ -28,12 +28,12 @@ namespace {
 ///
 /// This is used when no target specific information is available.
 struct NoTTIImpl : TargetTransformInfoImplCRTPBase<NoTTIImpl> {
-  explicit NoTTIImpl(const DataLayout *DL)
+  explicit NoTTIImpl(const DataLayout &DL)
       : TargetTransformInfoImplCRTPBase<NoTTIImpl>(DL) {}
 };
 }
 
-TargetTransformInfo::TargetTransformInfo(const DataLayout *DL)
+TargetTransformInfo::TargetTransformInfo(const DataLayout &DL)
     : TTIImpl(new Model<NoTTIImpl>(NoTTIImpl(DL))) {}
 
 TargetTransformInfo::~TargetTransformInfo() {}
@@ -76,6 +76,10 @@ bool TargetTransformInfo::hasBranchDivergence() const {
   return TTIImpl->hasBranchDivergence();
 }
 
+bool TargetTransformInfo::isSourceOfDivergence(const Value *V) const {
+  return TTIImpl->isSourceOfDivergence(V);
+}
+
 bool TargetTransformInfo::isLoweredToCall(const Function *F) const {
   return TTIImpl->isLoweredToCall(F);
 }
@@ -96,9 +100,10 @@ bool TargetTransformInfo::isLegalICmpImmediate(int64_t Imm) const {
 bool TargetTransformInfo::isLegalAddressingMode(Type *Ty, GlobalValue *BaseGV,
                                                 int64_t BaseOffset,
                                                 bool HasBaseReg,
-                                                int64_t Scale) const {
+                                                int64_t Scale,
+                                                unsigned AddrSpace) const {
   return TTIImpl->isLegalAddressingMode(Ty, BaseGV, BaseOffset, HasBaseReg,
-                                        Scale);
+                                        Scale, AddrSpace);
 }
 
 bool TargetTransformInfo::isLegalMaskedStore(Type *DataType,
@@ -114,9 +119,10 @@ bool TargetTransformInfo::isLegalMaskedLoad(Type *DataType,
 int TargetTransformInfo::getScalingFactorCost(Type *Ty, GlobalValue *BaseGV,
                                               int64_t BaseOffset,
                                               bool HasBaseReg,
-                                              int64_t Scale) const {
+                                              int64_t Scale,
+                                              unsigned AddrSpace) const {
   return TTIImpl->getScalingFactorCost(Ty, BaseGV, BaseOffset, HasBaseReg,
-                                       Scale);
+                                       Scale, AddrSpace);
 }
 
 bool TargetTransformInfo::isTruncateFree(Type *Ty1, Type *Ty2) const {
@@ -182,8 +188,8 @@ unsigned TargetTransformInfo::getRegisterBitWidth(bool Vector) const {
   return TTIImpl->getRegisterBitWidth(Vector);
 }
 
-unsigned TargetTransformInfo::getMaxInterleaveFactor() const {
-  return TTIImpl->getMaxInterleaveFactor();
+unsigned TargetTransformInfo::getMaxInterleaveFactor(unsigned VF) const {
+  return TTIImpl->getMaxInterleaveFactor(VF);
 }
 
 unsigned TargetTransformInfo::getArithmeticInstrCost(
@@ -231,6 +237,13 @@ TargetTransformInfo::getMaskedMemoryOpCost(unsigned Opcode, Type *Src,
   return TTIImpl->getMaskedMemoryOpCost(Opcode, Src, Alignment, AddressSpace);
 }
 
+unsigned TargetTransformInfo::getInterleavedMemoryOpCost(
+    unsigned Opcode, Type *VecTy, unsigned Factor, ArrayRef<unsigned> Indices,
+    unsigned Alignment, unsigned AddressSpace) const {
+  return TTIImpl->getInterleavedMemoryOpCost(Opcode, VecTy, Factor, Indices,
+                                             Alignment, AddressSpace);
+}
+
 unsigned
 TargetTransformInfo::getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
                                            ArrayRef<Type *> Tys) const {
@@ -271,6 +284,11 @@ Value *TargetTransformInfo::getOrCreateResultFromMemIntrinsic(
   return TTIImpl->getOrCreateResultFromMemIntrinsic(Inst, ExpectedType);
 }
 
+bool TargetTransformInfo::hasCompatibleFunctionAttributes(
+    const Function *Caller, const Function *Callee) const {
+  return TTIImpl->hasCompatibleFunctionAttributes(Caller, Callee);
+}
+
 TargetTransformInfo::Concept::~Concept() {}
 
 TargetIRAnalysis::TargetIRAnalysis() : TTICallback(&getDefaultTTI) {}
@@ -286,7 +304,7 @@ TargetIRAnalysis::Result TargetIRAnalysis::run(Function &F) {
 char TargetIRAnalysis::PassID;
 
 TargetIRAnalysis::Result TargetIRAnalysis::getDefaultTTI(Function &F) {
-  return Result(&F.getParent()->getDataLayout());
+  return Result(F.getParent()->getDataLayout());
 }
 
 // Register the basic pass.

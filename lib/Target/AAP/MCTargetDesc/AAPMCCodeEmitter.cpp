@@ -43,7 +43,7 @@ void emitLittleEndian(uint64_t Encoding, raw_ostream &OS, unsigned sz) {
 AAPMCCodeEmitter::AAPMCCodeEmitter(MCInstrInfo const &MII, MCContext &Context)
     : MCtx(Context), MCII(MII) {}
 
-void AAPMCCodeEmitter::EncodeInstruction(MCInst const &MI, raw_ostream &OS,
+void AAPMCCodeEmitter::encodeInstruction(MCInst const &MI, raw_ostream &OS,
                                          SmallVectorImpl<MCFixup> &Fixups,
                                          MCSubtargetInfo const &STI) const {
   const MCInstrDesc &Desc = MCII.get(MI.getOpcode());
@@ -88,7 +88,7 @@ unsigned AAPMCCodeEmitter::getMachineOpValue(MCInst const &MI,
 
   // Push fixup, encoding 0 as the current operand
   Fixups.push_back(
-      MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind), MI.getLoc()));
+      MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind), MI.getLoc()));
   return 0;
 }
 
@@ -172,7 +172,7 @@ AAPMCCodeEmitter::encodePCRelImmOperand(const MCInst &MI, unsigned Op,
       }
     }
   }
-  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), (MCFixupKind)FixupKind));
+  Fixups.push_back(MCFixup::create(0, MO.getExpr(), (MCFixupKind)FixupKind));
   return 0;
 }
 
@@ -212,7 +212,7 @@ AAPMCCodeEmitter::encodeMemSrcOperand(const MCInst &MI, unsigned Op,
   else {
     llvm_unreachable("Unknown opcode!");
   }
-  Fixups.push_back(MCFixup::Create(0, ImmOp.getExpr(), MCFixupKind(FixupKind)));
+  Fixups.push_back(MCFixup::create(0, ImmOp.getExpr(), MCFixupKind(FixupKind)));
   return encoding;
 }
 
@@ -227,7 +227,7 @@ AAPMCCodeEmitter::encodeImm3(const MCInst &MI, unsigned Op,
 
   assert(MO.isExpr());
   AAP::Fixups FixupKind = AAP::fixup_AAP_ABS3_SHORT;
-  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
   return 0;
 }
 
@@ -245,7 +245,7 @@ AAPMCCodeEmitter::encodeImm6(const MCInst &MI, unsigned Op,
   const MCInstrDesc& Desc = MCII.get(MI.getOpcode());
   AAP::Fixups FixupKind =
     (Desc.getSize() == 4) ? AAP::fixup_AAP_ABS6 : AAP::fixup_AAP_ABS6_SHORT;
-  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
   return 0;
 }
 
@@ -260,7 +260,7 @@ AAPMCCodeEmitter::encodeImm9(const MCInst &MI, unsigned Op,
 
   assert(MO.isExpr());
   AAP::Fixups FixupKind = AAP::fixup_AAP_ABS9;
-  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
   return 0;
 }
 
@@ -275,7 +275,7 @@ AAPMCCodeEmitter::encodeImm10(const MCInst &MI, unsigned Op,
 
   assert(MO.isExpr());
   AAP::Fixups FixupKind = AAP::fixup_AAP_ABS10;
-  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
   return 0;
 }
 
@@ -290,7 +290,7 @@ AAPMCCodeEmitter::encodeImm12(const MCInst &MI, unsigned Op,
 
   assert(MO.isExpr());
   AAP::Fixups FixupKind = AAP::fixup_AAP_ABS12;
-  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
   return 0;
 }
 
@@ -305,7 +305,7 @@ AAPMCCodeEmitter::encodeImm16(const MCInst &MI, unsigned Op,
 
   assert(MO.isExpr());
   AAP::Fixups FixupKind = AAP::fixup_AAP_ABS16;
-  Fixups.push_back(MCFixup::Create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
   return 0;
 }
 
