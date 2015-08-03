@@ -138,8 +138,7 @@ void AAPInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
   assert((RC == &AAP::GR8RegClass || RC == &AAP::GR64RegClass) &&
            "Unknown register class to store to stack slot");
 
-  BuildMI(MBB, MI, DL, get(AAP::LDW))
-      .addReg(DstReg)
+  BuildMI(MBB, MI, DL, get(AAP::LDW), DstReg)
       .addFrameIndex(FrameIdx)
       .addImm(0)
       .addMemOperand(MMO);
