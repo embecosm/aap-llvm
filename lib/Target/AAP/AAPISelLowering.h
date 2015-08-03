@@ -120,12 +120,12 @@ private:
                       SelectionDAG &DAG) const override;
 
   TargetLowering::ConstraintType
-  getConstraintType(const std::string &Constraint) const;
+  getConstraintType(const StringRef Constraint) const override;
 
   std::pair<unsigned, const TargetRegisterClass*>
   getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
-                               const std::string &Constraint,
-                               MVT VT) const;
+                               StringRef Constraint,
+                               MVT VT) const override;
 };
 }
 

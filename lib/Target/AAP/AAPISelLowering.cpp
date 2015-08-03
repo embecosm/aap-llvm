@@ -754,7 +754,7 @@ SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
 /// getConstraintType - Given a constraint letter, return the type of
 /// constraint it is for this target
 TargetLowering::ConstraintType
-AAPTargetLowering::getConstraintType(const std::string &Constraint) const {
+AAPTargetLowering::getConstraintType(StringRef Constraint) const {
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     default:
@@ -769,7 +769,7 @@ AAPTargetLowering::getConstraintType(const std::string &Constraint) const {
 std::pair<unsigned, const TargetRegisterClass*>
 AAPTargetLowering::
 getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
-                             const std::string &Constraint,
+                             StringRef Constraint,
                              MVT VT) const {
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
