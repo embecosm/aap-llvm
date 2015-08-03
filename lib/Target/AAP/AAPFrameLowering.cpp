@@ -54,29 +54,52 @@ void AAPFrameLowering::emitPrologue(MachineFunction &MF,
   DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
 
   // Get the number of bytes to allocate from the FrameInfo
-  uint64_t StackSize = MFrameInfo->getStackSize();
+  const uint64_t StackSize = MFrameInfo->getStackSize();
+
+  uint64_t NumBytes = StackSize - MFuncInfo->getCalleeSavedFrameSize();
+  const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
 
   if (hasFP(MF)) {
-    llvm_unreachable("Cannot handle the presence of a frame pointer!");
-  } else {
-    const uint64_t NumBytes = StackSize - MFuncInfo->getCalleeSavedFrameSize();
+    const unsigned FP = AAPRegisterInfo::getFramePtrRegister();
 
-    const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
-    if (NumBytes) {
-      const uint64_t Addend = NumBytes % 1023;
-      const uint64_t NumChunks = NumBytes / 1023;
+    MFrameInfo->setOffsetAdjustment(-NumBytes);
 
-      // Adjust the stack pointer
-      for (uint64_t i = 0; i < NumChunks; ++i) {
-        BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), SP)
-            .addReg(SP)
-            .addImm(1023);
-      }
-      if (Addend) {
-        BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), SP)
-            .addReg(SP)
-            .addImm(Addend);
-      }
+    // If the frame pointer register is callee saved, then save the current
+    // value at the top of the stack.
+    // FIXME: Check if frame reg is callee/caller saved
+    BuildMI(MBB, MBBI, DL, TII.get(AAP::STW), SP)
+      .addImm(0)
+      .addReg(FP);
+    // increase the size of the stack pointer adjustment, as the current
+    // stack position contains the frame pointer
+    NumBytes += 2;
+
+    // Update the frame pointer to point at the new top of stack
+    BuildMI(MBB, MBBI, DL, TII.get(AAP::MOV_r), FP).addReg(SP);
+
+    // Mark the frame pointer as live-in in every block except the first
+    // FIXME: Does this ensure that a caller saved FP reg saves at call sites?
+    for (MachineFunction::iterator I = std::next(MF.begin()), E = MF.end();
+         I != E;
+         ++I) {
+      I->addLiveIn(FP);
+    }
+  }
+
+  // Adjust the stack pointer if there is a stack to allocate
+  if (NumBytes) {
+    const uint64_t Addend = NumBytes % 1023;
+    const uint64_t NumChunks = NumBytes / 1023;
+
+    for (uint64_t i = 0; i < NumChunks; ++i) {
+      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), SP)
+        .addReg(SP)
+        .addImm(1023);
+    }
+    if (Addend) {
+      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), SP)
+        .addReg(SP)
+        .addImm(Addend);
     }
   }
 }
@@ -96,30 +119,43 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
          "Epilogue can only be inserted in returning blocks");
 
   // Number of bytes to dealloc from FrameInfo
-  uint64_t StackSize = MFrameInfo->getStackSize();
+  const uint64_t StackSize = MFrameInfo->getStackSize();
+  uint64_t NumBytes = StackSize - MFuncInfo->getCalleeSavedFrameSize();
 
+  const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
+  const unsigned FP = AAPRegisterInfo::getFramePtrRegister();
+
+  //assert(!hasFP(MF) && "Cannot handle the presence of a frame pointer!");
+
+  // If we have a frame pointer, use it to restore the stack pointer
   if (hasFP(MF)) {
-    llvm_unreachable("Cannot handle the presence of a frame pointer!");
-  } else {
-    const uint64_t NumBytes = StackSize - MFuncInfo->getCalleeSavedFrameSize();
-
-    const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
+    BuildMI(MBB, MBBI, DL, TII.get(AAP::MOV_r), SP).addReg(FP);
+  }
+  else {
     if (NumBytes) {
+      // otherwise adjust by adding back the frame size
       const uint64_t Addend = NumBytes % 1023;
       const uint64_t NumChunks = NumBytes / 1023;
 
-      // Adjust the stack pointer back
       for (uint64_t i = 0; i < NumChunks; ++i) {
         BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_i10), SP)
-            .addReg(SP)
-            .addImm(1023);
+          .addReg(SP)
+          .addImm(1023);
       }
       if (Addend) {
         BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_i10), SP)
-            .addReg(SP)
-            .addImm(Addend);
+          .addReg(SP)
+          .addImm(Addend);
       }
     }
+  }
+
+  // If the frame pointer register is callee saved, restore it from the stack
+  // FIXME: Check if FP reg is callee/caller saved
+  if (hasFP(MF)) {
+    BuildMI(MBB, MBBI, DL, TII.get(AAP::LDW), FP)
+      .addReg(SP)
+      .addImm(0);
   }
 }
 

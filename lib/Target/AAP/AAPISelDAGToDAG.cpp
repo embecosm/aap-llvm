@@ -104,7 +104,7 @@ SDNode *AAPDAGToDAGISel::Select(SDNode *Node) {
     SDValue TFI = CurDAG->getTargetFrameIndex(FI, MVT::i16);
 
     // Handle single use
-    return CurDAG->getMachineNode(AAP::ADD_i10, dl, MVT::i16, TFI, 
+    return CurDAG->getMachineNode(AAP::LEA, dl, MVT::i16, TFI,
                                   CurDAG->getTargetConstant(0, dl, MVT::i16));
   }
   default:

@@ -16,6 +16,7 @@
 #include "AAPSubtarget.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
 
 using namespace llvm;
 
@@ -67,19 +68,44 @@ void AAPRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MBBI,
            "Instr does not have a Frame Index operand!");
   }
 
-  assert(!TFI->hasFP(MF) && "Frame pointer not supported!");
-
   int FrameIdx = MI.getOperand(i).getIndex();
   unsigned BaseReg = getFrameRegister(MF);
 
   int Offset = MF.getFrameInfo()->getObjectOffset(FrameIdx);
-  Offset += MF.getFrameInfo()->getStackSize();
+  if (!TFI->hasFP(MF)) {
+    Offset += MF.getFrameInfo()->getStackSize();
+  }
 
   // fold imm into offset
   Offset += MI.getOperand(i + 1).getImm();
 
-  MI.getOperand(i).ChangeToRegister(BaseReg, false);
-  MI.getOperand(i + 1).ChangeToImmediate(Offset);
+  // If the MachineInstr is an LEA, expand it to an ADD_i10 or SUB_i10 here
+  if (MI.getOpcode() == AAP::LEA) {
+    const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
+    unsigned DstReg = MI.getOperand(0).getReg();
+
+    assert(((Offset >= -1023) || (Offset <= 1023)) &&
+           "Currently LEA immediates must be in the range [-1023, 1023]");
+
+    if (Offset > 0) {
+      BuildMI(MBB, &MI, DL, TII->get(AAP::ADD_i10), DstReg)
+        .addReg(BaseReg)
+        .addImm(Offset);
+    }
+    else if (Offset < 0) {
+      BuildMI(MBB, &MI, DL, TII->get(AAP::SUB_i10), DstReg)
+        .addReg(BaseReg)
+        .addImm(-Offset);
+    }
+    else {
+      BuildMI(MBB, &MI, DL, TII->get(AAP::MOV_r), DstReg).addReg(BaseReg);
+    }
+    MI.eraseFromParent();
+  }
+  else {
+    MI.getOperand(i).ChangeToRegister(BaseReg, false);
+    MI.getOperand(i + 1).ChangeToImmediate(Offset);
+  }
 }
 
 unsigned AAPRegisterInfo::getFrameRegister(const MachineFunction &MF) const {

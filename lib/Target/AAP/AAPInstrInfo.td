@@ -276,6 +276,10 @@ def SUBC_r : Inst_rrr
 // ALU ops with immediates
 let Defs = [PSW] in {
 
+// LEA Pseudo operation, expanded to ADD_i10 or SUB_i10 during frame index
+// elimination depending on the sign of the immediate.
+def LEA : Pseudo<(outs GR64:$rD), (ins GR64:$rA, imm16:$imm), "#LEA", []>;
+
 def ADD_i10 : Inst_rr_i10
   <0x0, 0xa, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
     "add\t$rD, $rA, $imm",
