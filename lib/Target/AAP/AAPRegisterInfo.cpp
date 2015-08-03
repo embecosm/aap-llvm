@@ -41,9 +41,11 @@ BitVector AAPRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
     Reserved.set(getFramePtrRegister());
   }
 
+  // Restrict the size of the register set
+  for (unsigned i = AAP::R16; i <= AAP::R63; i++) {
+    Reserved.set(i);
+  }
   return Reserved;
-
-  // TODO: Reserve unused registers here?
 }
 
 bool AAPRegisterInfo::requiresRegisterScavenging(
