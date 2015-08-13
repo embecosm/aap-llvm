@@ -133,8 +133,6 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::UMUL_LOHI, MVT::i16, Expand);
   
   // Use ADDE/SUBE
-  setOperationAction(ISD::ADDC, MVT::i8,  Expand);
-  setOperationAction(ISD::ADDC, MVT::i16, Expand);
   setOperationAction(ISD::SUBC, MVT::i8,  Expand);
   setOperationAction(ISD::SUBC, MVT::i16, Expand);
 

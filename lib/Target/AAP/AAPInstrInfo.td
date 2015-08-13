@@ -571,6 +571,8 @@ def : Pat<(callflag (i16 texternalsym:$dst), GR64:$rA), (BAL texternalsym:$dst, 
 //===----------------------------------------------------------------------===//
 // Peephole Patterns
 //===----------------------------------------------------------------------===//
+def : Pat<(addc GR64:$src1, GR64:$src2), (ADD_r GR64:$src1, GR64:$src2)>;
+
 def : Pat<(i16 (aapwrapper tglobaladdr:$dst)), (MOV_i16 tglobaladdr:$dst)>;
 def : Pat<(i16 (aapwrapper texternalsym:$dst)), (MOV_i16 texternalsym:$dst)>;
 def : Pat<(i16 (aapwrapper tblockaddress:$dst)), (MOV_i16 tblockaddress:$dst)>;
