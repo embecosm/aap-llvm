@@ -208,16 +208,20 @@ let EncoderMethod = "encodeMemSrcOperand",
 def MOV_r : Inst_rr
   <0x0, 0x9, (outs GR64:$rD), (ins GR64:$rA), "mov\t$rD, $rA", []>;
 
-def MOV_r_short : Inst_rr_short
-  <0x0, 0x9, (outs GR8:$rD), (ins GR8:$rA), "mov\t$rD, $rA", []>;
+let AddedComplexity = 123 in {
+  def MOV_r_short : Inst_rr_short
+    <0x0, 0x9, (outs GR8:$rD), (ins GR8:$rA), "mov\t$rD, $rA", []>;
+}
 
 def MOV_i16 : Inst_r_i16
   <0x0, 0xf, (outs GR64:$rD), (ins imm16:$imm), "mov\t$rD, $imm",
     [(set GR64:$rD, (i16 imm16:$imm))]>;
 
-def MOV_i6_short : Inst_r_i6_short
-  <0x0, 0xf, (outs GR8:$rD), (ins const6:$imm), "mov\t$rD, $imm",
-    [(set GR8:$rD, (i16 const6:$imm))]>;
+let AddedComplexity = 123 in {
+  def MOV_i6_short : Inst_r_i6_short
+    <0x0, 0xf, (outs GR8:$rD), (ins const6:$imm), "mov\t$rD, $imm",
+      [(set GR8:$rD, (i16 const6:$imm))]>;
+}
 
 
 //===----------------------------------------------------------------------===//
@@ -227,8 +231,10 @@ def MOV_i6_short : Inst_r_i6_short
 def NOP : Inst_r_i12
   <0x0, 0x0, (outs), (ins GR64:$rD, imm12:$imm), "nop\t$rD, $imm", []>;
 
-def NOP_short : Inst_r_i6_short
-  <0x0, 0x0, (outs), (ins GR8:$rD, const6:$imm), "nop\t$rD, $imm", []>;
+let AddedComplexity = 123 in {
+  def NOP_short : Inst_r_i6_short
+    <0x0, 0x0, (outs), (ins GR8:$rD, const6:$imm), "nop\t$rD, $imm", []>;
+}
 
 
 // ALU ops with register operands
@@ -238,10 +244,12 @@ multiclass ALU_r<bits<8> opcode, string opname, SDNode OpNode> {
       !strconcat(opname, "\t$rD, $rA, $rB"),
       [(set GR64:$rD, (OpNode GR64:$rA, GR64:$rB))]>;
 
-  def _r_short : Inst_rrr_short
-    <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, GR8:$rB),
-      !strconcat(opname, "\t$rD, $rA, $rB"),
-      [(set GR8:$rD, (OpNode GR8:$rA, GR8:$rB))]>;
+  let AddedComplexity = 123 in {
+    def _r_short : Inst_rrr_short
+      <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, GR8:$rB),
+        !strconcat(opname, "\t$rD, $rA, $rB"),
+        [(set GR8:$rD, (OpNode GR8:$rA, GR8:$rB))]>;
+  }
 }
 
 
@@ -285,21 +293,26 @@ def ADD_i10 : Inst_rr_i10
     "add\t$rD, $rA, $imm",
     [(set GR64:$rD, (add GR64:$rA, (i16 imm10:$imm)))]>;
 
-def ADD_i3_short : Inst_rr_i3_short
-  <0x0, 0xa, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
-    "add\t$rD, $rA, $imm",
-    [(set GR8:$rD, (add GR8:$rA, (i16 const3:$imm)))]>;
+let AddedComplexity = 123 in {
+  def ADD_i3_short : Inst_rr_i3_short
+    <0x0, 0xa, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
+      "add\t$rD, $rA, $imm",
+      [(set GR8:$rD, (add GR8:$rA, (i16 const3:$imm)))]>;
+}
 
 def SUB_i10 : Inst_rr_i10
   <0x0, 0xb, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
     "sub\t$rD, $rA, $imm",
     [(set GR64:$rD, (sub GR64:$rA, (i16 imm10:$imm)))]>;
 
-def SUB_i3_short : Inst_rr_i3_short
-  <0x0, 0xb, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
-    "sub\t$rD, $rA, $imm",
-    [(set GR8:$rD, (sub GR8:$rA, (i16 const3:$imm)))]>;
+let AddedComplexity = 123 in {
+  def SUB_i3_short : Inst_rr_i3_short
+    <0x0, 0xb, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
+      "sub\t$rD, $rA, $imm",
+      [(set GR8:$rD, (sub GR8:$rA, (i16 const3:$imm)))]>;
 }
+
+} // end of Defs
 
 
 multiclass SHIFT_i<bits<8> opcode, string opname, SDNode OpNode> {
@@ -308,10 +321,12 @@ multiclass SHIFT_i<bits<8> opcode, string opname, SDNode OpNode> {
       !strconcat(opname, "\t$rD, $rA, $imm"),
       [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm6:$imm)))]>;
 
-  def _i3_short : Inst_rr_i3_short
-    <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
-      !strconcat(opname, "\t$rD, $rA, $imm"),
-      [(set GR8:$rD, (OpNode GR8:$rA, (i16 const3:$imm)))]>;
+  let AddedComplexity = 123 in {
+    def _i3_short : Inst_rr_i3_short
+      <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
+        !strconcat(opname, "\t$rD, $rA, $imm"),
+        [(set GR8:$rD, (OpNode GR8:$rA, (i16 const3:$imm)))]>;
+  }
 }
 defm ASR : SHIFT_i<0xc, "asr", sra>;
 defm LSL : SHIFT_i<0xd, "lsl", shl>;
@@ -412,7 +427,7 @@ def LDB_postinc_short : LOAD_short<0x1, "ldb", (outs GR8:$rD), (ins memsrc3_post
 def LDW_postinc_short : LOAD_short<0x5, "ldw", (outs GR8:$rD), (ins memsrc3_postinc:$src)>;
 def LDB_predec_short  : LOAD_short<0x2, "ldb", (outs GR8:$rD), (ins memsrc3_predec:$src)>;
 def LDW_predec_short  : LOAD_short<0x6, "ldw", (outs GR8:$rD), (ins memsrc3_predec:$src)>;
-}
+} // end of mayLoad
 
 // Load patterns
 def : Pat<(i16 (zextloadi8 GR64:$src)), (LDB GR64:$src, (i16 0))>;
@@ -423,6 +438,18 @@ def : Pat<(i16 (extloadi8 addr_MO10:$src)), (LDB addr_MO10:$src)>;
 
 def : Pat<(i16 (load GR64:$src)), (LDW GR64:$src, (i16 0))>;
 def : Pat<(i16 (load addr_MO10:$src)), (LDW addr_MO10:$src)>;
+
+// Short load patterns
+let AddedComplexity = 123 in {
+  def : Pat<(i16 (zextloadi8 GR8:$src)), (LDB_short GR8:$src, (i16 0))>;
+  def : Pat<(i16 (zextloadi8 addr_MO3:$src)), (LDB_short addr_MO3:$src)>;
+
+  def : Pat<(i16 (extloadi8 GR8:$src)), (LDB GR8:$src, (i16 0))>;
+  def : Pat<(i16 (extloadi8 addr_MO3:$src)), (LDB_short addr_MO3:$src)>;
+
+  def : Pat<(i16 (load GR8:$src)), (LDW GR8:$src, (i16 0))>;
+  def : Pat<(i16 (load addr_MO3:$src)), (LDW addr_MO3:$src)>;
+}
 
 let mayStore = 1 in {
 def STB : STORE<0x8,  "stb", (outs), (ins memsrc10:$dst, GR64:$rA)>;
@@ -441,7 +468,7 @@ def STB_postinc_short : STORE_short<0x9, "stb", (outs), (ins memsrc3_postinc:$ds
 def STW_postinc_short : STORE_short<0xd, "stw", (outs), (ins memsrc3_postinc:$dst, GR8:$rA)>;
 def STB_predec_short  : STORE_short<0xa, "stb", (outs), (ins memsrc3_predec:$dst, GR8:$rA)>;
 def STW_predec_short  : STORE_short<0xe, "stw", (outs), (ins memsrc3_predec:$dst, GR8:$rA)>;
-}
+} // end of mayStore
 
 // Store patterns
 def : Pat<(truncstorei8 GR64:$src, GR64:$dst), (STB GR64:$dst, (i16 0), GR64:$src)>;
@@ -449,6 +476,15 @@ def : Pat<(truncstorei8 GR64:$src, addr_MO10:$dst), (STB addr_MO10:$dst, GR64:$s
 
 def : Pat<(store GR64:$src, GR64:$dst), (STW GR64:$dst, (i16 0), GR64:$src)>;
 def : Pat<(store GR64:$src, addr_MO10:$dst), (STW addr_MO10:$dst, GR64:$src)>;
+
+// Short store patterns
+let AddedComplexity = 123 in {
+  def : Pat<(truncstorei8 GR8:$src, GR8:$dst), (STB GR8:$dst, (i16 0), GR8:$src)>;
+  def : Pat<(truncstorei8 GR8:$src, addr_MO3:$dst), (STB addr_MO3:$dst, GR8:$src)>;
+
+  def : Pat<(store GR8:$src, GR8:$dst), (STW GR8:$dst, (i16 0), GR8:$src)>;
+  def : Pat<(store GR8:$src, addr_MO10:$dst), (STW addr_MO3:$dst, GR8:$src)>;
+}
 
 
 //===----------------------------------------------------------------------===//
