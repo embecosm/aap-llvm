@@ -26,18 +26,22 @@ public:
 
   const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override {
     const static MCFixupKindInfo Infos[AAP::NumTargetFixupKinds] = {
+      // We tell LLVM that branches are not PC relative to prevent it from
+      // resolving them, these are more complex fields which we instead want
+      // populate in the linker.
+
       // This table *must* be in the order that the fixup_* kinds are defined
       // in
       // AAPFixupKinds.h.
       //
       // Name                 offset  size  flags
       {"fixup_AAP_NONE",        0,    16,     0},
-      {"fixup_AAP_BR16",        0,    9,      MCFixupKindInfo::FKF_IsPCRel},
-      {"fixup_AAP_BR32",        0,    9,      MCFixupKindInfo::FKF_IsPCRel},
-      {"fixup_AAP_BRCC16",      6,    3,      MCFixupKindInfo::FKF_IsPCRel},
-      {"fixup_AAP_BRCC32",      6,    3,      MCFixupKindInfo::FKF_IsPCRel},
-      {"fixup_AAP_BAL16",       0,    3,      MCFixupKindInfo::FKF_IsPCRel},
-      {"fixup_AAP_BAL32",       0,    3,      MCFixupKindInfo::FKF_IsPCRel},
+      {"fixup_AAP_BR16",        0,    9,      0 /* MCFixupKindInfo::FKF_IsPCRel */},
+      {"fixup_AAP_BR32",        0,    9,      0 /* MCFixupKindInfo::FKF_IsPCRel */},
+      {"fixup_AAP_BRCC16",      6,    3,      0 /* MCFixupKindInfo::FKF_IsPCRel */},
+      {"fixup_AAP_BRCC32",      6,    3,      0 /* MCFixupKindInfo::FKF_IsPCRel */},
+      {"fixup_AAP_BAL16",       0,    3,      0 /* MCFixupKindInfo::FKF_IsPCRel */},
+      {"fixup_AAP_BAL32",       0,    3,      0 /* MCFixupKindInfo::FKF_IsPCRel */},
       {"fixup_AAP_ABS3_SHORT",  0,    3,      0},
       {"fixup_AAP_ABS6_SHORT",  0,    6,      0},
       {"fixup_AAP_ABS6",        0,    3,      0},
