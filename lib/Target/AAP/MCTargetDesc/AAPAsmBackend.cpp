@@ -13,6 +13,7 @@
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCFixupKindInfo.h"
+#include "llvm/MC/MCObjectWriter.h"
 
 using namespace llvm;
 
@@ -166,6 +167,14 @@ public:
   }
 
   bool writeNopData(uint64_t Count, MCObjectWriter *OW) const override {
+    if ((Count % 2) != 0) {
+      return false;
+    }
+    
+    // 0x0000 corresponds to nop $r0, 0
+    for (uint64_t i = 0; i < Count; i += 2) {
+      OW->write16(0x0000);
+    }
     return true;
   }
 };
