@@ -126,4 +126,3 @@ unsigned AAPRegisterInfo::getStackPtrRegister() {
 unsigned AAPRegisterInfo::getFramePtrRegister() {
   return AAP::R2;
 }
-

@@ -1132,8 +1132,8 @@ case "$enableval" in
         systemz)  TARGETS_TO_BUILD="SystemZ $TARGETS_TO_BUILD" ;;
         amdgpu)   TARGETS_TO_BUILD="AMDGPU $TARGETS_TO_BUILD" ;;
         r600)     TARGETS_TO_BUILD="AMDGPU $TARGETS_TO_BUILD" ;;
-        aap)      TARGETS_TO_BUILD="AAP $TARGETS_TO_BUILD" ;;        
-	wasm)     TARGETS_TO_BUILD="WebAssembly $TARGETS_TO_BUILD" ;;
+        aap)      TARGETS_TO_BUILD="AAP $TARGETS_TO_BUILD" ;;
+        wasm)     TARGETS_TO_BUILD="WebAssembly $TARGETS_TO_BUILD" ;;
         host) case "$llvm_cv_target_arch" in
             x86)         TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
             x86_64)      TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
@@ -1147,7 +1147,7 @@ case "$enableval" in
             Hexagon)     TARGETS_TO_BUILD="Hexagon $TARGETS_TO_BUILD" ;;
             NVPTX)       TARGETS_TO_BUILD="NVPTX $TARGETS_TO_BUILD" ;;
             SystemZ)     TARGETS_TO_BUILD="SystemZ $TARGETS_TO_BUILD" ;;
-            AAP)         TARGETS_TO_BUILD="AAP $TARGETS_TO_BUILD" ;; 
+            AAP)         TARGETS_TO_BUILD="AAP $TARGETS_TO_BUILD" ;;
             WebAssembly) TARGETS_TO_BUILD="WebAssembly $TARGETS_TO_BUILD" ;;
             *)       AC_MSG_ERROR([Can not set target to build]) ;;
           esac ;;

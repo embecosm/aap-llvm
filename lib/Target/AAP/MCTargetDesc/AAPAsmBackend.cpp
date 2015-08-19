@@ -123,7 +123,7 @@ public:
   }
 
 
-  // Get the equivalent 
+  // Get the equivalent
   static unsigned getRelaxedOpcode(unsigned Opcode) {
     switch (Opcode) {
     case AAP::NOP_short:          return AAP::NOP;
@@ -170,7 +170,7 @@ public:
     if ((Count % 2) != 0) {
       return false;
     }
-    
+
     // 0x0000 corresponds to nop $r0, 0
     for (uint64_t i = 0; i < Count; i += 2) {
       OW->write16(0x0000);

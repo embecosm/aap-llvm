@@ -131,7 +131,7 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::SMUL_LOHI, MVT::i16, Expand);
   setOperationAction(ISD::UMUL_LOHI, MVT::i8,  Expand);
   setOperationAction(ISD::UMUL_LOHI, MVT::i16, Expand);
-  
+
   // Use ADDE/SUBE
   setOperationAction(ISD::SUBC, MVT::i8,  Expand);
   setOperationAction(ISD::SUBC, MVT::i16, Expand);
@@ -457,7 +457,7 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
         MemOp = DAG.getMemcpy(
             Chain, dl, PtrOff, Arg, SizeNode, Flags.getByValAlign(),
             /*isVolatile*/ false,
-            /*AlwaysInline*/ true, 
+            /*AlwaysInline*/ true,
             /*isTailCall*/ false, MachinePointerInfo(), MachinePointerInfo());
       } else {
         MemOp = DAG.getStore(Chain, dl, Arg, PtrOff, MachinePointerInfo(),

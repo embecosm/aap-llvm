@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 class InstAAP_base<bits<4> opclass, dag outs, dag ins,
-                   string asmstr, list<dag> pattern> 
+                   string asmstr, list<dag> pattern>
     : Instruction {
   let Namespace = "AAP";
 
@@ -293,4 +293,3 @@ class Pseudo<dag outs, dag ins, string asmstr, list<dag> pattern>
   let Inst{31-0} = 0;
 }
 }
-

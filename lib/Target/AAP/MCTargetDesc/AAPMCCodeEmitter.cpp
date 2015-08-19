@@ -196,7 +196,7 @@ AAPMCCodeEmitter::encodeMemSrcOperand(const MCInst &MI, unsigned Op,
     return encoding;
   }
 
-  // Not an immediate, check for an expression and store as fixup to be 
+  // Not an immediate, check for an expression and store as fixup to be
   // resolved later
   assert(ImmOp.isExpr() && "Second memsrc op not an immediate or expression!");
 
@@ -206,7 +206,7 @@ AAPMCCodeEmitter::encodeMemSrcOperand(const MCInst &MI, unsigned Op,
     // Fixup to emit depends on whether we're encoding a memsrc for a
     // short or normal length instruction
     const MCInstrDesc& Desc = MCII.get(Opcode);
-    FixupKind = 
+    FixupKind =
       (Desc.getSize() == 4) ? AAP::fixup_AAP_OFF10 : AAP::fixup_AAP_ABS3_SHORT;
   }
   else {
