@@ -22,7 +22,7 @@ class AAPTargetMachine;
 
 class AAPSelectionDAGInfo : public TargetSelectionDAGInfo {
 public:
-  explicit AAPSelectionDAGInfo(const DataLayout &DL);
+  explicit AAPSelectionDAGInfo();
   ~AAPSelectionDAGInfo();
 };
 }

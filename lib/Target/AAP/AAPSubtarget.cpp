@@ -29,4 +29,4 @@ void AAPSubtarget::anchor() {}
 AAPSubtarget::AAPSubtarget(const Triple &TT, const std::string &CPU,
                            const std::string &FS, const TargetMachine &TM)
     : AAPGenSubtargetInfo(TT, CPU, FS), InstrInfo(*this), FrameLowering(),
-      TLInfo(TM, *this), TSInfo(*TM.getDataLayout()) {}
+      TLInfo(TM, *this), TSInfo() {}

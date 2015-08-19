@@ -60,7 +60,7 @@ class AAPAsmParser : public MCTargetAsmParser {
 public:
   AAPAsmParser(MCSubtargetInfo &sti, MCAsmParser &_Parser,
                const MCInstrInfo &MII, const MCTargetOptions &Options)
-      : MCTargetAsmParser(), Parser(_Parser), STI(sti) {
+      : MCTargetAsmParser(Options), Parser(_Parser), STI(sti) {
     setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
 
     // Cache the machine register info for later
