@@ -80,4 +80,3 @@ entry:
   %0 = sub i16 %x, %y
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
-
