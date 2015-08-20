@@ -47,9 +47,6 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   addRegisterClass(MVT::i16, &AAP::GR64RegClass);
   computeRegisterProperties(STI.getRegisterInfo());
 
-  // Division is expensive
-  setIntDivIsCheap(false);
-
   setStackPointerRegisterToSaveRestore(AAP::R1);
   setBooleanContents(ZeroOrOneBooleanContent);
   setBooleanVectorContents(ZeroOrOneBooleanContent);
@@ -325,7 +322,8 @@ SDValue AAPTargetLowering::LowerCCCArguments(
         // from this parameter
         SDValue FIN = DAG.getFrameIndex(FI, MVT::i16);
         InVal = DAG.getLoad(VA.getLocVT(), dl, Chain, FIN,
-                            MachinePointerInfo::getFixedStack(FI), false, false,
+                            MachinePointerInfo::getFixedStack(MF, FI),
+                            false, false,
                             false, 0);
       }
 

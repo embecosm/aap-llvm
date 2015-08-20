@@ -106,7 +106,8 @@ void AAPInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
   DebugLoc DL = MI != MBB.end() ? MI->getDebugLoc() : DebugLoc();
 
   MachineMemOperand *MMO = MF.getMachineMemOperand(
-      MachinePointerInfo::getFixedStack(FrameIdx), MachineMemOperand::MOStore,
+      MachinePointerInfo::getFixedStack(MF, FrameIdx),
+      MachineMemOperand::MOStore,
       MFrameInfo.getObjectSize(FrameIdx),
       MFrameInfo.getObjectAlignment(FrameIdx));
 
@@ -131,7 +132,8 @@ void AAPInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
   DebugLoc DL = MI != MBB.end() ? MI->getDebugLoc() : DebugLoc();
 
   MachineMemOperand *MMO = MF.getMachineMemOperand(
-      MachinePointerInfo::getFixedStack(FrameIdx), MachineMemOperand::MOLoad,
+      MachinePointerInfo::getFixedStack(MF, FrameIdx),
+      MachineMemOperand::MOLoad,
       MFrameInfo.getObjectSize(FrameIdx),
       MFrameInfo.getObjectAlignment(FrameIdx));
 
