@@ -6,7 +6,7 @@
 
 ; AND
 
-; FIXME: AND_r selected instead of AND_i9
+; TODO: AND_r selected instead of AND_i9
 define i16 @and_imm(i16 %x) {
 entry:
 ;CHECK: and_imm:
@@ -27,7 +27,7 @@ entry:
 
 ; OR
 
-; FIXME: OR_r selected instead of OR_i9
+; TODO: OR_r selected instead of OR_i9
 define i16 @or_imm(i16 %x) {
 entry:
 ;CHECK: or_imm:
@@ -48,7 +48,7 @@ entry:
 
 ; XOR
 
-; FIXME: XOR_r selected instead of XOR_i9
+; TODO: XOR_r selected instead of XOR_i9
 define i16 @xor_imm(i16 %x) {
 entry:
 ;CHECK: xor_imm:

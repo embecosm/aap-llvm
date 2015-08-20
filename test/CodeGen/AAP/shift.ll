@@ -14,7 +14,7 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; FIXME: ASR_r is selected in preference to ASR_i9
+; TODO: ASR_r is selected in preference to ASR_i9
 define i16 @asr_imm(i16 %x) {
 entry:
 ;CHECK: asr_imm:
@@ -42,7 +42,7 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; FIXME: LSL_r is selected in preference to LSL_i9
+; TODO: LSL_r is selected in preference to LSL_i9
 define i16 @lsl_imm(i16 %x) {
 entry:
 ;CHECK: lsl_imm:
@@ -70,7 +70,7 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; FIXME: LSL_r is selected in preference to LSL_i9
+; TODO: LSL_r is selected in preference to LSL_i9
 define i16 @lsr_imm(i16 %x) {
 entry:
 ;CHECK: lsr_imm:

@@ -14,7 +14,7 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; FIXME: ADD_r is selected instead of ADD_i10
+; TODO: ADD_r is selected instead of ADD_i10
 define i16 @add_imm(i16 %x) {
 entry:
 ;CHECK: add_imm:
@@ -43,7 +43,7 @@ entry:
 
 ; SUB
 
-; FIXME: ADD_r is selected instead of SUB_i3_short
+; TODO: ADD_r is selected instead of SUB_i3_short
 define i16 @sub_short_imm(i16 %x) {
 entry:
 ;CHECK: sub_short_imm:
@@ -53,7 +53,7 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; FIXME: ADD_r is selected instead of SUB_i10
+; TODO: ADD_r is selected instead of SUB_i10
 define i16 @sub_imm(i16 %x) {
 entry:
 ;CHECK: sub_imm:
@@ -63,7 +63,7 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; FIXME: ADD_r is selected instead of SUB_r
+; TODO: ADD_r is selected instead of SUB_r
 define i16 @sub_big_imm(i16 %x) {
 entry:
 ;CHECK: sub_big_imm:
