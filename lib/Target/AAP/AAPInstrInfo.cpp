@@ -66,8 +66,6 @@ bool AAPInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
                                  MachineBasicBlock *&FBB,
                                  SmallVectorImpl<MachineOperand> &Cond,
                                  bool AllowModify) const {
-
-  // Can't handle this.
   return true;
 }
 

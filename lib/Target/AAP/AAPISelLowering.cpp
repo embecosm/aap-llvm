@@ -175,10 +175,6 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
 }
 
 //===----------------------------------------------------------------------===//
-//                       AAP Inline Assembly Support
-//===----------------------------------------------------------------------===//
-
-//===----------------------------------------------------------------------===//
 //                      Calling Convention Implementation
 //===----------------------------------------------------------------------===//
 
@@ -242,7 +238,6 @@ SDValue AAPTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
 /// LowerCCCArguments - transform physical registers into virtual registers and
 /// generate load operations for arguments places on the stack.
-// FIXME: struct returns
 SDValue AAPTargetLowering::LowerCCCArguments(
     SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
     const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc dl, SelectionDAG &DAG,
@@ -382,7 +377,6 @@ AAPTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
 
 /// LowerCCCCallTo - functions arguments are copied from virtual regs to
 /// (physical regs)/(stack frame), CALLSEQ_START and CALLSEQ_END are emitted.
-// TODO: sret.
 SDValue AAPTargetLowering::LowerCCCCallTo(
     SDValue Chain, SDValue Callee, CallingConv::ID CallConv, bool isVarArg,
     bool isTailCall, const SmallVectorImpl<ISD::OutputArg> &Outs,
