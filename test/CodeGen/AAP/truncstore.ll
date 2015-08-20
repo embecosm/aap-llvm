@@ -1,4 +1,4 @@
-; RUN: llc -show-inst -march=aap < %s | FileCheck %s
+; RUN: llc -asm-show-inst -march=aap < %s | FileCheck %s
 
 
 ; Check the correctness of truncstore operations in codegen.
@@ -13,7 +13,7 @@ entry:
 ;CHECK: truncstore_i16_i8_global_global:
 ;CHECK-DAG: mov $[[REG1:r[0-9]+]], c        {{.*MOV_i16}}
 ;CHECK-DAG: mov $[[REG2:r[0-9]+]], d        {{.*MOV_i16}}
-;CHECK: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB}}
+;CHECK: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB(_short)?}}
   %0 = ptrtoint i8* @c to i16
   %1 = trunc i16 %0 to i8
   store i8 %1, i8* @d, align 1
@@ -23,9 +23,9 @@ entry:
 define void @truncstore_i16_i8_global_imm() {
 entry:
 ;CHECK: truncstore_i16_i8_global_imm:
-;CHECK-DAG: mov $[[REG1:r[0-9]+]], 210     {{.*MOV_i16}}
+;CHECK-DAG: mov $[[REG1:r[0-9]+]], 210      {{.*MOV_i16}}
 ;CHECK-DAG: mov $[[REG2:r[0-9]+]], c        {{.*MOV_i16}}
-;CHECK: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB}}
+;CHECK: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB(_short)?}}
   %0 = trunc i16 1234 to i8
   store i8 %0, i8* @c, align 1
   ret void ;CHECK: jmp    {{.*JMP}}
@@ -35,7 +35,7 @@ define void @truncstore_i16_i8_global_reg(i16 %x) {
 entry:
 ;CHECK: truncstore_i16_i8_global_reg:
 ;CHECK: mov $[[REG2:r[0-9]+]], c            {{.*MOV_i16}}
-;CHECK: stb [$[[REG2]], 0], ${{r[0-9]+}}    {{.*STB}}
+;CHECK: stb [$[[REG2]], 0], ${{r[0-9]+}}    {{.*STB(_short)?}}
   %0 = trunc i16 %x to i8
   store i8 %0, i8* @c, align 1
   ret void ;CHECK: jmp    {{.*JMP}}
@@ -46,7 +46,7 @@ entry:
 ;CHECK: truncstore_i16_i8_imm_global:
 ;CHECK-DAG: mov $[[REG1:r[0-9]+]], c        {{.*MOV_i16}}
 ;CHECK-DAG: mov $[[REG2:r[0-9]+]], 1234     {{.*MOV_i16}}
-;CHECK: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB}}
+;CHECK: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB(_short)?}}
   %0 = ptrtoint i8* @c to i16
   %1 = trunc i16 %0 to i8
   %2 = inttoptr i16 1234 to i8*
@@ -59,7 +59,7 @@ entry:
 ;CHECK: truncstore_i16_i8_imm_imm:
 ;CHECK-DAG: mov $[[REG1:r[0-9]+]], 215      {{.*MOV_i16}}
 ;CHECK-DAG: mov $[[REG2:r[0-9]+]], 1234     {{.*MOV_i16}}
-;CHECK: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB}}
+;CHECK: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB(_short)?}}
   %0 = trunc i16 4567 to i8
   %1 = inttoptr i16 1234 to i8*
   store i8 %0, i8* %1, align 1
@@ -70,7 +70,7 @@ define void @truncstore_i16_i8_imm_reg(i16 %x) {
 entry:
 ;CHECK: truncstore_i16_i8_imm_reg:
 ;CHECK: mov $[[REG1:r[0-9]+]], 1234         {{.*MOV_i16}}
-;CHECK: stb [$[[REG1]], 0], ${{r[0-9]+}}    {{.*STB}}
+;CHECK: stb [$[[REG1]], 0], ${{r[0-9]+}}    {{.*STB(_short)?}}
   %0 = trunc i16 %x to i8
   %1 = inttoptr i16 1234 to i8*
   store i8 %0, i8* %1, align 1
@@ -81,7 +81,7 @@ define void @truncstore_i16_i8_reg_global(i8* %x) {
 entry:
 ;CHECK: truncstore_i16_i8_reg_global:
 ;CHECK: mov $[[REG1:r[0-9]+]], c            {{.*MOV_i16}}
-;CHECK: stb [${{r[0-9]+}}, 0], $[[REG1]]    {{.*STB}}
+;CHECK: stb [${{r[0-9]+}}, 0], $[[REG1]]    {{.*STB(_short)?}}
   %0 = ptrtoint i8* @c to i16
   %1 = trunc i16 %0 to i8
   store i8 %1, i8* %x, align 1
@@ -92,7 +92,7 @@ define void @truncstore_i16_i8_reg_imm(i8* %x) {
 entry:
 ;CHECK: truncstore_i16_i8_reg_imm:
 ;CHECK: mov $[[REG1:r[0-9]+]], 215          {{.*MOV_i16}}
-;CHECK: stb [${{r[0-9]+}}, 0], $[[REG1]]    {{.*STB}}
+;CHECK: stb [${{r[0-9]+}}, 0], $[[REG1]]    {{.*STB(_short)?}}
   %0 = trunc i16 4567 to i8
   store i8 %0, i8* %x, align 1
   ret void ;CHECK: jmp    {{.*JMP}}
@@ -101,7 +101,7 @@ entry:
 define void @truncstore_i16_i8_reg_reg(i8* %x, i16 %y) {
 entry:
 ;CHECK: truncstore_i16_i8_reg_reg:
-;CHECK: stb [${{r[0-9]+}}, 0], ${{r[0-9]+}} {{.*STB}}
+;CHECK: stb [${{r[0-9]+}}, 0], ${{r[0-9]+}} {{.*STB(_short)?}}
   %0 = trunc i16 %y to i8
   store i8 %0, i8* %x, align 1
   ret void ;CHECK: jmp    {{.*JMP}}
