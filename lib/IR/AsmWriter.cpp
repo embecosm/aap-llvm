@@ -467,6 +467,7 @@ void TypePrinting::print(Type *Ty, raw_ostream &OS) {
   case Type::LabelTyID:     OS << "label"; return;
   case Type::MetadataTyID:  OS << "metadata"; return;
   case Type::X86_MMXTyID:   OS << "x86_mmx"; return;
+  case Type::TokenTyID:     OS << "token"; return;
   case Type::IntegerTyID:
     OS << 'i' << cast<IntegerType>(Ty)->getBitWidth();
     return;
@@ -1800,11 +1801,8 @@ static void writeDILocalVariable(raw_ostream &Out, const DILocalVariable *N,
                                  SlotTracker *Machine, const Module *Context) {
   Out << "!DILocalVariable(";
   MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
-  Printer.printTag(N);
   Printer.printString("name", N->getName());
-  Printer.printInt("arg", N->getArg(),
-                   /* ShouldSkipZero */
-                   N->getTag() == dwarf::DW_TAG_auto_variable);
+  Printer.printInt("arg", N->getArg());
   Printer.printMetadata("scope", N->getRawScope(), /* ShouldSkipNull */ false);
   Printer.printMetadata("file", N->getRawFile());
   Printer.printInt("line", N->getLine());
@@ -2861,8 +2859,76 @@ void AssemblyWriter::printInstruction(const Instruction &I) {
 
       writeOperand(LPI->getClause(i), true);
     }
+  } else if (const auto *CPI = dyn_cast<CatchPadInst>(&I)) {
+    Out << ' ';
+    TypePrinter.print(I.getType(), Out);
+
+    Out << " [";
+    for (unsigned Op = 0, NumOps = CPI->getNumArgOperands(); Op < NumOps;
+         ++Op) {
+      if (Op > 0)
+        Out << ", ";
+      writeOperand(CPI->getArgOperand(Op), /*PrintType=*/true);
+    }
+    Out << "] to ";
+    writeOperand(CPI->getNormalDest(), /*PrintType=*/true);
+    Out << " unwind ";
+    writeOperand(CPI->getUnwindDest(), /*PrintType=*/true);
+  } else if (const auto *TPI = dyn_cast<TerminatePadInst>(&I)) {
+    Out << " [";
+    for (unsigned Op = 0, NumOps = TPI->getNumArgOperands(); Op < NumOps;
+         ++Op) {
+      if (Op > 0)
+        Out << ", ";
+      writeOperand(TPI->getArgOperand(Op), /*PrintType=*/true);
+    }
+    Out << "] unwind ";
+    if (TPI->hasUnwindDest())
+      writeOperand(TPI->getUnwindDest(), /*PrintType=*/true);
+    else
+      Out << "to caller";
+  } else if (const auto *CPI = dyn_cast<CleanupPadInst>(&I)) {
+    Out << ' ';
+    TypePrinter.print(I.getType(), Out);
+
+    Out << " [";
+    for (unsigned Op = 0, NumOps = CPI->getNumOperands(); Op < NumOps; ++Op) {
+      if (Op > 0)
+        Out << ", ";
+      writeOperand(CPI->getOperand(Op), /*PrintType=*/true);
+    }
+    Out << "]";
   } else if (isa<ReturnInst>(I) && !Operand) {
     Out << " void";
+  } else if (const auto *CRI = dyn_cast<CatchReturnInst>(&I)) {
+    if (CRI->hasReturnValue()) {
+      Out << ' ';
+      writeOperand(CRI->getReturnValue(), /*PrintType=*/true);
+    } else {
+      Out << " void";
+    }
+
+    Out << " to ";
+    writeOperand(CRI->getSuccessor(), /*PrintType=*/true);
+  } else if (const auto *CRI = dyn_cast<CleanupReturnInst>(&I)) {
+    if (CRI->hasReturnValue()) {
+      Out << ' ';
+      writeOperand(CRI->getReturnValue(), /*PrintType=*/true);
+    } else {
+      Out << " void";
+    }
+
+    Out << " unwind ";
+    if (CRI->hasUnwindDest())
+      writeOperand(CRI->getUnwindDest(), /*PrintType=*/true);
+    else
+      Out << "to caller";
+  } else if (const auto *CEPI = dyn_cast<CatchEndPadInst>(&I)) {
+    Out << " unwind ";
+    if (CEPI->hasUnwindDest())
+      writeOperand(CEPI->getUnwindDest(), /*PrintType=*/true);
+    else
+      Out << "to caller";
   } else if (const CallInst *CI = dyn_cast<CallInst>(&I)) {
     // Print the calling convention being used.
     if (CI->getCallingConv() != CallingConv::C) {
@@ -3272,7 +3338,7 @@ void Value::print(raw_ostream &ROS, ModuleSlotTracker &MST) const {
 
 /// Print without a type, skipping the TypePrinting object.
 ///
-/// \return \c true iff printing was succesful.
+/// \return \c true iff printing was successful.
 static bool printWithoutType(const Value &V, raw_ostream &O,
                              SlotTracker *Machine, const Module *M) {
   if (V.hasName() || isa<GlobalValue>(V) ||
