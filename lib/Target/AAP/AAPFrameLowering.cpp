@@ -7,8 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains AAP frame information that doesn't fit anywhere else
-// cleanly...
+// This file contains the AAP implementation of the TargetFrameLowering class.
 //
 //===----------------------------------------------------------------------===//
 
