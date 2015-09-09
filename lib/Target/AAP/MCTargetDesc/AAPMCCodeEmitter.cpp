@@ -162,6 +162,7 @@ AAPMCCodeEmitter::encodePCRelImmOperand(const MCInst &MI, unsigned Op,
     FixupKind = AAP::fixup_AAP_BAL16;
     break;
   default:
+    FixupKind = AAP::fixup_AAP_NONE;
     if (findOpcode(Opcode, BRCCOpcodes)) {
       const MCInstrDesc& Desc = MCII.get(Opcode);
       if (Desc.getSize() == 4) {
@@ -170,6 +171,9 @@ AAPMCCodeEmitter::encodePCRelImmOperand(const MCInst &MI, unsigned Op,
       else {
         FixupKind = AAP::fixup_AAP_BRCC16;
       }
+    }
+    else {
+      llvm_unreachable("Cannot encode fixup for non-branch pc-relative imm");
     }
   }
   Fixups.push_back(MCFixup::create(0, MO.getExpr(), (MCFixupKind)FixupKind));

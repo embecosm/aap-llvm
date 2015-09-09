@@ -54,7 +54,7 @@ public:
       : SelectionDAGISel(tm), TM(tm) {}
 
   // Pass Name
-  virtual const char *getPassName() const {
+  virtual const char *getPassName() const override {
     return "AAP DAG->DAG Pattern Instruction Selection";
   }
 
@@ -68,7 +68,7 @@ private:
     return static_cast<const AAPTargetMachine &>(TM);
   }
 
-  SDNode *Select(SDNode *N);
+  SDNode *Select(SDNode *N) override;
 
   // Complex Pattern for address selection.
   bool SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset);

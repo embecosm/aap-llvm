@@ -40,7 +40,7 @@ class AAPAsmParser : public MCTargetAsmParser {
                                uint64_t &ErrorInfo,
                                bool matchingInlineAsm) override;
 
-  bool ParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &EndLoc);
+  bool ParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &EndLoc) override;
 
   std::unique_ptr<AAPOperand> ParseRegister(unsigned &RegNo);
   std::unique_ptr<AAPOperand> ParseImmediate();
@@ -49,7 +49,7 @@ class AAPAsmParser : public MCTargetAsmParser {
   bool ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
                         SMLoc NameLoc, OperandVector &Operands) override;
 
-  bool ParseDirective(AsmToken DirectiveID);
+  bool ParseDirective(AsmToken DirectiveID) override;
 
   bool ParseOperand(OperandVector &Operands);
 
@@ -108,24 +108,32 @@ struct AAPOperand : public MCParsedAsmOperand {
 
   enum KindTy { Token, Register, Immediate, MemSrc } Kind;
 
+  struct TokOp {
+    const char *Data;
+    unsigned Length;
+  };
+
+  struct RegOp {
+    unsigned RegNum;
+  };
+
+  struct ImmOp {
+    const MCExpr *Val;
+  };
+
+  struct MemOp {
+    bool WithPreDec;
+    unsigned RegNum;
+    bool WithPostInc;
+    const MCExpr *Offset;
+  };
+
   SMLoc StartLoc, EndLoc;
   union {
-    struct {
-      const char *Data;
-      unsigned Length;
-    } Tok;
-    struct {
-      unsigned RegNum;
-    } Reg;
-    struct {
-      const MCExpr *Val;
-    } Imm;
-    struct {
-      bool WithPreDec;
-      unsigned RegNum;
-      bool WithPostInc;
-      const MCExpr *Offset;
-    } Mem;
+    TokOp Tok;
+    RegOp Reg;
+    ImmOp Imm;
+    MemOp Mem;
   };
 
   AAPOperand(KindTy K) : MCParsedAsmOperand(), Kind(K) {}
