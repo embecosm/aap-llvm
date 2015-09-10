@@ -14,11 +14,10 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; TODO: ASR_r is selected in preference to ASR_i9
 define i16 @asr_imm(i16 %x) {
 entry:
 ;CHECK: asr_imm:
-;CHECK: asr ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ASR_r(_short)?}}
+;CHECK: asr ${{r[0-9]+}}, ${{r[0-9]+}}, 14              {{.*ASR_i6}}
   %0 = ashr i16 %x, 14
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -42,11 +41,10 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; TODO: LSL_r is selected in preference to LSL_i9
 define i16 @lsl_imm(i16 %x) {
 entry:
 ;CHECK: lsl_imm:
-;CHECK: lsl ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*LSL_r(_short)?}}
+;CHECK: lsl ${{r[0-9]+}}, ${{r[0-9]+}}, 14              {{.*LSL_i6}}
   %0 = shl i16 %x, 14
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -70,11 +68,10 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; TODO: LSL_r is selected in preference to LSL_i9
 define i16 @lsr_imm(i16 %x) {
 entry:
 ;CHECK: lsr_imm:
-;CHECK: lsr ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*LSR_r(_short)?}}
+;CHECK: lsr ${{r[0-9]+}}, ${{r[0-9]+}}, 14              {{.*LSR_i6}}
   %0 = lshr i16 %x, 14
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }

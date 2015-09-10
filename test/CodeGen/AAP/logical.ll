@@ -6,11 +6,10 @@
 
 ; AND
 
-; TODO: AND_r selected instead of AND_i9
 define i16 @and_imm(i16 %x) {
 entry:
 ;CHECK: and_imm:
-;CHECK: and ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*AND_r(_short)?}}
+;CHECK: and ${{r[0-9]+}}, ${{r[0-9]+}}, 3               {{.*AND_i9}}
   %0 = and i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -27,11 +26,10 @@ entry:
 
 ; OR
 
-; TODO: OR_r selected instead of OR_i9
 define i16 @or_imm(i16 %x) {
 entry:
 ;CHECK: or_imm:
-;CHECK: or ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}     {{.*OR_r(_short)?}}
+;CHECK: or ${{r[0-9]+}}, ${{r[0-9]+}}, 3                {{.*OR_i9}}
   %0 = or i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -48,11 +46,10 @@ entry:
 
 ; XOR
 
-; TODO: XOR_r selected instead of XOR_i9
 define i16 @xor_imm(i16 %x) {
 entry:
 ;CHECK: xor_imm:
-;CHECK: xor ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*XOR_r(_short)?}}
+;CHECK: xor ${{r[0-9]+}}, ${{r[0-9]+}}, 3               {{.*XOR_i9}}
   %0 = xor i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }

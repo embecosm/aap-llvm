@@ -14,11 +14,10 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; TODO: ADD_r is selected instead of ADD_i10
 define i16 @add_imm(i16 %x) {
 entry:
 ;CHECK: add_imm:
-;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r(_short)?}}
+;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, 123             {{.*ADD_i10}}
   %0 = add i16 %x, 123
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -43,12 +42,10 @@ entry:
 
 ; SUB
 
-; TODO: ADD_r is selected instead of SUB_i3_short
 define i16 @sub_short_imm(i16 %x) {
 entry:
 ;CHECK: sub_short_imm:
-;CHECK: mov ${{r[0-9]+}}, -3
-;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r(_short)?}}
+;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, 3               {{.*SUB_i3_short}}
   %0 = sub i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -57,18 +54,16 @@ entry:
 define i16 @sub_imm(i16 %x) {
 entry:
 ;CHECK: sub_imm:
-;CHECK: mov ${{r[0-9]+}}, -252
-;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r(_short)?}}
+;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, 252             {{.*SUB_i10}}
   %0 = sub i16 %x, 252
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; TODO: ADD_r is selected instead of SUB_r
 define i16 @sub_big_imm(i16 %x) {
 entry:
 ;CHECK: sub_big_imm:
-;CHECK: mov ${{r[0-9]+}}, -12345
-;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r(_short)?}}
+;CHECK: mov ${{r[0-9]+}}, 12345
+;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r(_short)?}}
   %0 = sub i16 %x, 12345
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
