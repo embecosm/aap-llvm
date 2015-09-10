@@ -47,6 +47,7 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   addRegisterClass(MVT::i16, &AAP::GR64RegClass);
   computeRegisterProperties(STI.getRegisterInfo());
 
+  // TODO: Parameterize the stack pointer register
   setStackPointerRegisterToSaveRestore(AAP::R1);
   setBooleanContents(ZeroOrOneBooleanContent);
   setBooleanVectorContents(ZeroOrOneBooleanContent);
@@ -166,6 +167,20 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setPrefFunctionAlignment(2);
 }
 
+const char *AAPTargetLowering::getTargetNodeName(unsigned Opcode) const {
+  switch (Opcode) {
+  default:
+    return nullptr;
+  case AAPISD::RET_FLAG:
+    return "AAPISD::RET_FLAG";
+  case AAPISD::CALL:
+    return "AAPISD::CALL";
+  case AAPISD::Wrapper:
+    return "AAPISD::Wrapper";
+  case AAPISD::SELECT_CC:
+    return "AAPISD::SELECT_CC";
+  }
+}
 
 //===----------------------------------------------------------------------===//
 //                      Custom DAG Combine Implementation
@@ -218,6 +233,197 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::VASTART:        return LowerVASTART(Op, DAG);
   }
   llvm_unreachable("unimplemented operand");
+}
+
+// Get the AAP specific condition code for a given CondCode DAG node.
+// The first element of the pair is a bool dictating whether the returned
+// condition code requires the operands to be swapped.
+// The second element of the pair is the equivalent AAP condition code
+static std::pair<bool, AAPCC::CondCode> getAAPCondCode(ISD::CondCode CC) {
+  AAPCC::CondCode TargetCC;
+  bool shouldSwapOps;
+
+  switch (CC) {
+  // These have a direct equivalent
+  case ISD::SETEQ:
+    TargetCC = AAPCC::COND_EQ;
+    break;
+  case ISD::SETNE:
+    TargetCC = AAPCC::COND_NE;
+    break;
+  case ISD::SETLT:
+    TargetCC = AAPCC::COND_LTS;
+    break;
+  case ISD::SETGT:
+    TargetCC = AAPCC::COND_GTS;
+    break;
+  case ISD::SETULT:
+    TargetCC = AAPCC::COND_LTU;
+    break;
+  case ISD::SETUGT:
+    TargetCC = AAPCC::COND_GTU;
+    break;
+
+  // These require lhs/rhs to be swapped, therefore the condition returned
+  // is inverted
+  case ISD::SETLE:
+    TargetCC = AAPCC::COND_GTS;
+    break;
+  case ISD::SETGE:
+    TargetCC = AAPCC::COND_LTS;
+    break;
+  case ISD::SETULE:
+    TargetCC = AAPCC::COND_GTU;
+    break;
+  case ISD::SETUGE:
+    TargetCC = AAPCC::COND_LTU;
+    break;
+  default:
+    llvm_unreachable("Unknown condition for brcc lowering");
+  }
+
+  shouldSwapOps = (CC == ISD::SETLE) || (CC == ISD::SETGE) ||
+                  (CC == ISD::SETULE) || (CC == ISD::SETUGE);
+
+  return std::make_pair(shouldSwapOps, TargetCC);
+}
+
+// Map the generic BR_CC instruction to a specific branch instruction based
+// on the provided AAP condition code
+static unsigned getBranchOpForCondition(int branchOp, AAPCC::CondCode CC) {
+  assert(branchOp == AAP::BR_CC || branchOp == AAP::BR_CC);
+
+  if (branchOp == AAP::BR_CC) {
+    switch (CC) {
+    case AAPCC::COND_EQ:
+      branchOp = AAP::BEQ_;
+      break;
+    case AAPCC::COND_NE:
+      branchOp = AAP::BNE_;
+      break;
+    case AAPCC::COND_LTS:
+      branchOp = AAP::BLTS_;
+      break;
+    case AAPCC::COND_GTS:
+      branchOp = AAP::BGTS_;
+      break;
+    case AAPCC::COND_LTU:
+      branchOp = AAP::BLTU_;
+      break;
+    case AAPCC::COND_GTU:
+      branchOp = AAP::BGTU_;
+      break;
+    default:
+      llvm_unreachable("Unknown condition code!");
+    }
+  } else {
+    switch (CC) {
+    case AAPCC::COND_EQ:
+      branchOp = AAP::BEQ_;
+      break;
+    case AAPCC::COND_NE:
+      branchOp = AAP::BNE_;
+      break;
+    case AAPCC::COND_LTS:
+      branchOp = AAP::BLTS_;
+      break;
+    case AAPCC::COND_GTS:
+      branchOp = AAP::BGTS_;
+      break;
+    case AAPCC::COND_LTU:
+      branchOp = AAP::BLTU_;
+      break;
+    case AAPCC::COND_GTU:
+      branchOp = AAP::BGTU_;
+      break;
+    default:
+      llvm_unreachable("Unknown condition code!");
+    }
+  }
+  return branchOp;
+}
+
+SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc dl(Op);
+  SDValue Chain = Op.getOperand(0);
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(1))->get();
+  SDValue LHS = Op.getOperand(2);
+  SDValue RHS = Op.getOperand(3);
+  SDValue BranchTarget = Op.getOperand(4);
+
+  // get equivalent AAP condition code, swap operands if necessary
+  std::pair<bool, AAPCC::CondCode> CCPair = getAAPCondCode(CC);
+  bool SwapOperands = CCPair.first;
+  AAPCC::CondCode TargetCC = CCPair.second;
+
+  SmallVector<SDValue, 5> Ops;
+  Ops.push_back(Chain);
+  Ops.push_back(DAG.getConstant(TargetCC, dl, MVT::i16));
+  if (!SwapOperands) {
+    Ops.push_back(LHS);
+    Ops.push_back(RHS);
+  } else {
+    Ops.push_back(RHS);
+    Ops.push_back(LHS);
+  }
+  Ops.push_back(BranchTarget);
+  return DAG.getNode(AAPISD::BR_CC, dl, Op.getValueType(), Ops);
+}
+
+SDValue AAPTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc dl(Op);
+
+  SDValue LHS = Op.getOperand(0);
+  SDValue RHS = Op.getOperand(1);
+  SDValue TrueValue = Op.getOperand(2);
+  SDValue FalseValue = Op.getOperand(3);
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(4))->get();
+
+  // get equivalent AAP condition code, swap operands if necessary
+  std::pair<bool, AAPCC::CondCode> CCPair = getAAPCondCode(CC);
+  bool SwapOperands = CCPair.first;
+  AAPCC::CondCode TargetCC = CCPair.second;
+
+  SmallVector<SDValue, 5> Ops;
+  if (!SwapOperands) {
+    Ops.push_back(LHS);
+    Ops.push_back(RHS);
+  } else {
+    Ops.push_back(RHS);
+    Ops.push_back(LHS);
+  }
+  Ops.push_back(TrueValue);
+  Ops.push_back(FalseValue);
+  Ops.push_back(DAG.getConstant(TargetCC, dl, MVT::i16));
+  return DAG.getNode(AAPISD::SELECT_CC, dl, Op.getValueType(), Ops);
+}
+
+SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
+  MachineFunction &MF = DAG.getMachineFunction();
+  AAPMachineFunctionInfo *MFI = MF.getInfo<AAPMachineFunctionInfo>();
+  const DataLayout& DL = DAG.getDataLayout();
+
+  // Frame index of first vaarg argument
+  SDValue FrameIndex = DAG.getFrameIndex(MFI->getVarArgsFrameIndex(),
+                                         getPointerTy(DL));
+  const Value *Src = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
+
+  // Create a store of the frame index to the location operand
+  return DAG.getStore(Op.getOperand(0), SDLoc(Op), FrameIndex,
+                      Op.getOperand(1), MachinePointerInfo(Src),
+                      false, false, 0);
+}
+
+SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
+                                              SelectionDAG &DAG) const {
+  const DataLayout DL = DAG.getDataLayout();
+  const GlobalValue *GV = cast<GlobalAddressSDNode>(Op)->getGlobal();
+  int64_t Offset = cast<GlobalAddressSDNode>(Op)->getOffset();
+
+  // Create the TargetGlobalAddress node, folding in the constant offset.
+  SDValue Result =
+      DAG.getTargetGlobalAddress(GV, SDLoc(Op), getPointerTy(DL), Offset);
+  return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), getPointerTy(DL), Result);
 }
 
 //===----------------------------------------------------------------------===//
@@ -591,234 +797,9 @@ SDValue AAPTargetLowering::LowerCallResult(
   return Chain;
 }
 
-// Get the AAP specific condition code for a given CondCode DAG node.
-// The first element of the pair is a bool dictating whether the returned
-// condition code requires the operands to be swapped.
-// The second element of the pair is the equivalent AAP condition code
-static std::pair<bool, AAPCC::CondCode> getAAPCondCode(ISD::CondCode CC) {
-  AAPCC::CondCode TargetCC;
-  bool shouldSwapOps;
-
-  switch (CC) {
-  // These have a direct equivalent
-  case ISD::SETEQ:
-    TargetCC = AAPCC::COND_EQ;
-    break;
-  case ISD::SETNE:
-    TargetCC = AAPCC::COND_NE;
-    break;
-  case ISD::SETLT:
-    TargetCC = AAPCC::COND_LTS;
-    break;
-  case ISD::SETGT:
-    TargetCC = AAPCC::COND_GTS;
-    break;
-  case ISD::SETULT:
-    TargetCC = AAPCC::COND_LTU;
-    break;
-  case ISD::SETUGT:
-    TargetCC = AAPCC::COND_GTU;
-    break;
-
-  // These require lhs/rhs to be swapped, therefore the condition returned
-  // is inverted
-  case ISD::SETLE:
-    TargetCC = AAPCC::COND_GTS;
-    break;
-  case ISD::SETGE:
-    TargetCC = AAPCC::COND_LTS;
-    break;
-  case ISD::SETULE:
-    TargetCC = AAPCC::COND_GTU;
-    break;
-  case ISD::SETUGE:
-    TargetCC = AAPCC::COND_LTU;
-    break;
-  default:
-    llvm_unreachable("Unknown condition for brcc lowering");
-  }
-
-  shouldSwapOps = (CC == ISD::SETLE) || (CC == ISD::SETGE) ||
-                  (CC == ISD::SETULE) || (CC == ISD::SETUGE);
-
-  return std::make_pair(shouldSwapOps, TargetCC);
-}
-
-// Map the generic BR_CC instruction to a specific branch instruction based
-// on the provided AAP condition code
-static unsigned getBranchOpForCondition(int branchOp, AAPCC::CondCode CC) {
-  assert(branchOp == AAP::BR_CC || branchOp == AAP::BR_CC);
-
-  if (branchOp == AAP::BR_CC) {
-    switch (CC) {
-    case AAPCC::COND_EQ:
-      branchOp = AAP::BEQ_;
-      break;
-    case AAPCC::COND_NE:
-      branchOp = AAP::BNE_;
-      break;
-    case AAPCC::COND_LTS:
-      branchOp = AAP::BLTS_;
-      break;
-    case AAPCC::COND_GTS:
-      branchOp = AAP::BGTS_;
-      break;
-    case AAPCC::COND_LTU:
-      branchOp = AAP::BLTU_;
-      break;
-    case AAPCC::COND_GTU:
-      branchOp = AAP::BGTU_;
-      break;
-    default:
-      llvm_unreachable("Unknown condition code!");
-    }
-  } else {
-    switch (CC) {
-    case AAPCC::COND_EQ:
-      branchOp = AAP::BEQ_;
-      break;
-    case AAPCC::COND_NE:
-      branchOp = AAP::BNE_;
-      break;
-    case AAPCC::COND_LTS:
-      branchOp = AAP::BLTS_;
-      break;
-    case AAPCC::COND_GTS:
-      branchOp = AAP::BGTS_;
-      break;
-    case AAPCC::COND_LTU:
-      branchOp = AAP::BLTU_;
-      break;
-    case AAPCC::COND_GTU:
-      branchOp = AAP::BGTU_;
-      break;
-    default:
-      llvm_unreachable("Unknown condition code!");
-    }
-  }
-  return branchOp;
-}
-
-SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
-  SDLoc dl(Op);
-  SDValue Chain = Op.getOperand(0);
-  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(1))->get();
-  SDValue LHS = Op.getOperand(2);
-  SDValue RHS = Op.getOperand(3);
-  SDValue BranchTarget = Op.getOperand(4);
-
-  // get equivalent AAP condition code, swap operands if necessary
-  std::pair<bool, AAPCC::CondCode> CCPair = getAAPCondCode(CC);
-  bool SwapOperands = CCPair.first;
-  AAPCC::CondCode TargetCC = CCPair.second;
-
-  SmallVector<SDValue, 5> Ops;
-  Ops.push_back(Chain);
-  Ops.push_back(DAG.getConstant(TargetCC, dl, MVT::i16));
-  if (!SwapOperands) {
-    Ops.push_back(LHS);
-    Ops.push_back(RHS);
-  } else {
-    Ops.push_back(RHS);
-    Ops.push_back(LHS);
-  }
-  Ops.push_back(BranchTarget);
-  return DAG.getNode(AAPISD::BR_CC, dl, Op.getValueType(), Ops);
-}
-
-SDValue AAPTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
-  SDLoc dl(Op);
-
-  SDValue LHS = Op.getOperand(0);
-  SDValue RHS = Op.getOperand(1);
-  SDValue TrueValue = Op.getOperand(2);
-  SDValue FalseValue = Op.getOperand(3);
-  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(4))->get();
-
-  // get equivalent AAP condition code, swap operands if necessary
-  std::pair<bool, AAPCC::CondCode> CCPair = getAAPCondCode(CC);
-  bool SwapOperands = CCPair.first;
-  AAPCC::CondCode TargetCC = CCPair.second;
-
-  SmallVector<SDValue, 5> Ops;
-  if (!SwapOperands) {
-    Ops.push_back(LHS);
-    Ops.push_back(RHS);
-  } else {
-    Ops.push_back(RHS);
-    Ops.push_back(LHS);
-  }
-  Ops.push_back(TrueValue);
-  Ops.push_back(FalseValue);
-  Ops.push_back(DAG.getConstant(TargetCC, dl, MVT::i16));
-  return DAG.getNode(AAPISD::SELECT_CC, dl, Op.getValueType(), Ops);
-}
-
-SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
-  MachineFunction &MF = DAG.getMachineFunction();
-  AAPMachineFunctionInfo *MFI = MF.getInfo<AAPMachineFunctionInfo>();
-  const DataLayout& DL = DAG.getDataLayout();
-
-  // Frame index of first vaarg argument
-  SDValue FrameIndex = DAG.getFrameIndex(MFI->getVarArgsFrameIndex(),
-                                         getPointerTy(DL));
-  const Value *Src = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
-
-  // Create a store of the frame index to the location operand
-  return DAG.getStore(Op.getOperand(0), SDLoc(Op), FrameIndex,
-                      Op.getOperand(1), MachinePointerInfo(Src),
-                      false, false, 0);
-}
-
-SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
-                                              SelectionDAG &DAG) const {
-  const DataLayout DL = DAG.getDataLayout();
-  const GlobalValue *GV = cast<GlobalAddressSDNode>(Op)->getGlobal();
-  int64_t Offset = cast<GlobalAddressSDNode>(Op)->getOffset();
-
-  // Create the TargetGlobalAddress node, folding in the constant offset.
-  SDValue Result =
-      DAG.getTargetGlobalAddress(GV, SDLoc(Op), getPointerTy(DL), Offset);
-  return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), getPointerTy(DL), Result);
-}
-
-
 //===----------------------------------------------------------------------===//
-//                      AAP Inline Assembly Support
+//                      AAP Custom Instruction Emission
 //===----------------------------------------------------------------------===//
-
-/// getConstraintType - Given a constraint letter, return the type of
-/// constraint it is for this target
-TargetLowering::ConstraintType
-AAPTargetLowering::getConstraintType(StringRef Constraint) const {
-  if (Constraint.size() == 1) {
-    switch (Constraint[0]) {
-    default:
-      break;
-    case 'r':
-      return C_RegisterClass;
-    }
-  }
-  return TargetLowering::getConstraintType(Constraint);
-}
-
-std::pair<unsigned, const TargetRegisterClass*>
-AAPTargetLowering::
-getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
-                             StringRef Constraint,
-                             MVT VT) const {
-  if (Constraint.size() == 1) {
-    switch (Constraint[0]) {
-    default:
-      break;
-    case 'r':
-      // General purpose registers
-      return std::make_pair(0U, &AAP::GR64RegClass);
-    }
-  }
-  return TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
-}
-
 
 MachineBasicBlock *
 AAPTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
@@ -930,17 +911,38 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
   return sinkMBB;
 }
 
-const char *AAPTargetLowering::getTargetNodeName(unsigned Opcode) const {
-  switch (Opcode) {
-  default:
-    return nullptr;
-  case AAPISD::RET_FLAG:
-    return "AAPISD::RET_FLAG";
-  case AAPISD::CALL:
-    return "AAPISD::CALL";
-  case AAPISD::Wrapper:
-    return "AAPISD::Wrapper";
-  case AAPISD::SELECT_CC:
-    return "AAPISD::SELECT_CC";
+//===----------------------------------------------------------------------===//
+//                      AAP Inline Assembly Support
+//===----------------------------------------------------------------------===//
+
+/// getConstraintType - Given a constraint letter, return the type of
+/// constraint it is for this target
+TargetLowering::ConstraintType
+AAPTargetLowering::getConstraintType(StringRef Constraint) const {
+  if (Constraint.size() == 1) {
+    switch (Constraint[0]) {
+    default:
+      break;
+    case 'r':
+      return C_RegisterClass;
+    }
   }
+  return TargetLowering::getConstraintType(Constraint);
+}
+
+std::pair<unsigned, const TargetRegisterClass*>
+AAPTargetLowering::
+getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                             StringRef Constraint,
+                             MVT VT) const {
+  if (Constraint.size() == 1) {
+    switch (Constraint[0]) {
+    default:
+      break;
+    case 'r':
+      // General purpose registers
+      return std::make_pair(0U, &AAP::GR64RegClass);
+    }
+  }
+  return TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
 }

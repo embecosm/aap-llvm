@@ -57,38 +57,36 @@ class AAPTargetLowering : public TargetLowering {
 public:
   explicit AAPTargetLowering(const TargetMachine &TM, const AAPSubtarget &STI);
 
-  /// LowerOperation - Provide custom lowering hooks for some operations.
-  SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
-
-  /// ReplaceNodeResults - Replace the results of node with an illegal result
-  /// type with new values built out of custom code.
-  ///
-  // void ReplaceNodeResults(SDNode *N, SmallVectorImpl<SDValue>&Results,
-  //                        SelectionDAG &DAG) const override;
-
   /// getTargetNodeName - This method returns the name of a target specific
   //  DAG node.
   const char *getTargetNodeName(unsigned Opcode) const override;
 
+//===--------------------- Custom DAG Combine ---------------------------===//
+public:
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
+private:
   SDValue PerformADDCombine(SDNode *N, DAGCombinerInfo &DCE) const;
 
-  /// Custom lowering
+//===----------------------- Custom Lowering ----------------------------===//
+public:
   /// LowerOperation - Provide custom lowering hooks for some operations.
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
+private:
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
 
-  MachineBasicBlock *
-  EmitInstrWithCustomInserter(MachineInstr *MI,
-                              MachineBasicBlock *MBB) const override;
-
+//===-------------------- Calling Convention Implementation -------------===//
 private:
-  MachineBasicBlock *emitBrCC(MachineInstr *MI, MachineBasicBlock *MBB) const;
-  MachineBasicBlock *emitSelectCC(MachineInstr *MI,
-                                  MachineBasicBlock *MBB) const;
+  SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv,
+                               bool isVarArg,
+                               const SmallVectorImpl<ISD::InputArg> &Ins,
+                               SDLoc dl, SelectionDAG &DAG,
+                               SmallVectorImpl<SDValue> &InVals) const override;
+
+  SDValue LowerCall(TargetLowering::CallLoweringInfo &CLI,
+                    SmallVectorImpl<SDValue> &InVals) const override;
 
   SDValue LowerCCCCallTo(SDValue Chain, SDValue Callee,
                          CallingConv::ID CallConv, bool isVarArg,
@@ -111,19 +109,23 @@ private:
                           SelectionDAG &DAG,
                           SmallVectorImpl<SDValue> &InVals) const;
 
-  SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv,
-                               bool isVarArg,
-                               const SmallVectorImpl<ISD::InputArg> &Ins,
-                               SDLoc dl, SelectionDAG &DAG,
-                               SmallVectorImpl<SDValue> &InVals) const override;
-  SDValue LowerCall(TargetLowering::CallLoweringInfo &CLI,
-                    SmallVectorImpl<SDValue> &InVals) const override;
-
   SDValue LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                       const SmallVectorImpl<ISD::OutputArg> &Outs,
                       const SmallVectorImpl<SDValue> &OutVals, SDLoc dl,
                       SelectionDAG &DAG) const override;
 
+//===---------------- AAP Custom Instruction Emissions -------------------===//
+public:
+  MachineBasicBlock *
+  EmitInstrWithCustomInserter(MachineInstr *MI,
+                              MachineBasicBlock *MBB) const override;
+private:
+  MachineBasicBlock *emitBrCC(MachineInstr *MI, MachineBasicBlock *MBB) const;
+  MachineBasicBlock *emitSelectCC(MachineInstr *MI,
+                                  MachineBasicBlock *MBB) const;
+
+//===--------------------- AAP Inline Assembly Support -------------------===//
+public:
   TargetLowering::ConstraintType
   getConstraintType(const StringRef Constraint) const override;
 
