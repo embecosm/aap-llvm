@@ -159,10 +159,56 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::CTPOP, MVT::i8,  Expand);
   setOperationAction(ISD::CTPOP, MVT::i16, Expand);
 
+  // Custom DAGCombine operations
+  setTargetDAGCombine(ISD::ADD);
 
   setMinFunctionAlignment(1);
   setPrefFunctionAlignment(2);
 }
+
+
+//===----------------------------------------------------------------------===//
+//                      Custom DAG Combine Implementation
+//===----------------------------------------------------------------------===//
+
+SDValue AAPTargetLowering::PerformDAGCombine(SDNode *N,
+                                             DAGCombinerInfo &DCI) const {
+  switch (N->getOpcode()) {
+  case ISD::ADD: return PerformADDCombine(N, DCI);
+  default: break;
+  }
+  return SDValue();
+}
+
+
+SDValue AAPTargetLowering::PerformADDCombine(SDNode *N,
+                                             DAGCombinerInfo &DCI) const {
+  SelectionDAG &DAG = DCI.DAG;
+
+  // fold add -ve -> sub +ve
+  SDValue LHS = N->getOperand(0);
+  SDValue RHS = N->getOperand(1);
+  SDLoc dl(N);
+
+  ConstantSDNode *Const = dyn_cast<ConstantSDNode>(RHS);
+  if (!Const) {
+    return SDValue();
+  }
+  int64_t Value = Const->getSExtValue();
+  if (Value >= 0) {
+    return SDValue();
+  }
+
+  RHS = DAG.getConstant(-Value, dl, RHS.getValueType());
+
+  SDValue Res = DAG.getNode(ISD::SUB, dl, N->getValueType(0), LHS, RHS);
+  DAG.ReplaceAllUsesWith(N, Res.getNode());
+  return SDValue(N, 0);
+}
+
+//===----------------------------------------------------------------------===//
+//                       Custom Lowering Implementation
+//===----------------------------------------------------------------------===//
 
 SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
