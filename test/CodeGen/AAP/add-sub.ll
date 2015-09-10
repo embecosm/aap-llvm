@@ -1,6 +1,9 @@
 ; RUN: llc -asm-show-inst -march=aap < %s | FileCheck %s
 
 
+@i16_glob = external global i16
+
+
 ; Simple tests of basic word size add/sub operations
 
 
@@ -39,6 +42,16 @@ entry:
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
+; Short adds cannot have a relocation in the immediate
+define i16 @add_global(i16 %x) {
+entry:
+;CHECK: add_global:
+;CHECK: mov ${{r[0-9]+}}, i16_glob                      {{.*MOV_i16}}
+;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r(_short)?}}
+  %0 = add i16 %x, ptrtoint (i16* @i16_glob to i16)
+  ret i16 %0 ;CHECK: jmp  {{.*JMP}}
+}
+
 
 ; SUB
 
@@ -73,5 +86,15 @@ entry:
 ;CHECK: sub_reg:
 ;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r(_short)?}}
   %0 = sub i16 %x, %y
+  ret i16 %0 ;CHECK: jmp  {{.*JMP}}
+}
+
+; Short subs cannot have a relocation in the immediate
+define i16 @sub_global(i16 %x) {
+entry:
+;CHECK: sub_global:
+;CHECK: mov ${{r[0-9]+}}, i16_glob                      {{.*MOV_i16}}
+;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r(_short)?}}
+  %0 = sub i16 %x, ptrtoint (i16* @i16_glob to i16)
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
