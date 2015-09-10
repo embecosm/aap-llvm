@@ -4,15 +4,11 @@
 ; Check the correctness of loads with offsets
 
 
-@a = external global [11 x i16]
-@b = external global [8672 x i16]
-
 @i8_array = external global [12345 x i8]
 @i16_array = external global [12345 x i16]
 
 @i8_ptr = external global i8
 @i16_ptr = external global i16
-
 
 
 ; Byte loads with positive immediate offsets
