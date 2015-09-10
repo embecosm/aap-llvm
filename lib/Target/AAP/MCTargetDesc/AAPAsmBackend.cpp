@@ -108,7 +108,7 @@ public:
                             MCRelaxableFragment const *DF,
                             MCAsmLayout const &Layout) const override {
     // All instructions with short fixups should be relaxed
-    switch((unsigned)Fixup.getKind()) {
+    switch ((unsigned)Fixup.getKind()) {
     case AAP::fixup_AAP_BR16:
     case AAP::fixup_AAP_BRCC16:
     case AAP::fixup_AAP_BAL16:
@@ -122,7 +122,6 @@ public:
       return false;
     }
   }
-
 
   // Get the equivalent
   static unsigned getRelaxedOpcode(unsigned Opcode) {

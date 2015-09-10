@@ -73,7 +73,7 @@ public:
 
     // If this is a short load/store instruction, then we must check that
     // its register operands are all in the GR8 reg class.
-    const MCRegisterClass& MRC = MRI->getRegClass(AAP::GR8RegClassID);
+    const MCRegisterClass &MRC = MRI->getRegClass(AAP::GR8RegClassID);
 
     switch (Inst.getOpcode()) {
     default:
@@ -189,38 +189,36 @@ public:
     return Mem.Offset;
   }
 
-
   // If an MCExpr is a constant immediate, check whether it is in the provided
   // inclusive range. If we are checking for an immediate, then arbitrary
   // expressions are also allowed.
-  static bool isImmInRange(const MCExpr* Imm, int64_t Min, int64_t Max) {
+  static bool isImmInRange(const MCExpr *Imm, int64_t Min, int64_t Max) {
     if (Imm->getKind() != MCExpr::Constant) {
-      return true;    // allow arbitrary expressions
+      return true; // allow arbitrary expressions
     }
     int64_t Res;
     Imm->evaluateAsAbsolute(Res);
     return (Res >= Min) && (Res <= Max);
   }
 
-  static bool isConstInRange(const MCExpr* Imm, int64_t Min, int64_t Max) {
+  static bool isConstInRange(const MCExpr *Imm, int64_t Min, int64_t Max) {
     if (Imm->getKind() != MCExpr::Constant) {
-      return false;   // only allow constants
+      return false; // only allow constants
     }
     int64_t Res;
     Imm->evaluateAsAbsolute(Res);
     return (Res >= Min) && (Res <= Max);
   }
 
-  static bool isConst3(const MCExpr* I) { return isConstInRange(I, 0, 7); }
-  static bool isConst6(const MCExpr* I) { return isConstInRange(I, 0, 63); }
-  static bool isImm6(const MCExpr* I)  { return isImmInRange(I, 0, 63); }
-  static bool isImm9(const MCExpr* I)  { return isImmInRange(I, 0, 511); }
-  static bool isImm10(const MCExpr* I) { return isImmInRange(I, 0, 1023); }
-  static bool isImm12(const MCExpr* I) { return isImmInRange(I, 0, 4095); }
-  static bool isImm16(const MCExpr* I) { return isImmInRange(I, -32768, 65535); }
-  static bool isOff3(const MCExpr* I)  { return isImmInRange(I, -4, 3); }
-  static bool isOff10(const MCExpr* I) { return isImmInRange(I, -512, 511); }
-
+  static bool isConst3(const MCExpr *I) { return isConstInRange(I, 0, 7); }
+  static bool isConst6(const MCExpr *I) { return isConstInRange(I, 0, 63); }
+  static bool isImm6(const MCExpr *I)  { return isImmInRange(I, 0, 63); }
+  static bool isImm9(const MCExpr *I)  { return isImmInRange(I, 0, 511); }
+  static bool isImm10(const MCExpr *I) { return isImmInRange(I, 0, 1023); }
+  static bool isImm12(const MCExpr *I) { return isImmInRange(I, 0, 4095); }
+  static bool isImm16(const MCExpr *I) { return isImmInRange(I, -32768, 65535); }
+  static bool isOff3(const MCExpr *I)  { return isImmInRange(I, -4, 3); }
+  static bool isOff10(const MCExpr *I) { return isImmInRange(I, -512, 511); }
 
   // Functions for testing operand type
   bool isReg() const { return Kind == Register; }
@@ -228,12 +226,12 @@ public:
 
   bool isConst3() const { return isImm() && isConst3(getImm()); }
   bool isConst6() const { return isImm() && isConst6(getImm()); }
-  bool isImm6()  const { return isImm() && isImm6(getImm()); }
-  bool isImm9()  const { return isImm() && isImm9(getImm()); }
+  bool isImm6() const  { return isImm() && isImm6(getImm());  }
+  bool isImm9() const  { return isImm() && isImm9(getImm());  }
   bool isImm10() const { return isImm() && isImm10(getImm()); }
   bool isImm12() const { return isImm() && isImm12(getImm()); }
   bool isImm16() const { return isImm() && isImm16(getImm()); }
-  bool isOff3()  const { return isImm() && isOff3(getImm()); }
+  bool isOff3() const  { return isImm() && isOff3(getImm());  }
   bool isOff10() const { return isImm() && isOff10(getImm()); }
 
   bool isToken() const { return Kind == Token; }
@@ -241,23 +239,37 @@ public:
 
   // Check that the immediate fits in an imm6
   bool isMemSrc10() const {
-    if (Kind != MemSrc || Mem.WithPreDec || Mem.WithPostInc) { return false; }
+    if (Kind != MemSrc || Mem.WithPreDec || Mem.WithPostInc) {
+      return false;
+    }
     // AAPAsmParser::checkTargetMatchPredicate checks that the register is
     // is in the GR64 class
     return isOff10(getMemSrcImm());
   }
   bool isMemSrc10PostInc() const {
-    if (Kind != MemSrc)   { return false; }
-    if (Mem.WithPreDec)   { return false; }
-    if (!Mem.WithPostInc) { return false; }
+    if (Kind != MemSrc) {
+      return false;
+    }
+    if (Mem.WithPreDec) {
+      return false;
+    }
+    if (!Mem.WithPostInc) {
+      return false;
+    }
     // AAPAsmParser::checkTargetMatchPredicate checks that the register is
     // is in the GR64 class
     return isOff10(getMemSrcImm());
   }
   bool isMemSrc10PreDec() const {
-    if (Kind != MemSrc)  { return false; }
-    if (!Mem.WithPreDec) { return false; }
-    if (Mem.WithPostInc) { return false; }
+    if (Kind != MemSrc) {
+      return false;
+    }
+    if (!Mem.WithPreDec) {
+      return false;
+    }
+    if (Mem.WithPostInc) {
+      return false;
+    }
     // AAPAsmParser::checkTargetMatchPredicate checks that the register is
     // is in the GR64 class
     return isOff10(getMemSrcImm());
@@ -266,23 +278,37 @@ public:
   // Check that the immediate fits in an const3. A memsrc3 operand may only
   // have a constant in its immediate field.
   bool isMemSrc3() const {
-    if (Kind != MemSrc || Mem.WithPreDec || Mem.WithPostInc) { return false; }
+    if (Kind != MemSrc || Mem.WithPreDec || Mem.WithPostInc) {
+      return false;
+    }
     // AAPAsmParser::checkTargetMatchPredicate checks that the register is
     // is in the GR8 class
     return isOff3(getMemSrcImm());
   }
   bool isMemSrc3PostInc() const {
-    if (Kind != MemSrc)   { return false; }
-    if (Mem.WithPreDec)   { return false; }
-    if (!Mem.WithPostInc) { return false; }
+    if (Kind != MemSrc) {
+      return false;
+    }
+    if (Mem.WithPreDec) {
+      return false;
+    }
+    if (!Mem.WithPostInc) {
+      return false;
+    }
     // AAPAsmParser::checkTargetMatchPredicate checks that the register is
     // is in the GR8 class
     return isOff3(getMemSrcImm());
   }
   bool isMemSrc3PreDec() const {
-    if (Kind != MemSrc)  { return false; }
-    if (!Mem.WithPreDec) { return false; }
-    if (Mem.WithPostInc) { return false; }
+    if (Kind != MemSrc) {
+      return false;
+    }
+    if (!Mem.WithPreDec) {
+      return false;
+    }
+    if (Mem.WithPostInc) {
+      return false;
+    }
     // AAPAsmParser::checkTargetMatchPredicate checks that the register is
     // is in the GR8 class
     return isOff3(getMemSrcImm());
@@ -363,8 +389,8 @@ public:
   }
 
   static std::unique_ptr<AAPOperand>
-  CreateMemSrc(unsigned RegNo, const MCExpr *Offset,
-               bool WithPreDec, bool WithPostInc, SMLoc S, SMLoc E) {
+  CreateMemSrc(unsigned RegNo, const MCExpr *Offset, bool WithPreDec,
+               bool WithPostInc, SMLoc S, SMLoc E) {
     auto Op = make_unique<AAPOperand>(MemSrc);
     Op->Mem.WithPreDec = WithPreDec;
     Op->Mem.RegNum = RegNo;

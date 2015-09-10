@@ -76,8 +76,7 @@ unsigned AAPELFObjectWriter::GetRelocType(MCValue const & /*Target*/,
 }
 
 MCObjectWriter *llvm::createAAPELFObjectWriter(raw_pwrite_stream &OS,
-                                               uint8_t OSABI,
-                                               StringRef CPU) {
+                                               uint8_t OSABI, StringRef CPU) {
   MCELFObjectTargetWriter *MOTW = new AAPELFObjectWriter(OSABI, CPU);
   return createELFObjectWriter(MOTW, OS, /*IsLittleEndian*/ true);
 }

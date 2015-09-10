@@ -105,12 +105,11 @@ void AAPInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
 
   MachineMemOperand *MMO = MF.getMachineMemOperand(
       MachinePointerInfo::getFixedStack(MF, FrameIdx),
-      MachineMemOperand::MOStore,
-      MFrameInfo.getObjectSize(FrameIdx),
+      MachineMemOperand::MOStore, MFrameInfo.getObjectSize(FrameIdx),
       MFrameInfo.getObjectAlignment(FrameIdx));
 
   assert((RC == &AAP::GR8RegClass || RC == &AAP::GR64RegClass) &&
-           "Unknown register class to store to stack slot");
+         "Unknown register class to store to stack slot");
 
   BuildMI(MBB, MI, DL, get(AAP::STW))
       .addFrameIndex(FrameIdx)
@@ -131,12 +130,11 @@ void AAPInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
 
   MachineMemOperand *MMO = MF.getMachineMemOperand(
       MachinePointerInfo::getFixedStack(MF, FrameIdx),
-      MachineMemOperand::MOLoad,
-      MFrameInfo.getObjectSize(FrameIdx),
+      MachineMemOperand::MOLoad, MFrameInfo.getObjectSize(FrameIdx),
       MFrameInfo.getObjectAlignment(FrameIdx));
 
   assert((RC == &AAP::GR8RegClass || RC == &AAP::GR64RegClass) &&
-           "Unknown register class to store to stack slot");
+         "Unknown register class to store to stack slot");
 
   BuildMI(MBB, MI, DL, get(AAP::LDW), DstReg)
       .addFrameIndex(FrameIdx)

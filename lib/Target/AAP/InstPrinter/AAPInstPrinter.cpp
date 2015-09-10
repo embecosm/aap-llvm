@@ -31,7 +31,6 @@ void AAPInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
   printAnnotation(O, Annot);
 }
 
-
 void AAPInstPrinter::printRegister(unsigned RegNo, raw_ostream &O) const {
   O << '$' << getRegisterName(RegNo);
 }
@@ -62,10 +61,9 @@ void AAPInstPrinter::printPCRelImmOperand(const MCInst *MI, unsigned OpNo,
   }
 }
 
-
-void AAPInstPrinter::
-printMemSrcOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O,
-                   const char *Modifier, bool WithPreDec, bool WithPostInc) {
+void AAPInstPrinter::printMemSrcOperand(const MCInst *MI, unsigned OpNo,
+                                        raw_ostream &O, const char *Modifier,
+                                        bool WithPreDec, bool WithPostInc) {
   const MCOperand &Base = MI->getOperand(OpNo);
   const MCOperand &Offset = MI->getOperand(OpNo + 1);
 
@@ -85,23 +83,21 @@ printMemSrcOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O,
   O << ", ";
   if (Offset.isImm()) {
     O << Offset.getImm();
-  }
-  else if (Offset.isExpr()) {
+  } else if (Offset.isExpr()) {
     O << *Offset.getExpr();
-  }
-  else {
+  } else {
     llvm_unreachable("Expected immediate/expression in offset field");
   }
 }
 
-void AAPInstPrinter::
-printMemSrcPostIncOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O,
-                          const char *Modifier) {
+void AAPInstPrinter::printMemSrcPostIncOperand(const MCInst *MI, unsigned OpNo,
+                                               raw_ostream &O,
+                                               const char *Modifier) {
   printMemSrcOperand(MI, OpNo, O, Modifier, false, true);
 }
 
-void AAPInstPrinter::
-printMemSrcPreDecOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O,
-                         const char *Modifier) {
+void AAPInstPrinter::printMemSrcPreDecOperand(const MCInst *MI, unsigned OpNo,
+                                              raw_ostream &O,
+                                              const char *Modifier) {
   printMemSrcOperand(MI, OpNo, O, Modifier, true, false);
 }

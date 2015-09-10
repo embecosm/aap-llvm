@@ -48,8 +48,8 @@ public:
                     const char *Modifier = nullptr);
 
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
-                       unsigned AsmVariant,
-                       const char *ExtraCode, raw_ostream &O) override;
+                       unsigned AsmVariant, const char *ExtraCode,
+                       raw_ostream &O) override;
 
   void EmitInstruction(const MachineInstr *MI) override;
 };
@@ -95,8 +95,8 @@ void AAPAsmPrinter::printOperand(const MachineInstr *MI, int OpNum,
 }
 
 bool AAPAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
-                                    unsigned AsmVariant,
-                                    const char *ExtraCode, raw_ostream &O) {
+                                    unsigned AsmVariant, const char *ExtraCode,
+                                    raw_ostream &O) {
   printOperand(MI, OpNo, O);
   return false;
 }

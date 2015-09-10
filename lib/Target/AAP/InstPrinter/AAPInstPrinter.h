@@ -42,12 +42,12 @@ public:
                           const char *Modifier = nullptr,
                           bool WithPreDec = false, bool WithPostInc = false);
 
-  void printMemSrcPostIncOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O,
+  void printMemSrcPostIncOperand(const MCInst *MI, unsigned OpNo,
+                                 raw_ostream &O,
                                  const char *Modifier = nullptr);
 
   void printMemSrcPreDecOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O,
                                 const char *Modifier = nullptr);
-
 
 private:
   void printRegister(unsigned RegNo, raw_ostream &O) const;

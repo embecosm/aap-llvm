@@ -64,6 +64,7 @@ public:
 //===--------------------- Custom DAG Combine ---------------------------===//
 public:
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
+
 private:
   SDValue PerformADDCombine(SDNode *N, DAGCombinerInfo &DCE) const;
 
@@ -71,6 +72,7 @@ private:
 public:
   /// LowerOperation - Provide custom lowering hooks for some operations.
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
+
 private:
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
@@ -119,6 +121,7 @@ public:
   MachineBasicBlock *
   EmitInstrWithCustomInserter(MachineInstr *MI,
                               MachineBasicBlock *MBB) const override;
+
 private:
   MachineBasicBlock *emitBrCC(MachineInstr *MI, MachineBasicBlock *MBB) const;
   MachineBasicBlock *emitSelectCC(MachineInstr *MI,
@@ -129,10 +132,9 @@ public:
   TargetLowering::ConstraintType
   getConstraintType(const StringRef Constraint) const override;
 
-  std::pair<unsigned, const TargetRegisterClass*>
+  std::pair<unsigned, const TargetRegisterClass *>
   getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
-                               StringRef Constraint,
-                               MVT VT) const override;
+                               StringRef Constraint, MVT VT) const override;
 };
 }
 

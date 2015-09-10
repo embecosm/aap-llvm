@@ -15,7 +15,6 @@
 #include "AAPTargetMachine.h"
 using namespace llvm;
 
-AAPSelectionDAGInfo::AAPSelectionDAGInfo()
-    : TargetSelectionDAGInfo() {}
+AAPSelectionDAGInfo::AAPSelectionDAGInfo() : TargetSelectionDAGInfo() {}
 
 AAPSelectionDAGInfo::~AAPSelectionDAGInfo() {}

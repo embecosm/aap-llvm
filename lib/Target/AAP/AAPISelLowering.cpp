@@ -189,12 +189,13 @@ const char *AAPTargetLowering::getTargetNodeName(unsigned Opcode) const {
 SDValue AAPTargetLowering::PerformDAGCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
   switch (N->getOpcode()) {
-  case ISD::ADD: return PerformADDCombine(N, DCI);
-  default: break;
+  case ISD::ADD:
+    return PerformADDCombine(N, DCI);
+  default:
+    break;
   }
   return SDValue();
 }
-
 
 SDValue AAPTargetLowering::PerformADDCombine(SDNode *N,
                                              DAGCombinerInfo &DCI) const {
@@ -227,10 +228,14 @@ SDValue AAPTargetLowering::PerformADDCombine(SDNode *N,
 
 SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
-  case ISD::GlobalAddress:  return LowerGlobalAddress(Op, DAG);
-  case ISD::BR_CC:          return LowerBR_CC(Op, DAG);
-  case ISD::SELECT_CC:      return LowerSELECT_CC(Op, DAG);
-  case ISD::VASTART:        return LowerVASTART(Op, DAG);
+  case ISD::GlobalAddress:
+    return LowerGlobalAddress(Op, DAG);
+  case ISD::BR_CC:
+    return LowerBR_CC(Op, DAG);
+  case ISD::SELECT_CC:
+    return LowerSELECT_CC(Op, DAG);
+  case ISD::VASTART:
+    return LowerVASTART(Op, DAG);
   }
   llvm_unreachable("unimplemented operand");
 }
@@ -401,11 +406,11 @@ SDValue AAPTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
 SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
   MachineFunction &MF = DAG.getMachineFunction();
   AAPMachineFunctionInfo *MFI = MF.getInfo<AAPMachineFunctionInfo>();
-  const DataLayout& DL = DAG.getDataLayout();
+  const DataLayout &DL = DAG.getDataLayout();
 
   // Frame index of first vaarg argument
-  SDValue FrameIndex = DAG.getFrameIndex(MFI->getVarArgsFrameIndex(),
-                                         getPointerTy(DL));
+  SDValue FrameIndex =
+      DAG.getFrameIndex(MFI->getVarArgsFrameIndex(), getPointerTy(DL));
   const Value *Src = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
 
   // Create a store of the frame index to the location operand
@@ -569,9 +574,8 @@ SDValue AAPTargetLowering::LowerCCCArguments(
         // from this parameter
         SDValue FIN = DAG.getFrameIndex(FI, MVT::i16);
         InVal = DAG.getLoad(VA.getLocVT(), dl, Chain, FIN,
-                            MachinePointerInfo::getFixedStack(MF, FI),
-                            false, false,
-                            false, 0);
+                            MachinePointerInfo::getFixedStack(MF, FI), false,
+                            false, false, 0);
       }
 
       InVals.push_back(InVal);
@@ -603,7 +607,7 @@ AAPTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
 
   // Add the link register as the first operand
   RetOps.push_back(
-    DAG.getRegister(AAPRegisterInfo::getLinkRegister(), MVT::i16));
+      DAG.getRegister(AAPRegisterInfo::getLinkRegister(), MVT::i16));
 
   // Copy the result values into the output registers.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
@@ -635,7 +639,7 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
     const SmallVectorImpl<SDValue> &OutVals,
     const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc dl, SelectionDAG &DAG,
     SmallVectorImpl<SDValue> &InVals) const {
-  const DataLayout& DL = DAG.getDataLayout();
+  const DataLayout &DL = DAG.getDataLayout();
 
   // Analyze operands of the call, assigning locations to each operand.
   SmallVector<CCValAssign, 16> ArgLocs;
@@ -689,9 +693,9 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
                                       AAPRegisterInfo::getStackPtrRegister(),
                                       getPointerTy(DL));
 
-      SDValue PtrOff = DAG.getNode(ISD::ADD, dl, getPointerTy(DL), StackPtr,
-                                   DAG.getIntPtrConstant(
-                                     VA.getLocMemOffset(), dl));
+      SDValue PtrOff =
+          DAG.getNode(ISD::ADD, dl, getPointerTy(DL), StackPtr,
+                      DAG.getIntPtrConstant(VA.getLocMemOffset(), dl));
 
       SDValue MemOp;
       ISD::ArgFlagsTy Flags = Outs[i].Flags;
@@ -743,7 +747,6 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   Ops.push_back(Callee);
   Ops.push_back(DAG.getRegister(AAPRegisterInfo::getLinkRegister(), MVT::i16));
 
-
   // Add argument registers to the end of the list so that they are
   // known live into the call.
   for (unsigned i = 0, e = RegsToPass.size(); i != e; ++i)
@@ -757,11 +760,9 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   InFlag = Chain.getValue(1);
 
   // Create the CALLSEQ_END node.
-  Chain =
-      DAG.getCALLSEQ_END(Chain,
-                         DAG.getConstant(NumBytes, dl, getPointerTy(DL), true),
-                         DAG.getConstant(0, dl, getPointerTy(DL), true),
-                         InFlag, dl);
+  Chain = DAG.getCALLSEQ_END(
+      Chain, DAG.getConstant(NumBytes, dl, getPointerTy(DL), true),
+      DAG.getConstant(0, dl, getPointerTy(DL), true), InFlag, dl);
   InFlag = Chain.getValue(1);
 
   // Handle result values, copying them out of physregs into vregs that we
@@ -788,8 +789,7 @@ SDValue AAPTargetLowering::LowerCallResult(
   // Copy all of the result registers out of their specified physreg.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
     Chain = DAG.getCopyFromReg(Chain, dl, RVLocs[i].getLocReg(),
-                               RVLocs[i].getValVT(), InFlag)
-                .getValue(1);
+                               RVLocs[i].getValVT(), InFlag).getValue(1);
     InFlag = Chain.getValue(2);
     InVals.push_back(Chain.getValue(0));
   }
@@ -930,11 +930,10 @@ AAPTargetLowering::getConstraintType(StringRef Constraint) const {
   return TargetLowering::getConstraintType(Constraint);
 }
 
-std::pair<unsigned, const TargetRegisterClass*>
-AAPTargetLowering::
-getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
-                             StringRef Constraint,
-                             MVT VT) const {
+std::pair<unsigned, const TargetRegisterClass *>
+AAPTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                                                StringRef Constraint,
+                                                MVT VT) const {
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     default:

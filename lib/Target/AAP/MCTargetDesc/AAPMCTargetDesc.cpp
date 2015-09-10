@@ -45,8 +45,7 @@ static MCRegisterInfo *createAAPMCRegisterInfo(const Triple &TT) {
 }
 
 static MCSubtargetInfo *createAAPMCSubtargetInfo(const Triple &TT,
-                                                 StringRef CPU,
-                                                 StringRef FS) {
+                                                 StringRef CPU, StringRef FS) {
   return createAAPMCSubtargetInfoImpl(TT, CPU, FS);
 }
 

@@ -91,20 +91,17 @@ void AAPRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MBBI,
 
     if (Offset > 0) {
       BuildMI(MBB, &MI, DL, TII->get(AAP::ADDI_i10), DstReg)
-        .addReg(BaseReg)
-        .addImm(Offset);
-    }
-    else if (Offset < 0) {
+          .addReg(BaseReg)
+          .addImm(Offset);
+    } else if (Offset < 0) {
       BuildMI(MBB, &MI, DL, TII->get(AAP::SUBI_i10), DstReg)
-        .addReg(BaseReg)
-        .addImm(-Offset);
-    }
-    else {
+          .addReg(BaseReg)
+          .addImm(-Offset);
+    } else {
       BuildMI(MBB, &MI, DL, TII->get(AAP::MOV_r), DstReg).addReg(BaseReg);
     }
     MI.eraseFromParent();
-  }
-  else {
+  } else {
     MI.getOperand(i).ChangeToRegister(BaseReg, false);
     MI.getOperand(i + 1).ChangeToImmediate(Offset);
   }
@@ -116,13 +113,6 @@ unsigned AAPRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   return TFI->hasFP(MF) ? getFramePtrRegister() : getStackPtrRegister();
 }
 
-
-unsigned AAPRegisterInfo::getLinkRegister() {
-  return AAP::R0;
-}
-unsigned AAPRegisterInfo::getStackPtrRegister() {
-  return AAP::R1;
-}
-unsigned AAPRegisterInfo::getFramePtrRegister() {
-  return AAP::R2;
-}
+unsigned AAPRegisterInfo::getLinkRegister() { return AAP::R0; }
+unsigned AAPRegisterInfo::getStackPtrRegister() { return AAP::R1; }
+unsigned AAPRegisterInfo::getFramePtrRegister() { return AAP::R2; }

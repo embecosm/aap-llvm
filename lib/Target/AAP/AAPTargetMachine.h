@@ -26,8 +26,8 @@ class AAPTargetMachine : public LLVMTargetMachine {
   AAPSubtarget Subtarget;
 
 public:
-  AAPTargetMachine(const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
-                   const TargetOptions &Options, Reloc::Model RM,
+  AAPTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
+                   StringRef FS, const TargetOptions &Options, Reloc::Model RM,
                    CodeModel::Model CM, CodeGenOpt::Level OL);
   ~AAPTargetMachine() override;
 
