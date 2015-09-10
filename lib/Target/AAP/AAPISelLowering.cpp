@@ -14,6 +14,7 @@
 #include "AAPISelLowering.h"
 #include "AAP.h"
 #include "AAPMachineFunctionInfo.h"
+#include "AAPRegisterInfo.h"
 #include "AAPSubtarget.h"
 #include "AAPTargetMachine.h"
 #include "llvm/CodeGen/CallingConvLower.h"
@@ -47,8 +48,7 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   addRegisterClass(MVT::i16, &AAP::GR64RegClass);
   computeRegisterProperties(STI.getRegisterInfo());
 
-  // TODO: Parameterize the stack pointer register
-  setStackPointerRegisterToSaveRestore(AAP::R1);
+  setStackPointerRegisterToSaveRestore(AAPRegisterInfo::getStackPtrRegister());
   setBooleanContents(ZeroOrOneBooleanContent);
   setBooleanVectorContents(ZeroOrOneBooleanContent);
 
