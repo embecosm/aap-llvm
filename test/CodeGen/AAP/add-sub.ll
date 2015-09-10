@@ -12,7 +12,7 @@
 define i16 @add_short_imm(i16 %x) {
 entry:
 ;CHECK: add_short_imm:
-;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, 3               {{.*ADD_i3_short}}
+;CHECK: addi ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*ADDI_i3_short}}
   %0 = add i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -20,7 +20,7 @@ entry:
 define i16 @add_imm(i16 %x) {
 entry:
 ;CHECK: add_imm:
-;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, 123             {{.*ADD_i10}}
+;CHECK: addi ${{r[0-9]+}}, ${{r[0-9]+}}, 123            {{.*ADDI_i10}}
   %0 = add i16 %x, 123
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -28,7 +28,7 @@ entry:
 define i16 @add_big_imm(i16 %x) {
 entry:
 ;CHECK: add_big_imm:
-;CHECK: mov ${{r[0-9]+}}, 21345
+;CHECK: movi ${{r[0-9]+}}, 21345                        {{.*MOVI_i16}}
 ;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r(_short)?}}
   %0 = add i16 %x, 21345
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
@@ -46,7 +46,7 @@ entry:
 define i16 @add_global(i16 %x) {
 entry:
 ;CHECK: add_global:
-;CHECK: mov ${{r[0-9]+}}, i16_glob                      {{.*MOV_i16}}
+;CHECK: movi ${{r[0-9]+}}, i16_glob                     {{.*MOVI_i16}}
 ;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r(_short)?}}
   %0 = add i16 %x, ptrtoint (i16* @i16_glob to i16)
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
@@ -58,16 +58,16 @@ entry:
 define i16 @sub_short_imm(i16 %x) {
 entry:
 ;CHECK: sub_short_imm:
-;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, 3               {{.*SUB_i3_short}}
+;CHECK: subi ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*SUBI_i3_short}}
   %0 = sub i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
 
-; TODO: ADD_r is selected instead of SUB_i10
+; TODO: ADD_r is selected instead of SUBI_i10
 define i16 @sub_imm(i16 %x) {
 entry:
 ;CHECK: sub_imm:
-;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, 252             {{.*SUB_i10}}
+;CHECK: subi ${{r[0-9]+}}, ${{r[0-9]+}}, 252            {{.*SUBI_i10}}
   %0 = sub i16 %x, 252
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -75,7 +75,7 @@ entry:
 define i16 @sub_big_imm(i16 %x) {
 entry:
 ;CHECK: sub_big_imm:
-;CHECK: mov ${{r[0-9]+}}, 12345
+;CHECK: movi ${{r[0-9]+}}, 12345                        {{.*MOVI_i16}}
 ;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r(_short)?}}
   %0 = sub i16 %x, 12345
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
@@ -93,7 +93,7 @@ entry:
 define i16 @sub_global(i16 %x) {
 entry:
 ;CHECK: sub_global:
-;CHECK: mov ${{r[0-9]+}}, i16_glob                      {{.*MOV_i16}}
+;CHECK: movi ${{r[0-9]+}}, i16_glob                     {{.*MOVI_i16}}
 ;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r(_short)?}}
   %0 = sub i16 %x, ptrtoint (i16* @i16_glob to i16)
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}

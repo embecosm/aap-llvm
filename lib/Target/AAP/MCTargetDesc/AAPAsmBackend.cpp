@@ -70,12 +70,12 @@ public:
   bool mayNeedRelaxation(MCInst const &Inst) const override {
     switch (Inst.getOpcode()) {
     case AAP::NOP_short:
-    case AAP::ADD_i3_short:
-    case AAP::SUB_i3_short:
-    case AAP::ASR_i3_short:
-    case AAP::LSL_i3_short:
-    case AAP::LSR_i3_short:
-    case AAP::MOV_i6_short:
+    case AAP::ADDI_i3_short:
+    case AAP::SUBI_i3_short:
+    case AAP::ASRI_i3_short:
+    case AAP::LSLI_i3_short:
+    case AAP::LSRI_i3_short:
+    case AAP::MOVI_i6_short:
     case AAP::LDB_short:
     case AAP::LDW_short:
     case AAP::LDB_postinc_short:
@@ -128,12 +128,12 @@ public:
   static unsigned getRelaxedOpcode(unsigned Opcode) {
     switch (Opcode) {
     case AAP::NOP_short:          return AAP::NOP;
-    case AAP::ADD_i3_short:       return AAP::ADD_i10;
-    case AAP::SUB_i3_short:       return AAP::SUB_i10;
-    case AAP::ASR_i3_short:       return AAP::ASR_i6;
-    case AAP::LSL_i3_short:       return AAP::LSL_i6;
-    case AAP::LSR_i3_short:       return AAP::LSR_i6;
-    case AAP::MOV_i6_short:       return AAP::MOV_i16;
+    case AAP::ADDI_i3_short:      return AAP::ADDI_i10;
+    case AAP::SUBI_i3_short:      return AAP::SUBI_i10;
+    case AAP::ASRI_i3_short:      return AAP::ASRI_i6;
+    case AAP::LSLI_i3_short:      return AAP::LSLI_i6;
+    case AAP::LSRI_i3_short:      return AAP::LSRI_i6;
+    case AAP::MOVI_i6_short:      return AAP::MOVI_i16;
     case AAP::LDB_short:          return AAP::LDB;
     case AAP::LDW_short:          return AAP::LDW;
     case AAP::LDB_postinc_short:  return AAP::LDB_postinc;

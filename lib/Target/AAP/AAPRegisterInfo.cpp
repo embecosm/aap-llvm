@@ -81,7 +81,7 @@ void AAPRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MBBI,
   // fold imm into offset
   Offset += MI.getOperand(i + 1).getImm();
 
-  // If the MachineInstr is an LEA, expand it to an ADD_i10 or SUB_i10 here
+  // If the MachineInstr is an LEA, expand it to an ADDI_i10 or SUBI_i10 here
   if (MI.getOpcode() == AAP::LEA) {
     const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
     unsigned DstReg = MI.getOperand(0).getReg();
@@ -90,12 +90,12 @@ void AAPRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MBBI,
            "Currently LEA immediates must be in the range [-1023, 1023]");
 
     if (Offset > 0) {
-      BuildMI(MBB, &MI, DL, TII->get(AAP::ADD_i10), DstReg)
+      BuildMI(MBB, &MI, DL, TII->get(AAP::ADDI_i10), DstReg)
         .addReg(BaseReg)
         .addImm(Offset);
     }
     else if (Offset < 0) {
-      BuildMI(MBB, &MI, DL, TII->get(AAP::SUB_i10), DstReg)
+      BuildMI(MBB, &MI, DL, TII->get(AAP::SUBI_i10), DstReg)
         .addReg(BaseReg)
         .addImm(-Offset);
     }

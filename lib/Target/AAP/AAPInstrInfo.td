@@ -214,22 +214,26 @@ let EncoderMethod = "encodeMemSrcOperand",
 // MOV Operations
 //===----------------------------------------------------------------------===//
 
-def MOV_r : Inst_rr
-  <0x0, 0x9, (outs GR64:$rD), (ins GR64:$rA), "mov\t$rD, $rA", []>;
+def MOV_r : Inst_rrr
+  <0x0, 0x9, (outs GR64:$rD), (ins GR64:$rA), "mov\t$rD, $rA", []> {
+    let rB = 0;
+  }
 
 // Select over MOV_r
 let AddedComplexity = 1 in
-  def MOV_r_short : Inst_rr_short
-    <0x0, 0x9, (outs GR8:$rD), (ins GR8:$rA), "mov\t$rD, $rA", []>;
+  def MOV_r_short : Inst_rrr_short
+    <0x0, 0x9, (outs GR8:$rD), (ins GR8:$rA), "mov\t$rD, $rA", []> {
+    let rB = 0;
+  }
 
-def MOV_i16 : Inst_r_i16
-  <0x0, 0xf, (outs GR64:$rD), (ins imm16:$imm), "mov\t$rD, $imm",
+def MOVI_i16 : Inst_r_i16
+  <0x0, 0xf, (outs GR64:$rD), (ins imm16:$imm), "movi\t$rD, $imm",
     [(set GR64:$rD, (i16 imm16:$imm))]>;
 
-// Select over MOV_i16
+// Select over MOVI_i16
 let AddedComplexity = 1 in
-  def MOV_i6_short : Inst_r_i6_short
-    <0x0, 0xf, (outs GR8:$rD), (ins const6:$imm), "mov\t$rD, $imm",
+  def MOVI_i6_short : Inst_r_i6_short
+    <0x0, 0xf, (outs GR8:$rD), (ins const6:$imm), "movi\t$rD, $imm",
       [(set GR8:$rD, (i16 const6:$imm))]>;
 
 
@@ -295,59 +299,59 @@ let Defs = [PSW] in {
 // elimination depending on the sign of the immediate.
 def LEA : Pseudo<(outs GR64:$rD), (ins GR64:$rA, imm16:$imm), "#LEA", []>;
 
-// Select over MOV_i16 + ADD_r_short
+// Select over MOVI_i16 + ADD_r_short
 let AddedComplexity = 2 in
-  def ADD_i10 : Inst_rr_i10
+  def ADDI_i10 : Inst_rr_i10
     <0x0, 0xa, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
-      "add\t$rD, $rA, $imm",
+      "addi\t$rD, $rA, $imm",
       [(set GR64:$rD, (add GR64:$rA, (i16 imm10:$imm)))]>;
 
-// Select over ADD_i10
+// Select over ADDI_i10
 let AddedComplexity = 3 in
-  def ADD_i3_short : Inst_rr_i3_short
+  def ADDI_i3_short : Inst_rr_i3_short
     <0x0, 0xa, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
-      "add\t$rD, $rA, $imm",
+      "addi\t$rD, $rA, $imm",
       [(set GR8:$rD, (add GR8:$rA, (i16 const3:$imm)))]>;
 
-// Select over MOV_i16 + SUB_r_short
+// Select over MOVI_i16 + SUB_r_short
 let AddedComplexity = 2 in
-  def SUB_i10 : Inst_rr_i10
+  def SUBI_i10 : Inst_rr_i10
     <0x0, 0xb, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
-      "sub\t$rD, $rA, $imm",
+      "subi\t$rD, $rA, $imm",
       [(set GR64:$rD, (sub GR64:$rA, (i16 imm10:$imm)))]>;
 
-// Select over SUB_i10
+// Select over SUBI_i10
 let AddedComplexity = 3 in
-  def SUB_i3_short : Inst_rr_i3_short
+  def SUBI_i3_short : Inst_rr_i3_short
     <0x0, 0xb, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
-      "sub\t$rD, $rA, $imm",
+      "subi\t$rD, $rA, $imm",
       [(set GR8:$rD, (sub GR8:$rA, (i16 const3:$imm)))]>;
 
 } // end of Defs
 
 
 multiclass SHIFT_i<bits<8> opcode, string opname, SDNode OpNode> {
-  // Select over MOV_i16 + SHIFT_r_short
+  // Select over MOVI_i16 + SHIFT_r_short
   let AddedComplexity = 2 in
     def _i6 : Inst_rr_i6
       <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, imm6:$imm),
         !strconcat(opname, "\t$rD, $rA, $imm"),
         [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm6:$imm)))]>;
 
-  // Select over SHIFT_i6
+  // Select over SHIFTI_i6
   let AddedComplexity = 3 in
     def _i3_short : Inst_rr_i3_short
       <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
         !strconcat(opname, "\t$rD, $rA, $imm"),
         [(set GR8:$rD, (OpNode GR8:$rA, (i16 const3:$imm)))]>;
 }
-defm ASR : SHIFT_i<0xc, "asr", sra>;
-defm LSL : SHIFT_i<0xd, "lsl", shl>;
-defm LSR : SHIFT_i<0xe, "lsr", srl>;
+defm ASRI : SHIFT_i<0xc, "asri", sra>;
+defm LSLI : SHIFT_i<0xd, "lsli", shl>;
+defm LSRI : SHIFT_i<0xe, "lsri", srl>;
 
 
 // Logical operations with immediate
-// Select over MOV_i16 + LOG_r_short
+// Select over MOVI_i16 + LOG_r_short
 let AddedComplexity = 2 in {
 class LOG_i9<bits<5> opcode, string opname, SDNode OpNode>
     : Inst_rr_i9
@@ -356,9 +360,9 @@ class LOG_i9<bits<5> opcode, string opname, SDNode OpNode>
         [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm9:$imm)))]>;
 }
 
-def AND_i9 : LOG_i9<0x13, "and", and>;
-def OR_i9  : LOG_i9<0x14, "or",  or>;
-def XOR_i9 : LOG_i9<0x15, "xor", xor>;
+def ANDI_i9 : LOG_i9<0x13, "andi", and>;
+def ORI_i9  : LOG_i9<0x14, "ori",  or>;
+def XORI_i9 : LOG_i9<0x15, "xori", xor>;
 
 
 //===----------------------------------------------------------------------===//
@@ -566,23 +570,26 @@ let isCall = 1,
   Defs = [R0, R2,  R3,  R4,  R5,  R6,  R7,  R8,  R9, R10, R11, R12,
           R13, R14, R15, R16, R17, R18, R19] in {
 
-let isCodeGenOnly = 1 in {
+let isCodeGenOnly = 1 in
   def BAL_short : Inst_i6_r_short
-    <0x2, 0x1, (outs), (ins i16imm:$imm, GR8:$rA), "bal\t$imm, $rA", []>;
-}
+    <0x2, 0x1, (outs), (ins i16imm:$imm, GR8:$rB), "bal\t$imm, $rB", []>;
 
 def BAL : Inst_i16_r
-  <0x2, 0x1, (outs), (ins i16imm:$imm, GR64:$rA), "bal\t$imm, $rA", []>;
+  <0x2, 0x1, (outs), (ins i16imm:$imm, GR64:$rB), "bal\t$imm, $rB", []>;
 
-def JAL_short : Inst_rr_short
-  <0x2, 0x9, (outs), (ins GR8:$rD, GR64:$rA), "jal\t$rD, $rA", []>;
+def JAL_short : Inst_rrr_short
+  <0x2, 0x9, (outs), (ins GR8:$rD, GR64:$rB), "jal\t$rD, $rB", []> {
+    let rA = 0;
+  }
 
-def JAL : Inst_rr
-  <0x2, 0x9, (outs), (ins GR64:$rD, GR64:$rA), "jal\t$rD, $rA", []>;
+def JAL : Inst_rrr
+  <0x2, 0x9, (outs), (ins GR64:$rD, GR64:$rB), "jal\t$rD, $rB", []> {
+    let rA = 0;
+  }
 }
 
 // Calls are encoded as a branch through the link register
-def : Pat<(callflag (i16 imm:$imm), GR64:$rA), (BAL imm:$imm, GR64:$rA)>;
+def : Pat<(callflag (i16 imm:$imm), GR64:$rB), (BAL imm:$imm, GR64:$rB)>;
 
 
 let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
@@ -591,10 +598,8 @@ def JMP : Inst_r<0x2, 0x8, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
 def JMP_short : Inst_r_short<0x2, 0x8, (outs), (ins GR8:$rD), "jmp\t$rD", []>;
 }
 
-
 // Indirect calls are a jump through a register
-def : Pat<(callflag GR64:$rD, GR64:$rA), (JAL GR64:$rD, GR64:$rA)>;
-
+def : Pat<(callflag GR64:$rD, GR64:$rB), (JAL GR64:$rD, GR64:$rB)>;
 
 // Returns are encoded as a jump through the link register
 def : Pat<(retflag GR64:$rD), (JMP GR64:$rD)>;
@@ -621,6 +626,6 @@ def : Pat<(callflag (i16 texternalsym:$dst), GR64:$rA), (BAL texternalsym:$dst, 
 //===----------------------------------------------------------------------===//
 def : Pat<(addc GR64:$src1, GR64:$src2), (ADD_r GR64:$src1, GR64:$src2)>;
 
-def : Pat<(i16 (aapwrapper tglobaladdr:$dst)), (MOV_i16 tglobaladdr:$dst)>;
-def : Pat<(i16 (aapwrapper texternalsym:$dst)), (MOV_i16 texternalsym:$dst)>;
-def : Pat<(i16 (aapwrapper tblockaddress:$dst)), (MOV_i16 tblockaddress:$dst)>;
+def : Pat<(i16 (aapwrapper tglobaladdr:$dst)), (MOVI_i16 tglobaladdr:$dst)>;
+def : Pat<(i16 (aapwrapper texternalsym:$dst)), (MOVI_i16 texternalsym:$dst)>;
+def : Pat<(i16 (aapwrapper tblockaddress:$dst)), (MOVI_i16 tblockaddress:$dst)>;

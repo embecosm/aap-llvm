@@ -9,7 +9,7 @@
 define i16 @asr_small_imm(i16 %x) {
 entry:
 ;CHECK: asr_small_imm:
-;CHECK: asr ${{r[0-9]+}}, ${{r[0-9]+}}, 3               {{.*ASR_i3_short}}
+;CHECK: asri ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*ASRI_i3_short}}
   %0 = ashr i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -17,7 +17,7 @@ entry:
 define i16 @asr_imm(i16 %x) {
 entry:
 ;CHECK: asr_imm:
-;CHECK: asr ${{r[0-9]+}}, ${{r[0-9]+}}, 14              {{.*ASR_i6}}
+;CHECK: asri ${{r[0-9]+}}, ${{r[0-9]+}}, 14             {{.*ASRI_i6}}
   %0 = ashr i16 %x, 14
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -36,7 +36,7 @@ entry:
 define i16 @lsl_small_imm(i16 %x) {
 entry:
 ;CHECK: lsl_small_imm:
-;CHECK: lsl ${{r[0-9]+}}, ${{r[0-9]+}}, 3               {{.*LSL_i3_short}}
+;CHECK: lsli ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*LSLI_i3_short}}
   %0 = shl i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -44,7 +44,7 @@ entry:
 define i16 @lsl_imm(i16 %x) {
 entry:
 ;CHECK: lsl_imm:
-;CHECK: lsl ${{r[0-9]+}}, ${{r[0-9]+}}, 14              {{.*LSL_i6}}
+;CHECK: lsli ${{r[0-9]+}}, ${{r[0-9]+}}, 14             {{.*LSLI_i6}}
   %0 = shl i16 %x, 14
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -63,7 +63,7 @@ entry:
 define i16 @lsr_small_imm(i16 %x) {
 entry:
 ;CHECK: lsr_small_imm:
-;CHECK: lsr ${{r[0-9]+}}, ${{r[0-9]+}}, 3               {{.*LSR_i3_short}}
+;CHECK: lsri ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*LSRI_i3_short}}
   %0 = lshr i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -71,7 +71,7 @@ entry:
 define i16 @lsr_imm(i16 %x) {
 entry:
 ;CHECK: lsr_imm:
-;CHECK: lsr ${{r[0-9]+}}, ${{r[0-9]+}}, 14              {{.*LSR_i6}}
+;CHECK: lsri ${{r[0-9]+}}, ${{r[0-9]+}}, 14             {{.*LSRI_i6}}
   %0 = lshr i16 %x, 14
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }

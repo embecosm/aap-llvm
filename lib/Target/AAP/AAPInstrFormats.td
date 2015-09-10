@@ -90,27 +90,17 @@ class Inst_rrr_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
 }
 
 
-class Inst_rr<bits<4> opclass, bits<8> opcode, dag outs, dag ins,
-             string asmstr, list<dag> pattern>
-    : Inst_rrr<opclass, opcode, outs, ins, asmstr, pattern> {
-  let rB = 0;
-}
-class Inst_rr_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
-                   string asmstr, list<dag> pattern>
-    : Inst_rrr_short<opclass, opcode, outs, ins, asmstr, pattern> {
-  let rB = 0;
-}
-
-
 class Inst_r<bits<4> opclass, bits<8> opcode, dag outs, dag ins,
              string asmstr, list<dag> pattern>
-    : Inst_rr<opclass, opcode, outs, ins, asmstr, pattern> {
+    : Inst_rrr<opclass, opcode, outs, ins, asmstr, pattern> {
   let rA = 0;
+  let rB = 0;
 }
 class Inst_r_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
                    string asmstr, list<dag> pattern>
-    : Inst_rr_short<opclass, opcode, outs, ins, asmstr, pattern> {
+    : Inst_rrr_short<opclass, opcode, outs, ins, asmstr, pattern> {
   let rA = 0;
+  let rB = 0;
 }
 
 
@@ -248,10 +238,9 @@ class Inst_i6_r_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
                       string asmstr, list<dag> pattern>
     : InstAAP_short<opclass, opcode, outs, ins, asmstr, pattern> {
   bits<6> imm;
-  bits<3> rA;
-  let Inst{2-0} = imm{2-0};
-  let Inst{8-6} = imm{5-3};
-  let Inst{5-3} = rA{2-0};
+  bits<3> rB;
+  let Inst{2-0} = rB{2-0};
+  let Inst{8-3} = imm{5-0};
 }
 
 

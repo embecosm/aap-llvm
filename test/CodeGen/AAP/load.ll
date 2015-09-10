@@ -14,7 +14,7 @@
 define i8 @ldb_global() {
 entry:
 ;CHECK: ldb_global:
-;CHECK: mov $[[REG1:r[0-9]+]], c              {{.*MOV_i16}}
+;CHECK: movi $[[REG1:r[0-9]+]], c             {{.*MOVI_i16}}
 ;CHECK: ldb ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDB(_short)?}}
   %0 = load i8, i8* @c, align 1
   ret i8 %0 ;CHECK: jmp   {{.*JMP}}
@@ -23,7 +23,7 @@ entry:
 define i8 @ldb_imm() {
 entry:
 ;CHECK: ldb_imm:
-;CHECK: mov $[[REG1:r[0-9]+]], 123            {{.*MOV_i16}}
+;CHECK: movi $[[REG1:r[0-9]+]], 123           {{.*MOVI_i16}}
 ;CHECK: ldb ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDB(_short)?}}
   %0 = inttoptr i16 123 to i8*
   %1 = load i8, i8* %0, align 1
@@ -44,7 +44,7 @@ entry:
 define i16 @ldw_global() {
 entry:
 ;CHECK: ldw_global:
-;CHECK: mov $[[REG1:r[0-9]+]], a              {{.*MOV_i16}}
+;CHECK: movi $[[REG1:r[0-9]+]], a             {{.*MOVI_i16}}
 ;CHECK: ldw ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDW(_short)?}}
   %0 = load i16, i16* @a, align 2
   ret i16 %0 ;CHECK: jmp   {{.*JMP}}
@@ -53,7 +53,7 @@ entry:
 define i16 @ldw_imm() {
 entry:
 ;CHECK: ldw_imm:
-;CHECK: mov $[[REG1:r[0-9]+]], 123            {{.*MOV_i16}}
+;CHECK: movi $[[REG1:r[0-9]+]], 123           {{.*MOVI_i16}}
 ;CHECK: ldw ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDW(_short)?}}
   %0 = inttoptr i16 123 to i16*
   %1 = load i16, i16* %0, align 2

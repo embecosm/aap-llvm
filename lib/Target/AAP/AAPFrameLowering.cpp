@@ -66,12 +66,12 @@ void AAPFrameLowering::emitPrologue(MachineFunction &MF,
     const uint64_t NumChunks = NumBytes / 1023;
 
     for (uint64_t i = 0; i < NumChunks; ++i) {
-      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), SP)
+      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUBI_i10), SP)
         .addReg(SP)
         .addImm(1023);
     }
     if (Addend) {
-      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUB_i10), SP)
+      BuildMI(MBB, MBBI, DL, TII.get(AAP::SUBI_i10), SP)
         .addReg(SP)
         .addImm(Addend);
     }
@@ -106,12 +106,12 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
     const uint64_t NumChunks = NumBytes / 1023;
 
     for (uint64_t i = 0; i < NumChunks; ++i) {
-    BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_i10), SP)
+    BuildMI(MBB, MBBI, DL, TII.get(AAP::ADDI_i10), SP)
         .addReg(SP)
         .addImm(1023);
     }
     if (Addend) {
-      BuildMI(MBB, MBBI, DL, TII.get(AAP::ADD_i10), SP)
+      BuildMI(MBB, MBBI, DL, TII.get(AAP::ADDI_i10), SP)
         .addReg(SP)
         .addImm(Addend);
     }
