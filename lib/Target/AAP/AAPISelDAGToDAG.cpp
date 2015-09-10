@@ -123,7 +123,7 @@ SDNode *AAPDAGToDAGISel::Select(SDNode *Node) {
   return ResNode;
 }
 
-static bool isImm3(int64_t Imm) { return (Imm >= 0 && Imm <= 7); }
+static bool isOff3(int64_t Imm) { return (Imm >= -4 && Imm <= 3); }
 static bool isOff10(int64_t Imm) { return (Imm >= -512 && Imm <= 511); }
 
 bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {
@@ -140,8 +140,12 @@ bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {
     return false;
   }
 
-  // Addresses of the form FI+const or FI|const
-  if (CurDAG->isBaseWithConstantOffset(Addr)) {
+  bool isConstantOffset = CurDAG->isBaseWithConstantOffset(Addr);
+  bool isSubOffset = Addr.getOpcode() == ISD::SUB;
+
+  // Addresses of the form Addr+const, Addr-const or Addr|const
+  if ((isConstantOffset || isSubOffset) &&
+      isa<ConstantSDNode>(Addr.getOperand(1))) {
     ConstantSDNode *CN = dyn_cast<ConstantSDNode>(Addr.getOperand(1));
     SDLoc dl(CN);
 
@@ -154,7 +158,13 @@ bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {
         Base = Addr.getOperand(0);
       }
 
-      Offset = CurDAG->getTargetConstant(CN->getZExtValue(), dl, MVT::i16);
+      int64_t off = CN->getSExtValue();
+      if (isConstantOffset) {
+        Offset = CurDAG->getTargetConstant(off, dl, MVT::i16);
+      }
+      else if (isSubOffset) {
+        Offset = CurDAG->getTargetConstant(-off, dl, MVT::i16);
+      }
       return true;
     }
   }
@@ -167,7 +177,7 @@ bool AAPDAGToDAGISel::SelectAddr_MO3(SDValue Addr, SDValue &Base,
   bool ret = SelectAddr(Addr, B, O);
   if (ret && isa<ConstantSDNode>(O)) {
     int64_t c = dyn_cast<ConstantSDNode>(O)->getSExtValue();
-    if (isImm3(c)) {
+    if (isOff3(c)) {
       Base = B;
       Offset = O;
       return true;

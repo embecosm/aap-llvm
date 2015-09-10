@@ -211,7 +211,7 @@ AAPMCCodeEmitter::encodeMemSrcOperand(const MCInst &MI, unsigned Op,
     // short or normal length instruction
     const MCInstrDesc& Desc = MCII.get(Opcode);
     FixupKind =
-      (Desc.getSize() == 4) ? AAP::fixup_AAP_OFF10 : AAP::fixup_AAP_ABS3_SHORT;
+      (Desc.getSize() == 4) ? AAP::fixup_AAP_OFF10 : AAP::fixup_AAP_OFF3_SHORT;
   }
   else {
     llvm_unreachable("Unknown opcode!");

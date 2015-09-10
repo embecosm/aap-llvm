@@ -39,6 +39,7 @@ enum Fixups {
 
   // Fixup for absolute values
   fixup_AAP_ABS3_SHORT,
+  fixup_AAP_OFF3_SHORT,
   fixup_AAP_ABS6_SHORT,
 
   fixup_AAP_ABS6,

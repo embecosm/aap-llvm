@@ -66,6 +66,7 @@ unsigned AAPELFObjectWriter::GetRelocType(MCValue const & /*Target*/,
   case AAP::fixup_AAP_BRCC16:
   case AAP::fixup_AAP_BAL16:
   case AAP::fixup_AAP_ABS3_SHORT:
+  case AAP::fixup_AAP_OFF3_SHORT:
   case AAP::fixup_AAP_ABS6_SHORT:
     llvm_unreachable("Cannot emit relocations for short instruction fixups!");
   default:

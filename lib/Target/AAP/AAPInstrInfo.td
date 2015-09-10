@@ -77,6 +77,9 @@ let RenderMethod = "addImmOperands" in {
   def imm6AsmOperand  : AsmOperandClass {
     let Name = "Imm6"; let SuperClasses = [const6AsmOperand];
   }
+  def off3AsmOperand : AsmOperandClass {
+    let Name = "Off3"; let SuperClasses = [off10AsmOperand];
+  }
   def const3AsmOperand  : AsmOperandClass {
     let Name = "Const3"; let SuperClasses = [imm6AsmOperand];
   }
@@ -88,6 +91,12 @@ def const3 : Operand<i16>, ImmLeaf<i16, [{
 }]> {
   let EncoderMethod = "encodeImm3";
   let ParserMatchClass = const3AsmOperand;
+}
+def off3 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= -4 && Imm <= 3;
+}]> {
+  let EncoderMethod = "encodeOff3";
+  let ParserMatchClass = off3AsmOperand;
 }
 def imm6 : Operand<i16>, ImmLeaf<i16, [{
   return Imm >= 0 && Imm <= 63;
@@ -186,17 +195,17 @@ let EncoderMethod = "encodeMemSrcOperand",
   def memsrc3 : Operand<i16> {
     let PrintMethod = "printMemSrcOperand";
     let ParserMatchClass = memsrc3AsmOperand;
-    let MIOperandInfo = (ops GR8, const3);
+    let MIOperandInfo = (ops GR8, off3);
   }
   def memsrc3_postinc : Operand<i16> {
     let PrintMethod = "printMemSrcPostIncOperand";
     let ParserMatchClass = memsrc3PostIncAsmOperand;
-    let MIOperandInfo = (ops GR8, const3);
+    let MIOperandInfo = (ops GR8, off3);
   }
   def memsrc3_predec : Operand<i16> {
     let PrintMethod = "printMemSrcPreDecOperand";
     let ParserMatchClass = memsrc3PreDecAsmOperand;
-    let MIOperandInfo = (ops GR8, const3);
+    let MIOperandInfo = (ops GR8, off3);
   }
 }
 
