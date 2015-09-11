@@ -64,6 +64,13 @@ public:
                        SmallVectorImpl<MCFixup> &Fixups,
                        MCSubtargetInfo const &STI) const;
 
+  unsigned encodeShiftConst3(const MCInst &MI, unsigned Op,
+                             SmallVectorImpl<MCFixup> &Fixups,
+                             MCSubtargetInfo const &STI) const;
+  unsigned encodeShiftImm6(const MCInst &MI, unsigned Op,
+                           SmallVectorImpl<MCFixup> &Fixups,
+                           MCSubtargetInfo const &STI) const;
+
   // TableGen'erated function for getting the
   // binary encoding for an instruction.
   uint64_t getBinaryCodeForInstr(MCInst const &MI,

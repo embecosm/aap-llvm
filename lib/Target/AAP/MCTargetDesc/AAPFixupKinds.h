@@ -38,16 +38,15 @@ enum Fixups {
   fixup_AAP_BAL32,
 
   // Fixup for absolute values
-  fixup_AAP_ABS3_SHORT,
-  fixup_AAP_OFF3_SHORT,
-  fixup_AAP_ABS6_SHORT,
-
   fixup_AAP_ABS6,
   fixup_AAP_ABS9,
   fixup_AAP_ABS10,
-  fixup_AAP_OFF10,
   fixup_AAP_ABS12,
   fixup_AAP_ABS16,
+
+  // Shift and offset fixups
+  fixup_AAP_SHIFT6,
+  fixup_AAP_OFF10,
 
   // Marker
   LastTargetFixupKind,

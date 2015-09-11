@@ -23,7 +23,7 @@ class AAPAsmBackend : public MCAsmBackend {
 public:
   AAPAsmBackend(Target const &T) {}
 
-  unsigned getNumFixupKinds() const override { return 16; }
+  unsigned getNumFixupKinds() const override { return 14; }
 
   const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override {
     const static MCFixupKindInfo Infos[AAP::NumTargetFixupKinds] = {
@@ -43,15 +43,13 @@ public:
       {"fixup_AAP_BRCC32",      6,    3,      0},
       {"fixup_AAP_BAL16",       0,    3,      0},
       {"fixup_AAP_BAL32",       0,    3,      0},
-      {"fixup_AAP_ABS3_SHORT",  0,    3,      0},
-      {"fixup_AAP_OFF3_SHORT",  0,    3,      0},
-      {"fixup_AAP_ABS6_SHORT",  0,    6,      0},
       {"fixup_AAP_ABS6",        0,    3,      0},
       {"fixup_AAP_ABS9",        0,    3,      0},
       {"fixup_AAP_ABS10",       0,    3,      0},
-      {"fixup_AAP_OFF10",       0,    3,      0},
       {"fixup_AAP_ABS12",       0,    6,      0},
-      {"fixup_AAP_ABS16",       0,    6,      0}
+      {"fixup_AAP_ABS16",       0,    6,      0},
+      {"fixup_AAP_SHIFT6",      0,    6,      0},
+      {"fixup_AAP_OFF10",       0,    3,      0}
     };
 
     if (Kind < FirstTargetFixupKind)
@@ -112,8 +110,6 @@ public:
     case AAP::fixup_AAP_BR16:
     case AAP::fixup_AAP_BRCC16:
     case AAP::fixup_AAP_BAL16:
-    case AAP::fixup_AAP_ABS3_SHORT:
-    case AAP::fixup_AAP_ABS6_SHORT:
       // At the moment, we should never generate or parse short instructions
       // with these fixups.
       llvm_unreachable("Cannot relax short instruction fixups!");

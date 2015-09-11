@@ -54,16 +54,13 @@ def brtarget : Operand<OtherVT> {
 // be needed in the future to handle branches properly.
 //
 // A constant immediate is an immediate which cannot be an expression, only
-// a constant value.
+// an absolute value.
 let RenderMethod = "addImmOperands" in {
   def imm16AsmOperand : AsmOperandClass {
     let Name = "Imm16"; let SuperClasses = [ImmAsmOperand];
   }
   def imm12AsmOperand : AsmOperandClass {
     let Name = "Imm12"; let SuperClasses = [imm16AsmOperand];
-  }
-  def off10AsmOperand : AsmOperandClass {
-    let Name = "Off10"; let SuperClasses = [ImmAsmOperand];
   }
   def imm10AsmOperand : AsmOperandClass {
     let Name = "Imm10"; let SuperClasses = [imm12AsmOperand];
@@ -77,56 +74,34 @@ let RenderMethod = "addImmOperands" in {
   def imm6AsmOperand  : AsmOperandClass {
     let Name = "Imm6"; let SuperClasses = [const6AsmOperand];
   }
-  def off3AsmOperand : AsmOperandClass {
-    let Name = "Off3"; let SuperClasses = [off10AsmOperand];
-  }
   def const3AsmOperand  : AsmOperandClass {
     let Name = "Const3"; let SuperClasses = [imm6AsmOperand];
   }
+
+  // Offsets are signed immediates used for load and store operands
+  def off10AsmOperand : AsmOperandClass {
+    let Name = "Off10"; let SuperClasses = [ImmAsmOperand];
+  }
+  def off3AsmOperand : AsmOperandClass {
+    let Name = "Off3"; let SuperClasses = [off10AsmOperand];
+  }
+
+  // Shift operands are unsigned immediates or constants who range
+  // begins at 1, rather than 0. The encoding is done with the shift amount
+  // -1.
+  def shiftImm6AsmOperand : AsmOperandClass {
+    let Name = "ShiftImm6"; let SuperClasses = [imm9AsmOperand];
+  }
+  def shiftConst3AsmOperand : AsmOperandClass {
+    let Name = "ShiftConst3"; let SuperClasses = [shiftImm6AsmOperand];
+  }
 }
 
-// A constant immediate cannot be an expression, only an absolute value
-def const3 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm <= 7;
+def imm16 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= -32768 && Imm <= 65535;
 }]> {
-  let EncoderMethod = "encodeImm3";
-  let ParserMatchClass = const3AsmOperand;
-}
-def off3 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= -4 && Imm <= 3;
-}]> {
-  let EncoderMethod = "encodeOff3";
-  let ParserMatchClass = off3AsmOperand;
-}
-def imm6 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm <= 63;
-}]> {
-  let EncoderMethod = "encodeImm6";
-  let ParserMatchClass = imm6AsmOperand;
-}
-def const6 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm <= 63;
-}]> {
-  let EncoderMethod = "encodeImm6";
-  let ParserMatchClass = const6AsmOperand;
-}
-def imm9 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm <= 511;
-}]> {
-  let EncoderMethod = "encodeImm9";
-  let ParserMatchClass = imm9AsmOperand;
-}
-def imm10 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= 0 && Imm <= 1023;
-}]> {
-  let EncoderMethod = "encodeImm10";
-  let ParserMatchClass = imm10AsmOperand;
-}
-def off10 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= -512 && Imm <= 511;
-}]> {
-  let EncoderMethod = "encodeOff10";
-  let ParserMatchClass = off10AsmOperand;
+  let EncoderMethod = "encodeImm16";
+  let ParserMatchClass = imm16AsmOperand;
 }
 def imm12 : Operand<i16>, ImmLeaf<i16, [{
   return Imm >= 0 && Imm <= 4095;
@@ -134,11 +109,66 @@ def imm12 : Operand<i16>, ImmLeaf<i16, [{
   let EncoderMethod = "encodeImm12";
   let ParserMatchClass = imm12AsmOperand;
 }
-def imm16 : Operand<i16>, ImmLeaf<i16, [{
-  return Imm >= -32768 && Imm <= 65535;
+def imm10 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 1023;
 }]> {
-  let EncoderMethod = "encodeImm16";
-  let ParserMatchClass = imm16AsmOperand;
+  let EncoderMethod = "encodeImm10";
+  let ParserMatchClass = imm10AsmOperand;
+}
+def imm9 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 511;
+}]> {
+  let EncoderMethod = "encodeImm9";
+  let ParserMatchClass = imm9AsmOperand;
+}
+def const6 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 63;
+}]> {
+  let EncoderMethod = "encodeImm6";
+  let ParserMatchClass = const6AsmOperand;
+}
+def imm6 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 63;
+}]> {
+  let EncoderMethod = "encodeImm6";
+  let ParserMatchClass = imm6AsmOperand;
+}
+def const3 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 0 && Imm <= 7;
+}]> {
+  let EncoderMethod = "encodeImm3";
+  let ParserMatchClass = const3AsmOperand;
+}
+
+// Offset operands
+def off10 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= -512 && Imm <= 511;
+}]> {
+  let EncoderMethod = "encodeOff10";
+  let ParserMatchClass = off10AsmOperand;
+}
+def off3 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= -4 && Imm <= 3;
+}]> {
+  let EncoderMethod = "encodeOff3";
+  let ParserMatchClass = off3AsmOperand;
+}
+
+// Shift operands, these have custom encoding/decoding to handle the bias
+// applied to the value.
+def shift_imm6 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 1 && Imm <= 64;
+}]> {
+  let EncoderMethod = "encodeShiftImm6";
+  let DecoderMethod = "decodeShiftOperand";
+  let ParserMatchClass = shiftImm6AsmOperand;
+}
+def shift_const3 : Operand<i16>, ImmLeaf<i16, [{
+  return Imm >= 1 && Imm <= 8;
+}]> {
+  let EncoderMethod = "encodeShiftConst3";
+  let DecoderMethod = "decodeShiftOperand";
+  let ParserMatchClass = shiftConst3AsmOperand;
 }
 
 
@@ -287,7 +317,7 @@ def ADDC_r : Inst_rrr
 
 def SUBC_r : Inst_rrr
   <0x0, 0x12, (outs GR64:$rD), (ins GR64:$rA, GR64:$rB),
-    "subc\t$rD, $rA, $rD",
+    "subc\t$rD, $rA, $rB",
     [(set GR64:$rD, (sube GR64:$rA, GR64:$rB))]>;
 }
 
@@ -334,16 +364,16 @@ multiclass SHIFT_i<bits<8> opcode, string opname, SDNode OpNode> {
   // Select over MOVI_i16 + SHIFT_r_short
   let AddedComplexity = 2 in
     def _i6 : Inst_rr_i6
-      <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, imm6:$imm),
+      <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, shift_imm6:$imm),
         !strconcat(opname, "\t$rD, $rA, $imm"),
-        [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm6:$imm)))]>;
+        [(set GR64:$rD, (OpNode GR64:$rA, (i16 shift_imm6:$imm)))]>;
 
   // Select over SHIFTI_i6
   let AddedComplexity = 3 in
     def _i3_short : Inst_rr_i3_short
-      <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
+      <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, shift_const3:$imm),
         !strconcat(opname, "\t$rD, $rA, $imm"),
-        [(set GR8:$rD, (OpNode GR8:$rA, (i16 const3:$imm)))]>;
+        [(set GR8:$rD, (OpNode GR8:$rA, (i16 shift_const3:$imm)))]>;
 }
 defm ASRI : SHIFT_i<0xc, "asri", sra>;
 defm LSLI : SHIFT_i<0xd, "lsli", shl>;

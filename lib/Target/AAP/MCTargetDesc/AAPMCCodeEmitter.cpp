@@ -104,21 +104,6 @@ static const unsigned BRCCOpcodes[] = {
     AAP::BEQ_short,  AAP::BNE_short,  AAP::BLTS_short,
     AAP::BGTS_short, AAP::BLTU_short, AAP::BGTU_short
 };
-static const unsigned LoadStoreOpcodes[] = {
-    AAP::LDB, AAP::LDW,
-    AAP::LDB_postinc, AAP::LDW_postinc,
-    AAP::LDB_predec, AAP::LDW_predec,
-
-    AAP::STB, AAP::STW,
-    AAP::STB_postinc, AAP::STW_postinc,
-    AAP::STB_predec, AAP::STW_predec,
-
-    AAP::LDB_short, AAP::LDW_short, AAP::LDB_postinc_short,
-    AAP::LDW_postinc_short, AAP::LDB_predec_short, AAP::LDW_predec_short,
-
-    AAP::STB_short, AAP::STW_short, AAP::STB_postinc_short,
-    AAP::STW_postinc_short, AAP::STB_predec_short, AAP::STW_predec_short,
-};
 
 static bool findOpcode(unsigned Op, ArrayRef<unsigned> Opcodes) {
   for (auto It = Opcodes.begin(); It != Opcodes.end(); It++) {
@@ -194,17 +179,12 @@ AAPMCCodeEmitter::encodeMemSrcOperand(const MCInst &MI, unsigned Op,
   // resolved later
   assert(ImmOp.isExpr() && "Second memsrc op not an immediate or expression!");
 
-  AAP::Fixups FixupKind;
   const unsigned Opcode = MI.getOpcode();
-  if (findOpcode(Opcode, LoadStoreOpcodes)) {
-    // Fixup to emit depends on whether we're encoding a memsrc for a
-    // short or normal length instruction
-    const MCInstrDesc &Desc = MCII.get(Opcode);
-    FixupKind = (Desc.getSize() == 4) ? AAP::fixup_AAP_OFF10
-                                      : AAP::fixup_AAP_OFF3_SHORT;
-  } else {
-    llvm_unreachable("Unknown opcode!");
-  }
+  const MCInstrDesc &Desc = MCII.get(Opcode);
+  assert(Desc.getSize() == 4 &&
+         "Cannot encode an expression in a short memory+offset operand");
+
+  AAP::Fixups FixupKind = AAP::fixup_AAP_OFF10;
   Fixups.push_back(MCFixup::create(0, ImmOp.getExpr(), MCFixupKind(FixupKind)));
   return encoding;
 }
@@ -216,10 +196,9 @@ unsigned AAPMCCodeEmitter::encodeImm3(const MCInst &MI, unsigned Op,
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
   }
-
-  assert(MO.isExpr());
-  AAP::Fixups FixupKind = AAP::fixup_AAP_ABS3_SHORT;
-  Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  else {
+    llvm_unreachable("Cannot encode an expression in a short imm3 operand");
+  }
   return 0;
 }
 
@@ -230,12 +209,11 @@ unsigned AAPMCCodeEmitter::encodeImm6(const MCInst &MI, unsigned Op,
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
   }
-
   assert(MO.isExpr());
-
   const MCInstrDesc &Desc = MCII.get(MI.getOpcode());
-  AAP::Fixups FixupKind =
-      (Desc.getSize() == 4) ? AAP::fixup_AAP_ABS6 : AAP::fixup_AAP_ABS6_SHORT;
+  assert(Desc.getSize() == 4 && "Cannot encode fixup for short imm6");
+
+  AAP::Fixups FixupKind = AAP::fixup_AAP_ABS6;
   Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
   return 0;
 }
@@ -247,7 +225,6 @@ unsigned AAPMCCodeEmitter::encodeImm9(const MCInst &MI, unsigned Op,
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
   }
-
   assert(MO.isExpr());
   AAP::Fixups FixupKind = AAP::fixup_AAP_ABS9;
   Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
@@ -261,7 +238,6 @@ unsigned AAPMCCodeEmitter::encodeImm10(const MCInst &MI, unsigned Op,
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
   }
-
   assert(MO.isExpr());
   AAP::Fixups FixupKind = AAP::fixup_AAP_ABS10;
   Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
@@ -275,7 +251,6 @@ unsigned AAPMCCodeEmitter::encodeImm12(const MCInst &MI, unsigned Op,
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
   }
-
   assert(MO.isExpr());
   AAP::Fixups FixupKind = AAP::fixup_AAP_ABS12;
   Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
@@ -289,11 +264,40 @@ unsigned AAPMCCodeEmitter::encodeImm16(const MCInst &MI, unsigned Op,
   if (MO.isImm()) {
     return static_cast<unsigned>(MO.getImm());
   }
-
   assert(MO.isExpr());
   AAP::Fixups FixupKind = AAP::fixup_AAP_ABS16;
   Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
   return 0;
 }
+
+unsigned AAPMCCodeEmitter::encodeShiftConst3(const MCInst &MI, unsigned Op,
+                                             SmallVectorImpl<MCFixup> &Fixups,
+                                             const MCSubtargetInfo &STI) const {
+  const MCOperand MO = MI.getOperand(Op);
+  if (MO.isImm()) {
+    // Subtract one to get the actual encoding of the shift value
+    unsigned value = MO.getImm();
+    return static_cast<unsigned>(value - 1);
+  } else {
+    llvm_unreachable("Cannot encode an expression in a short shift operand");
+  }
+  return 0;
+}
+
+unsigned AAPMCCodeEmitter::encodeShiftImm6(const MCInst &MI, unsigned Op,
+                                           SmallVectorImpl<MCFixup> &Fixups,
+                                           const MCSubtargetInfo &STI) const {
+  const MCOperand MO = MI.getOperand(Op);
+  if (MO.isImm()) {
+    // Subtract one to get the actual encoding of the shift value
+    unsigned value = MO.getImm();
+    return static_cast<unsigned>(value - 1);
+  }
+  assert(MO.isExpr());
+  AAP::Fixups FixupKind = AAP::fixup_AAP_SHIFT6;
+  Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
+  return 0;
+}
+
 
 #include "AAPGenMCCodeEmitter.inc"

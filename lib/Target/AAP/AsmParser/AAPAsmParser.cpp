@@ -219,6 +219,8 @@ public:
   static bool isImm16(const MCExpr *I) { return isImmInRange(I, -32768, 65535); }
   static bool isOff3(const MCExpr *I)  { return isImmInRange(I, -4, 3); }
   static bool isOff10(const MCExpr *I) { return isImmInRange(I, -512, 511); }
+  static bool isShiftConst3(const MCExpr *I) { return isConstInRange(I, 1, 8); }
+  static bool isShiftImm6(const MCExpr *I)   { return isImmInRange(I, 1, 64); }
 
   // Functions for testing operand type
   bool isReg() const { return Kind == Register; }
@@ -233,6 +235,8 @@ public:
   bool isImm16() const { return isImm() && isImm16(getImm()); }
   bool isOff3() const  { return isImm() && isOff3(getImm());  }
   bool isOff10() const { return isImm() && isOff10(getImm()); }
+  bool isShiftConst3() const { return isImm() && isShiftConst3(getImm()); }
+  bool isShiftImm6()   const { return isImm() && isShiftImm6(getImm()); }
 
   bool isToken() const { return Kind == Token; }
   bool isMem() const { return false; }
