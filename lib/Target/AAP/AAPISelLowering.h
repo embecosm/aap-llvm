@@ -61,6 +61,10 @@ public:
   //  DAG node.
   const char *getTargetNodeName(unsigned Opcode) const override;
 
+  /// getSetCCResultType - Return the ISD::SETCC ValueType
+  EVT getSetCCResultType(const DataLayout &DL, LLVMContext &Context,
+                         EVT VT) const override;
+
 //===--------------------- Custom DAG Combine ---------------------------===//
 public:
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;

@@ -182,6 +182,15 @@ const char *AAPTargetLowering::getTargetNodeName(unsigned Opcode) const {
   }
 }
 
+EVT AAPTargetLowering::getSetCCResultType(const DataLayout &DL,
+                                          LLVMContext &Context,
+                                          EVT VT) const {
+  if (!VT.isVector()) {
+    return MVT::i16;
+  }
+  return VT.changeVectorElementTypeToInteger();
+}
+
 //===----------------------------------------------------------------------===//
 //                      Custom DAG Combine Implementation
 //===----------------------------------------------------------------------===//
