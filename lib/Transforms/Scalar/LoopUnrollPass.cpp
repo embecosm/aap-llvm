@@ -14,6 +14,7 @@
 
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/InstructionSimplify.h"
@@ -152,6 +153,7 @@ namespace {
       // loop will receive invalid dom info.
       // For now, recreate dom info, if loop is unrolled.
       AU.addPreserved<DominatorTreeWrapperPass>();
+      AU.addPreserved<GlobalsAAWrapperPass>();
     }
 
     // Fill in the UnrollingPreferences parameter with values from the
@@ -413,7 +415,7 @@ private:
     auto *GV = dyn_cast<GlobalVariable>(AddressIt->second.Base);
     // We're only interested in loads that can be completely folded to a
     // constant.
-    if (!GV || !GV->hasInitializer())
+    if (!GV || !GV->hasInitializer() || !GV->isConstant())
       return false;
 
     ConstantDataSequential *CDS =
@@ -518,7 +520,7 @@ struct EstimatedUnrollCost {
 /// \returns Optional value, holding the RolledDynamicCost and UnrolledCost. If
 /// the analysis failed (no benefits expected from the unrolling, or the loop is
 /// too big to analyze), the returned value is None.
-Optional<EstimatedUnrollCost>
+static Optional<EstimatedUnrollCost>
 analyzeLoopUnrollCost(const Loop *L, unsigned TripCount, DominatorTree &DT,
                       ScalarEvolution &SE, const TargetTransformInfo &TTI,
                       int MaxUnrolledLoopSize) {

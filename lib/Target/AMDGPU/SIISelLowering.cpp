@@ -409,7 +409,10 @@ bool SITargetLowering::allowsMisalignedMemoryAccesses(EVT VT,
     // ds_read/write_b64 require 8-byte alignment, but we can do a 4 byte
     // aligned, 8 byte access in a single operation using ds_read2/write2_b32
     // with adjacent offsets.
-    return Align % 4 == 0;
+    bool AlignedBy4 = (Align % 4 == 0);
+    if (IsFast)
+      *IsFast = AlignedBy4;
+    return AlignedBy4;
   }
 
   // Smaller than dword value must be aligned.
@@ -461,12 +464,6 @@ bool SITargetLowering::shouldConvertConstantLoadToIntImm(const APInt &Imm,
   return TII->isInlineConstant(Imm);
 }
 
-static EVT toIntegerVT(EVT VT) {
-  if (VT.isVector())
-    return VT.changeVectorElementTypeToInteger();
-  return MVT::getIntegerVT(VT.getSizeInBits());
-}
-
 SDValue SITargetLowering::LowerParameter(SelectionDAG &DAG, EVT VT, EVT MemVT,
                                          SDLoc SL, SDValue Chain,
                                          unsigned Offset, bool Signed) const {
@@ -490,30 +487,10 @@ SDValue SITargetLowering::LowerParameter(SelectionDAG &DAG, EVT VT, EVT MemVT,
 
   unsigned Align = DL.getABITypeAlignment(Ty);
 
-  if (VT != MemVT && VT.isFloatingPoint()) {
-    // Do an integer load and convert.
-    // FIXME: This is mostly because load legalization after type legalization
-    // doesn't handle FP extloads.
-    assert(VT.getScalarType() == MVT::f32 &&
-           MemVT.getScalarType() == MVT::f16);
-
-    EVT IVT = toIntegerVT(VT);
-    EVT MemIVT = toIntegerVT(MemVT);
-    SDValue Load = DAG.getLoad(ISD::UNINDEXED, ISD::ZEXTLOAD,
-                               IVT, SL, Chain, Ptr, PtrOffset, PtrInfo, MemIVT,
-                               false, // isVolatile
-                               true, // isNonTemporal
-                               true, // isInvariant
-                               Align); // Alignment
-    SDValue Ops[] = {
-      DAG.getNode(ISD::FP16_TO_FP, SL, VT, Load),
-      Load.getValue(1)
-    };
-
-    return DAG.getMergeValues(Ops, SL);
-  }
-
   ISD::LoadExtType ExtTy = Signed ? ISD::SEXTLOAD : ISD::ZEXTLOAD;
+  if (MemVT.isFloatingPoint())
+    ExtTy = ISD::EXTLOAD;
+
   return DAG.getLoad(ISD::UNINDEXED, ExtTy,
                      VT, SL, Chain, Ptr, PtrOffset, PtrInfo, MemVT,
                      false, // isVolatile
@@ -714,7 +691,7 @@ SDValue SITargetLowering::LowerFormalArguments(
   }
 
   if (Info->getShaderType() != ShaderType::COMPUTE) {
-    unsigned ScratchIdx = CCInfo.getFirstUnallocated(ArrayRef<MCPhysReg>(
+    unsigned ScratchIdx = CCInfo.getFirstUnallocated(makeArrayRef(
         AMDGPU::SGPR_32RegClass.begin(), AMDGPU::SGPR_32RegClass.getNumRegs()));
     Info->ScratchOffsetReg = AMDGPU::SGPR_32RegClass.getRegister(ScratchIdx);
   }
@@ -1023,6 +1000,8 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
   SDLoc DL(Op);
   unsigned IntrinsicID = cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue();
 
+  // TODO: Should this propagate fast-math-flags?
+
   switch (IntrinsicID) {
   case Intrinsic::r600_read_ngroups_x:
     return LowerParameter(DAG, VT, VT, DL, DAG.getEntryNode(),
@@ -1271,8 +1250,10 @@ SDValue SITargetLowering::LowerFastFDIV(SDValue Op, SelectionDAG &DAG) const {
   if (Unsafe) {
     // Turn into multiply by the reciprocal.
     // x / y -> x * (1.0 / y)
+    SDNodeFlags Flags;
+    Flags.setUnsafeAlgebra(true);
     SDValue Recip = DAG.getNode(AMDGPUISD::RCP, SL, VT, RHS);
-    return DAG.getNode(ISD::FMUL, SL, VT, LHS, Recip);
+    return DAG.getNode(ISD::FMUL, SL, VT, LHS, Recip, &Flags);
   }
 
   return SDValue();
@@ -1308,6 +1289,8 @@ SDValue SITargetLowering::LowerFDIV32(SDValue Op, SelectionDAG &DAG) const {
   SDValue r2 = DAG.getSetCC(SL, SetCCVT, r1, K0, ISD::SETOGT);
 
   SDValue r3 = DAG.getNode(ISD::SELECT, SL, MVT::f32, r2, K1, One);
+
+  // TODO: Should this propagate fast-math-flags?
 
   r1 = DAG.getNode(ISD::FMUL, SL, MVT::f32, RHS, r3);
 
@@ -1428,6 +1411,7 @@ SDValue SITargetLowering::LowerTrig(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
   EVT VT = Op.getValueType();
   SDValue Arg = Op.getOperand(0);
+  // TODO: Should this propagate fast-math-flags?
   SDValue FractPart = DAG.getNode(AMDGPUISD::FRACT, DL, VT,
                                   DAG.getNode(ISD::FMUL, DL, VT, Arg,
                                               DAG.getConstantFP(0.5/M_PI, DL,

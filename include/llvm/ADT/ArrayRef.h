@@ -156,8 +156,6 @@ namespace llvm {
     bool equals(ArrayRef RHS) const {
       if (Length != RHS.Length)
         return false;
-      if (Length == 0)
-        return true;
       return std::equal(begin(), end(), RHS.begin());
     }
 
@@ -336,6 +334,16 @@ namespace llvm {
   /// Construct an ArrayRef from a std::vector.
   template<typename T>
   ArrayRef<T> makeArrayRef(const std::vector<T> &Vec) {
+    return Vec;
+  }
+
+  /// Construct an ArrayRef from an ArrayRef (no-op) (const)
+  template <typename T> ArrayRef<T> makeArrayRef(const ArrayRef<T> &Vec) {
+    return Vec;
+  }
+
+  /// Construct an ArrayRef from an ArrayRef (no-op)
+  template <typename T> ArrayRef<T> &makeArrayRef(ArrayRef<T> &Vec) {
     return Vec;
   }
 

@@ -397,24 +397,21 @@ static void AddNodeIDOperands(FoldingSetNodeID &ID,
     ID.AddInteger(Op.getResNo());
   }
 }
+
 /// Add logical or fast math flag values to FoldingSetNodeID value.
 static void AddNodeIDFlags(FoldingSetNodeID &ID, unsigned Opcode,
                            const SDNodeFlags *Flags) {
-  if (!Flags || !isBinOpWithFlags(Opcode))
+  if (!isBinOpWithFlags(Opcode))
     return;
 
-  unsigned RawFlags = Flags->getRawFlags();
-  // If no flags are set, do not alter the ID. We must match the ID of nodes
-  // that were created without explicitly specifying flags. This also saves time
-  // and allows a gradual increase in API usage of the optional optimization
-  // flags.
-  if (RawFlags != 0)
-    ID.AddInteger(RawFlags);
+  unsigned RawFlags = 0;
+  if (Flags)
+    RawFlags = Flags->getRawFlags();
+  ID.AddInteger(RawFlags);
 }
 
 static void AddNodeIDFlags(FoldingSetNodeID &ID, const SDNode *N) {
-  if (auto *Node = dyn_cast<BinaryWithFlagsSDNode>(N))
-    AddNodeIDFlags(ID, Node->getOpcode(), &Node->Flags);
+  AddNodeIDFlags(ID, N->getOpcode(), N->getFlags());
 }
 
 static void AddNodeIDNode(FoldingSetNodeID &ID, unsigned short OpC,
@@ -766,6 +763,7 @@ static void VerifySDNode(SDNode *N) {
 void SelectionDAG::InsertNode(SDNode *N) {
   AllNodes.push_back(N);
 #ifndef NDEBUG
+  N->PersistentId = NextPersistentId++;
   VerifySDNode(N);
 #endif
 }
@@ -951,6 +949,9 @@ void SelectionDAG::allnodes_clear() {
   AllNodes.remove(AllNodes.begin());
   while (!AllNodes.empty())
     DeallocateNode(AllNodes.begin());
+#ifndef NDEBUG
+  NextPersistentId = 0;
+#endif
 }
 
 BinarySDNode *SelectionDAG::GetBinarySDNode(unsigned Opcode, SDLoc DL,
@@ -1855,6 +1856,57 @@ SDValue SelectionDAG::getShiftAmountOperand(EVT LHSTy, SDValue Op) {
   return getZExtOrTrunc(Op, SDLoc(Op), ShTy);
 }
 
+SDValue SelectionDAG::expandVAArg(SDNode *Node) {
+  SDLoc dl(Node);
+  const TargetLowering &TLI = getTargetLoweringInfo();
+  const Value *V = cast<SrcValueSDNode>(Node->getOperand(2))->getValue();
+  EVT VT = Node->getValueType(0);
+  SDValue Tmp1 = Node->getOperand(0);
+  SDValue Tmp2 = Node->getOperand(1);
+  unsigned Align = Node->getConstantOperandVal(3);
+
+  SDValue VAListLoad =
+    getLoad(TLI.getPointerTy(getDataLayout()), dl, Tmp1, Tmp2,
+            MachinePointerInfo(V), false, false, false, 0);
+  SDValue VAList = VAListLoad;
+
+  if (Align > TLI.getMinStackArgumentAlignment()) {
+    assert(((Align & (Align-1)) == 0) && "Expected Align to be a power of 2");
+
+    VAList = getNode(ISD::ADD, dl, VAList.getValueType(), VAList,
+                     getConstant(Align - 1, dl, VAList.getValueType()));
+
+    VAList = getNode(ISD::AND, dl, VAList.getValueType(), VAList,
+                     getConstant(-(int64_t)Align, dl, VAList.getValueType()));
+  }
+
+  // Increment the pointer, VAList, to the next vaarg
+  Tmp1 = getNode(ISD::ADD, dl, VAList.getValueType(), VAList,
+                 getConstant(getDataLayout().getTypeAllocSize(
+                                               VT.getTypeForEVT(*getContext())),
+                             dl, VAList.getValueType()));
+  // Store the incremented VAList to the legalized pointer
+  Tmp1 = getStore(VAListLoad.getValue(1), dl, Tmp1, Tmp2,
+                  MachinePointerInfo(V), false, false, 0);
+  // Load the actual argument out of the pointer VAList
+  return getLoad(VT, dl, Tmp1, VAList, MachinePointerInfo(),
+                 false, false, false, 0);
+}
+
+SDValue SelectionDAG::expandVACopy(SDNode *Node) {
+  SDLoc dl(Node);
+  const TargetLowering &TLI = getTargetLoweringInfo();
+  // This defaults to loading a pointer from the input and storing it to the
+  // output, returning the chain.
+  const Value *VD = cast<SrcValueSDNode>(Node->getOperand(3))->getValue();
+  const Value *VS = cast<SrcValueSDNode>(Node->getOperand(4))->getValue();
+  SDValue Tmp1 = getLoad(TLI.getPointerTy(getDataLayout()), dl,
+                         Node->getOperand(0), Node->getOperand(2),
+                         MachinePointerInfo(VS), false, false, false, 0);
+  return getStore(Tmp1.getValue(1), dl, Tmp1, Node->getOperand(1),
+                  MachinePointerInfo(VD), false, false, 0);
+}
+
 /// CreateStackTemporary - Create a stack temporary, suitable for holding the
 /// specified value type.
 SDValue SelectionDAG::CreateStackTemporary(EVT VT, unsigned minAlign) {
@@ -2562,6 +2614,11 @@ unsigned SelectionDAG::ComputeNumSignBits(SDValue Op, unsigned Depth) const{
     if (Tmp == 1) return 1;  // Early out.
     Tmp2 = ComputeNumSignBits(Op.getOperand(2), Depth+1);
     return std::min(Tmp, Tmp2);
+  case ISD::SELECT_CC:
+    Tmp = ComputeNumSignBits(Op.getOperand(2), Depth+1);
+    if (Tmp == 1) return 1;  // Early out.
+    Tmp2 = ComputeNumSignBits(Op.getOperand(3), Depth+1);
+    return std::min(Tmp, Tmp2);
   case ISD::SMIN:
   case ISD::SMAX:
   case ISD::UMIN:
@@ -3135,8 +3192,10 @@ SDValue SelectionDAG::getNode(unsigned Opcode, SDLoc DL,
   case ISD::FNEG:
     // -(X-Y) -> (Y-X) is unsafe because when X==Y, -0.0 != +0.0
     if (getTarget().Options.UnsafeFPMath && OpOpcode == ISD::FSUB)
+      // FIXME: FNEG has no fast-math-flags to propagate; use the FSUB's flags?
       return getNode(ISD::FSUB, DL, VT, Operand.getNode()->getOperand(1),
-                     Operand.getNode()->getOperand(0));
+                       Operand.getNode()->getOperand(0),
+                       &cast<BinaryWithFlagsSDNode>(Operand.getNode())->Flags);
     if (OpOpcode == ISD::FNEG)  // --X -> X
       return Operand.getNode()->getOperand(0);
     break;
@@ -3292,6 +3351,13 @@ SDValue SelectionDAG::getNode(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1,
                               SDValue N2, const SDNodeFlags *Flags) {
   ConstantSDNode *N1C = dyn_cast<ConstantSDNode>(N1);
   ConstantSDNode *N2C = dyn_cast<ConstantSDNode>(N2);
+
+  // Canonicalize constant to RHS if commutative.
+  if (N1C && !N2C && isCommutativeBinOp(Opcode)) {
+    std::swap(N1C, N2C);
+    std::swap(N1, N2);
+  }
+
   switch (Opcode) {
   default: break;
   case ISD::TokenFactor:
@@ -3635,12 +3701,6 @@ SDValue SelectionDAG::getNode(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1,
   if (SDValue SV =
           FoldConstantArithmetic(Opcode, DL, VT, N1.getNode(), N2.getNode()))
     return SV;
-
-  // Canonicalize constant to RHS if commutative.
-  if (N1C && !N2C && isCommutativeBinOp(Opcode)) {
-    std::swap(N1C, N2C);
-    std::swap(N1, N2);
-  }
 
   // Constant fold FP operations.
   bool HasFPExceptions = TLI->hasFloatingPointExceptions();
@@ -5337,12 +5397,12 @@ SDValue SelectionDAG::getNode(unsigned Opcode, SDLoc DL, EVT VT,
 }
 
 SDValue SelectionDAG::getNode(unsigned Opcode, SDLoc DL, EVT VT,
-                              ArrayRef<SDValue> Ops) {
+                              ArrayRef<SDValue> Ops, const SDNodeFlags *Flags) {
   unsigned NumOps = Ops.size();
   switch (NumOps) {
   case 0: return getNode(Opcode, DL, VT);
   case 1: return getNode(Opcode, DL, VT, Ops[0]);
-  case 2: return getNode(Opcode, DL, VT, Ops[0], Ops[1]);
+  case 2: return getNode(Opcode, DL, VT, Ops[0], Ops[1], Flags);
   case 3: return getNode(Opcode, DL, VT, Ops[0], Ops[1], Ops[2]);
   default: break;
   }
@@ -5676,7 +5736,7 @@ UpdateNodeOperands(SDNode *N, ArrayRef<SDValue> Ops) {
          "Update with wrong number of operands");
 
   // If no operands changed just return the input node.
-  if (Ops.empty() || std::equal(Ops.begin(), Ops.end(), N->op_begin()))
+  if (std::equal(Ops.begin(), Ops.end(), N->op_begin()))
     return N;
 
   // See if the modified node already exists.
@@ -6793,6 +6853,12 @@ uint64_t SDNode::getConstantOperandVal(unsigned Num) const {
   return cast<ConstantSDNode>(OperandList[Num])->getZExtValue();
 }
 
+const SDNodeFlags *SDNode::getFlags() const {
+  if (auto *FlagsNode = dyn_cast<BinaryWithFlagsSDNode>(this))
+    return &FlagsNode->Flags;
+  return nullptr;
+}
+
 SDValue SelectionDAG::UnrollVectorOp(SDNode *N, unsigned ResNE) {
   assert(N->getNumValues() == 1 &&
          "Can't unroll a vector with multiple results!");
@@ -6829,9 +6895,11 @@ SDValue SelectionDAG::UnrollVectorOp(SDNode *N, unsigned ResNE) {
     }
 
     switch (N->getOpcode()) {
-    default:
-      Scalars.push_back(getNode(N->getOpcode(), dl, EltVT, Operands));
+    default: {
+      Scalars.push_back(getNode(N->getOpcode(), dl, EltVT, Operands,
+                                N->getFlags()));
       break;
+    }
     case ISD::VSELECT:
       Scalars.push_back(getNode(ISD::SELECT, dl, EltVT, Operands));
       break;

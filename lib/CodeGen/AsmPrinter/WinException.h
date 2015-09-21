@@ -36,7 +36,7 @@ class LLVM_LIBRARY_VISIBILITY WinException : public EHStreamer {
   /// True if this is a 64-bit target and we should use image relative offsets.
   bool useImageRel32 = false;
 
-  void emitCSpecificHandlerTable();
+  void emitCSpecificHandlerTable(const MachineFunction *MF);
 
   /// Emit the EH table data for 32-bit and 64-bit functions using
   /// the __CxxFrameHandler3 personality.
@@ -47,8 +47,7 @@ class LLVM_LIBRARY_VISIBILITY WinException : public EHStreamer {
   /// tables.
   void emitExceptHandlerTable(const MachineFunction *MF);
 
-  void extendIP2StateTable(const MachineFunction *MF, const Function *ParentF,
-                           WinEHFuncInfo &FuncInfo);
+  void extendIP2StateTable(const MachineFunction *MF, WinEHFuncInfo &FuncInfo);
 
   /// Emits the label used with llvm.x86.seh.recoverfp, which is used by
   /// outlined funclets.

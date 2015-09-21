@@ -187,6 +187,7 @@ class TypePromotionTransaction;
                         unsigned CreatedInstCost);
     bool splitBranchCondition(Function &F);
     bool simplifyOffsetableRelocate(Instruction &I);
+    void stripInvariantGroupMetadata(Instruction &I);
   };
 }
 
@@ -1411,6 +1412,10 @@ bool CodeGenPrepare::OptimizeCallInst(CallInst *CI, bool& ModifiedDT) {
       InsertedInsts.insert(ExtVal);
       return true;
     }
+    case Intrinsic::invariant_group_barrier:
+      II->replaceAllUsesWith(II->getArgOperand(0));
+      II->eraseFromParent();
+      return true;
     }
 
     if (TLI) {
@@ -4421,6 +4426,7 @@ bool CodeGenPrepare::OptimizeInst(Instruction *I, bool& ModifiedDT) {
       return OptimizeCmpExpression(CI);
 
   if (LoadInst *LI = dyn_cast<LoadInst>(I)) {
+    stripInvariantGroupMetadata(*LI);
     if (TLI) {
       unsigned AS = LI->getPointerAddressSpace();
       return OptimizeMemoryInst(I, I->getOperand(0), LI->getType(), AS);
@@ -4429,6 +4435,7 @@ bool CodeGenPrepare::OptimizeInst(Instruction *I, bool& ModifiedDT) {
   }
 
   if (StoreInst *SI = dyn_cast<StoreInst>(I)) {
+    stripInvariantGroupMetadata(*SI);
     if (TLI) {
       unsigned AS = SI->getPointerAddressSpace();
       return OptimizeMemoryInst(I, SI->getOperand(1),
@@ -4667,6 +4674,10 @@ bool CodeGenPrepare::splitBranchCondition(Function &F) {
     if (!match(BB.getTerminator(), m_Br(m_OneUse(m_BinOp(LogicOp)), TBB, FBB)))
       continue;
 
+    auto *Br1 = cast<BranchInst>(BB.getTerminator());
+    if (Br1->getMetadata(LLVMContext::MD_unpredictable))
+      continue;
+
     unsigned Opc;
     Value *Cond1, *Cond2;
     if (match(LogicOp, m_And(m_OneUse(m_Value(Cond1)),
@@ -4693,7 +4704,6 @@ bool CodeGenPrepare::splitBranchCondition(Function &F) {
 
     // Update original basic block by using the first condition directly by the
     // branch instruction and removing the no longer needed and/or instruction.
-    auto *Br1 = cast<BranchInst>(BB.getTerminator());
     Br1->setCondition(Cond1);
     LogicOp->eraseFromParent();
 
@@ -4823,4 +4833,9 @@ bool CodeGenPrepare::splitBranchCondition(Function &F) {
           TmpBB->dump());
   }
   return MadeChange;
+}
+
+void CodeGenPrepare::stripInvariantGroupMetadata(Instruction &I) {
+  if (auto *InvariantMD = I.getMetadata(LLVMContext::MD_invariant_group))
+    I.dropUnknownNonDebugMetadata(InvariantMD->getMetadataID());
 }

@@ -1640,7 +1640,7 @@ bool ARMBaseInstrInfo::isSchedulingBoundary(const MachineInstr *MI,
 bool ARMBaseInstrInfo::
 isProfitableToIfCvt(MachineBasicBlock &MBB,
                     unsigned NumCycles, unsigned ExtraPredCycles,
-                    const BranchProbability &Probability) const {
+                    BranchProbability Probability) const {
   if (!NumCycles)
     return false;
 
@@ -1670,12 +1670,14 @@ isProfitableToIfCvt(MachineBasicBlock &MBB,
   }
 
   // Attempt to estimate the relative costs of predication versus branching.
-  unsigned UnpredCost = Probability.getNumerator() * NumCycles;
-  UnpredCost /= Probability.getDenominator();
-  UnpredCost += 1; // The branch itself
-  UnpredCost += Subtarget.getMispredictionPenalty() / 10;
+  // Here we scale up each component of UnpredCost to avoid precision issue when
+  // scaling NumCycles by Probability.
+  const unsigned ScalingUpFactor = 1024;
+  unsigned UnpredCost = Probability.scale(NumCycles * ScalingUpFactor);
+  UnpredCost += ScalingUpFactor; // The branch itself
+  UnpredCost += Subtarget.getMispredictionPenalty() * ScalingUpFactor / 10;
 
-  return (NumCycles + ExtraPredCycles) <= UnpredCost;
+  return (NumCycles + ExtraPredCycles) * ScalingUpFactor <= UnpredCost;
 }
 
 bool ARMBaseInstrInfo::
@@ -1683,23 +1685,22 @@ isProfitableToIfCvt(MachineBasicBlock &TMBB,
                     unsigned TCycles, unsigned TExtra,
                     MachineBasicBlock &FMBB,
                     unsigned FCycles, unsigned FExtra,
-                    const BranchProbability &Probability) const {
+                    BranchProbability Probability) const {
   if (!TCycles || !FCycles)
     return false;
 
   // Attempt to estimate the relative costs of predication versus branching.
-  unsigned TUnpredCost = Probability.getNumerator() * TCycles;
-  TUnpredCost /= Probability.getDenominator();
-
-  uint32_t Comp = Probability.getDenominator() - Probability.getNumerator();
-  unsigned FUnpredCost = Comp * FCycles;
-  FUnpredCost /= Probability.getDenominator();
-
+  // Here we scale up each component of UnpredCost to avoid precision issue when
+  // scaling TCycles/FCycles by Probability.
+  const unsigned ScalingUpFactor = 1024;
+  unsigned TUnpredCost = Probability.scale(TCycles * ScalingUpFactor);
+  unsigned FUnpredCost =
+      Probability.getCompl().scale(FCycles * ScalingUpFactor);
   unsigned UnpredCost = TUnpredCost + FUnpredCost;
-  UnpredCost += 1; // The branch itself
-  UnpredCost += Subtarget.getMispredictionPenalty() / 10;
+  UnpredCost += 1 * ScalingUpFactor; // The branch itself
+  UnpredCost += Subtarget.getMispredictionPenalty() * ScalingUpFactor / 10;
 
-  return (TCycles + FCycles + TExtra + FExtra) <= UnpredCost;
+  return (TCycles + FCycles + TExtra + FExtra) * ScalingUpFactor <= UnpredCost;
 }
 
 bool

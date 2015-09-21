@@ -1275,8 +1275,7 @@ bool ARMFastISel::SelectBranch(const Instruction *I) {
       unsigned BrOpc = isThumb2 ? ARM::t2Bcc : ARM::Bcc;
       BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(BrOpc))
       .addMBB(TBB).addImm(ARMPred).addReg(ARM::CPSR);
-      fastEmitBranch(FBB, DbgLoc);
-      FuncInfo.MBB->addSuccessor(TBB);
+      finishCondBranch(BI->getParent(), TBB, FBB);
       return true;
     }
   } else if (TruncInst *TI = dyn_cast<TruncInst>(BI->getCondition())) {
@@ -1300,8 +1299,7 @@ bool ARMFastISel::SelectBranch(const Instruction *I) {
       BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(BrOpc))
       .addMBB(TBB).addImm(CCMode).addReg(ARM::CPSR);
 
-      fastEmitBranch(FBB, DbgLoc);
-      FuncInfo.MBB->addSuccessor(TBB);
+      finishCondBranch(BI->getParent(), TBB, FBB);
       return true;
     }
   } else if (const ConstantInt *CI =
@@ -1338,8 +1336,7 @@ bool ARMFastISel::SelectBranch(const Instruction *I) {
   unsigned BrOpc = isThumb2 ? ARM::t2Bcc : ARM::Bcc;
   BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(BrOpc))
                   .addMBB(TBB).addImm(CCMode).addReg(ARM::CPSR);
-  fastEmitBranch(FBB, DbgLoc);
-  FuncInfo.MBB->addSuccessor(TBB);
+  finishCondBranch(BI->getParent(), TBB, FBB);
   return true;
 }
 
@@ -1857,8 +1854,9 @@ CCAssignFn *ARMFastISel::CCAssignFnForCall(CallingConv::ID CC,
         return (Return ? RetCC_ARM_AAPCS_VFP: CC_ARM_AAPCS_VFP);
       else
         return (Return ? RetCC_ARM_AAPCS: CC_ARM_AAPCS);
-    } else
-        return (Return ? RetCC_ARM_APCS: CC_ARM_APCS);
+    } else {
+      return (Return ? RetCC_ARM_APCS: CC_ARM_APCS);
+    }
   case CallingConv::ARM_AAPCS_VFP:
     if (!isVarArg)
       return (Return ? RetCC_ARM_AAPCS_VFP: CC_ARM_AAPCS_VFP);

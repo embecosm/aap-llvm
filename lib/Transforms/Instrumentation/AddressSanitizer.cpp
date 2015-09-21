@@ -63,6 +63,16 @@ using namespace llvm;
 
 #define DEBUG_TYPE "asan"
 
+// VMA size definition for architecture that support multiple sizes.
+// AArch64 has 3 VMA sizes: 39, 42 and 48.
+#ifndef SANITIZER_AARCH64_VMA
+# define SANITIZER_AARCH64_VMA 39
+#else
+# if SANITIZER_AARCH64_VMA != 39 && SANITIZER_AARCH64_VMA != 42
+#  error "invalid SANITIZER_AARCH64_VMA size"
+# endif
+#endif
+
 static const uint64_t kDefaultShadowScale = 3;
 static const uint64_t kDefaultShadowOffset32 = 1ULL << 29;
 static const uint64_t kIOSShadowOffset32 = 1ULL << 30;
@@ -72,7 +82,11 @@ static const uint64_t kLinuxKasan_ShadowOffset64 = 0xdffffc0000000000;
 static const uint64_t kPPC64_ShadowOffset64 = 1ULL << 41;
 static const uint64_t kMIPS32_ShadowOffset32 = 0x0aaa0000;
 static const uint64_t kMIPS64_ShadowOffset64 = 1ULL << 37;
+#if SANITIZER_AARCH64_VMA == 39
 static const uint64_t kAArch64_ShadowOffset64 = 1ULL << 36;
+#elif SANITIZER_AARCH64_VMA == 42
+static const uint64_t kAArch64_ShadowOffset64 = 1ULL << 39;
+#endif
 static const uint64_t kFreeBSD_ShadowOffset32 = 1ULL << 30;
 static const uint64_t kFreeBSD_ShadowOffset64 = 1ULL << 46;
 static const uint64_t kWindowsShadowOffset32 = 3ULL << 28;
@@ -1172,6 +1186,14 @@ bool AddressSanitizerModule::ShouldInstrumentGlobal(GlobalVariable *G) {
     if (Section == "llvm.metadata") return false;
     // Do not instrument globals from special LLVM sections.
     if (Section.find("__llvm") != StringRef::npos) return false;
+
+    // Do not instrument function pointers to initialization and termination
+    // routines: dynamic linker will not properly handle redzones.
+    if (Section.startswith(".preinit_array") ||
+        Section.startswith(".init_array") ||
+        Section.startswith(".fini_array")) {
+      return false;
+    }
 
     // Callbacks put into the CRT initializer/terminator sections
     // should not be instrumented.

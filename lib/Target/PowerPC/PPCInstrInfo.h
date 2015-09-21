@@ -215,7 +215,7 @@ public:
   // profitable to use the predicated branches.
   bool isProfitableToIfCvt(MachineBasicBlock &MBB,
                           unsigned NumCycles, unsigned ExtraPredCycles,
-                          const BranchProbability &Probability) const override {
+                          BranchProbability Probability) const override {
     return true;
   }
 
@@ -223,12 +223,10 @@ public:
                            unsigned NumT, unsigned ExtraT,
                            MachineBasicBlock &FMBB,
                            unsigned NumF, unsigned ExtraF,
-                           const BranchProbability &Probability) const override;
+                           BranchProbability Probability) const override;
 
-  bool isProfitableToDupForIfCvt(MachineBasicBlock &MBB,
-                                 unsigned NumCycles,
-                                 const BranchProbability
-                                 &Probability) const override {
+  bool isProfitableToDupForIfCvt(MachineBasicBlock &MBB, unsigned NumCycles,
+                                 BranchProbability Probability) const override {
     return true;
   }
 
@@ -271,6 +269,15 @@ public:
   unsigned GetInstSizeInBytes(const MachineInstr *MI) const;
 
   void getNoopForMachoTarget(MCInst &NopInst) const override;
+
+  std::pair<unsigned, unsigned>
+  decomposeMachineOperandsTargetFlags(unsigned TF) const override;
+
+  ArrayRef<std::pair<unsigned, const char *>>
+  getSerializableDirectMachineOperandTargetFlags() const override;
+
+  ArrayRef<std::pair<unsigned, const char *>>
+  getSerializableBitmaskMachineOperandTargetFlags() const override;
 };
 
 }

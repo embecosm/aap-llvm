@@ -263,7 +263,7 @@ Compiled to LLVM, this function would be represented like this:
   !1 = !DIFile(filename: "/dev/stdin", directory: "/Users/dexonsmith/data/llvm/debug-info")
   !2 = !{}
   !3 = !{!4}
-  !4 = !DISubprogram(name: "foo", scope: !1, file: !1, line: 1, type: !5, isLocal: false, isDefinition: true, scopeLine: 1, isOptimized: false, function: void ()* @foo, variables: !2)
+  !4 = distinct !DISubprogram(name: "foo", scope: !1, file: !1, line: 1, type: !5, isLocal: false, isDefinition: true, scopeLine: 1, isOptimized: false, function: void ()* @foo, variables: !2)
   !5 = !DISubroutineType(types: !6)
   !6 = !{null}
   !7 = !{i32 2, !"Dwarf Version", i32 2}
@@ -708,7 +708,7 @@ qualified name.  Debugger users tend not to enter their search strings as
 "``a::b::c``".  So the name entered in the name table must be demangled in
 order to chop it up appropriately and additional names must be manually entered
 into the table to make it effective as a name lookup table for debuggers to
-se.
+use.
 
 All debuggers currently ignore the "``.debug_pubnames``" table as a result of
 its inconsistent and useless public-only name content making it a waste of

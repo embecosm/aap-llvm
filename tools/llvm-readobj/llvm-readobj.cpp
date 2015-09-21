@@ -24,6 +24,7 @@
 #include "ObjDumper.h"
 #include "StreamWriter.h"
 #include "llvm/Object/Archive.h"
+#include "llvm/Object/COFFImportFile.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/MachOUniversal.h"
 #include "llvm/Object/ObjectFile.h"
@@ -181,6 +182,36 @@ namespace opts {
   COFFBaseRelocs("coff-basereloc",
                  cl::desc("Display the PE/COFF .reloc section"));
 
+  // -macho-data-in-code
+  cl::opt<bool>
+  MachODataInCode("macho-data-in-code",
+                  cl::desc("Display MachO Data in Code command"));
+
+  // -macho-indirect-symbols
+  cl::opt<bool>
+  MachOIndirectSymbols("macho-indirect-symbols",
+                  cl::desc("Display MachO indirect symbols"));
+
+  // -macho-linker-options
+  cl::opt<bool>
+  MachOLinkerOptions("macho-linker-options",
+                  cl::desc("Display MachO linker options"));
+
+  // -macho-segment
+  cl::opt<bool>
+  MachOSegment("macho-segment",
+                  cl::desc("Display MachO Segment command"));
+
+  // -macho-version-min
+  cl::opt<bool>
+  MachOVersionMin("macho-version-min",
+                  cl::desc("Display MachO version min command"));
+
+  // -macho-dysymtab
+  cl::opt<bool>
+  MachODysymtab("macho-dysymtab",
+                  cl::desc("Display MachO Dysymtab command"));
+
   // -stackmap
   cl::opt<bool>
   PrintStackMap("stackmap",
@@ -312,6 +343,20 @@ static void dumpObject(const ObjectFile *Obj) {
     if (opts::COFFBaseRelocs)
       Dumper->printCOFFBaseReloc();
   }
+  if (Obj->isMachO()) {
+    if (opts::MachODataInCode)
+      Dumper->printMachODataInCode();
+    if (opts::MachOIndirectSymbols)
+      Dumper->printMachOIndirectSymbols();
+    if (opts::MachOLinkerOptions)
+      Dumper->printMachOLinkerOptions();
+    if (opts::MachOSegment)
+      Dumper->printMachOSegment();
+    if (opts::MachOVersionMin)
+      Dumper->printMachOVersionMin();
+    if (opts::MachODysymtab)
+      Dumper->printMachODysymtab();
+  }
   if (opts::PrintStackMap)
     Dumper->printStackMap();
 }
@@ -349,11 +394,6 @@ static void dumpMachOUniversalBinary(const MachOUniversalBinary *UBinary) {
 
 /// @brief Opens \a File and dumps it.
 static void dumpInput(StringRef File) {
-  // If file isn't stdin, check that it exists.
-  if (File != "-" && !sys::fs::exists(File)) {
-    reportError(File, readobj_error::file_not_found);
-    return;
-  }
 
   // Attempt to open the binary.
   ErrorOr<OwningBinary<Binary>> BinaryOrErr = createBinary(File);
@@ -370,6 +410,8 @@ static void dumpInput(StringRef File) {
     dumpMachOUniversalBinary(UBinary);
   else if (ObjectFile *Obj = dyn_cast<ObjectFile>(&Binary))
     dumpObject(Obj);
+  else if (COFFImportFile *Import = dyn_cast<COFFImportFile>(&Binary))
+    dumpCOFFImportFile(Import);
   else
     reportError(File, readobj_error::unrecognized_file_format);
 }

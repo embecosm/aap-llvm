@@ -215,6 +215,10 @@ public:
            (isReg() && isRegClass(AMDGPU::SReg_64RegClassID));
   }
 
+  bool isSCSrc64() const {
+    return (isReg() && isRegClass(AMDGPU::SReg_64RegClassID)) || isInlineImm();
+  }
+
   bool isVCSrc32() const {
     return isInlineImm() || (isReg() && isRegClass(AMDGPU::VS_32RegClassID));
   }
@@ -460,7 +464,7 @@ static unsigned getRegClass(bool IsVgpr, unsigned RegWidth) {
   }
 }
 
-static unsigned getRegForName(const StringRef &RegName) {
+static unsigned getRegForName(StringRef RegName) {
 
   return StringSwitch<unsigned>(RegName)
     .Case("exec", AMDGPU::EXEC)
@@ -481,7 +485,7 @@ bool AMDGPUAsmParser::ParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &End
   const AsmToken Tok = Parser.getTok();
   StartLoc = Tok.getLoc();
   EndLoc = Tok.getEndLoc();
-  const StringRef &RegName = Tok.getString();
+  StringRef RegName = Tok.getString();
   RegNo = getRegForName(RegName);
 
   if (RegNo) {

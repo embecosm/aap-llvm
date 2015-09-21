@@ -122,6 +122,8 @@ public:
   bool parseRegisterOperand(MachineOperand &Dest,
                             Optional<unsigned> &TiedDefIdx, bool IsDef = false);
   bool parseImmediateOperand(MachineOperand &Dest);
+  bool parseIRConstant(StringRef::iterator Loc, StringRef Source,
+                       const Constant *&C);
   bool parseIRConstant(StringRef::iterator Loc, const Constant *&C);
   bool parseTypedImmediateOperand(MachineOperand &Dest);
   bool parseFPImmediateOperand(MachineOperand &Dest);
@@ -366,7 +368,7 @@ bool MIParser::parseBasicBlockDefinition(
     MBB->setAlignment(Alignment);
   if (HasAddressTaken)
     MBB->setHasAddressTaken();
-  MBB->setIsLandingPad(IsLandingPad);
+  MBB->setIsEHPad(IsLandingPad);
   return false;
 }
 
@@ -722,6 +724,16 @@ static std::string getRegisterName(const TargetRegisterInfo *TRI,
   return StringRef(TRI->getName(Reg)).lower();
 }
 
+/// Return true if the parsed machine operands contain a given machine operand.
+static bool isImplicitOperandIn(const MachineOperand &ImplicitOperand,
+                                ArrayRef<ParsedMachineOperand> Operands) {
+  for (const auto &I : Operands) {
+    if (ImplicitOperand.isIdenticalTo(I.Operand))
+      return true;
+  }
+  return false;
+}
+
 bool MIParser::verifyImplicitOperands(ArrayRef<ParsedMachineOperand> Operands,
                                       const MCInstrDesc &MCID) {
   if (MCID.isCall())
@@ -742,46 +754,13 @@ bool MIParser::verifyImplicitOperands(ArrayRef<ParsedMachineOperand> Operands,
 
   const auto *TRI = MF.getSubtarget().getRegisterInfo();
   assert(TRI && "Expected target register info");
-  size_t I = ImplicitOperands.size(), J = Operands.size();
-  while (I) {
-    --I;
-    if (J) {
-      --J;
-      const auto &ImplicitOperand = ImplicitOperands[I];
-      const auto &Operand = Operands[J].Operand;
-      if (ImplicitOperand.isIdenticalTo(Operand))
-        continue;
-      if (Operand.isReg() && Operand.isImplicit()) {
-        // Check if this implicit register is a subregister of an explicit
-        // register operand.
-        bool IsImplicitSubRegister = false;
-        for (size_t K = 0, E = Operands.size(); K < E; ++K) {
-          const auto &Op = Operands[K].Operand;
-          if (Op.isReg() && !Op.isImplicit() &&
-              TRI->isSubRegister(Op.getReg(), Operand.getReg())) {
-            IsImplicitSubRegister = true;
-            break;
-          }
-        }
-        if (IsImplicitSubRegister)
-          continue;
-        return error(Operands[J].Begin,
-                     Twine("expected an implicit register operand '") +
-                         printImplicitRegisterFlag(ImplicitOperand) + " %" +
-                         getRegisterName(TRI, ImplicitOperand.getReg()) + "'");
-      }
-    }
-    // TODO: Fix source location when Operands[J].end is right before '=', i.e:
-    // insead of reporting an error at this location:
-    //            %eax = MOV32r0
-    //                 ^
-    // report the error at the following location:
-    //            %eax = MOV32r0
-    //                          ^
-    return error(J < Operands.size() ? Operands[J].End : Token.location(),
+  for (const auto &I : ImplicitOperands) {
+    if (isImplicitOperandIn(I, Operands))
+      continue;
+    return error(Operands.empty() ? Token.location() : Operands.back().End,
                  Twine("missing implicit register operand '") +
-                     printImplicitRegisterFlag(ImplicitOperands[I]) + " %" +
-                     getRegisterName(TRI, ImplicitOperands[I].getReg()) + "'");
+                     printImplicitRegisterFlag(I) + " %" +
+                     getRegisterName(TRI, I.getReg()) + "'");
   }
   return false;
 }
@@ -976,13 +955,21 @@ bool MIParser::parseImmediateOperand(MachineOperand &Dest) {
   return false;
 }
 
-bool MIParser::parseIRConstant(StringRef::iterator Loc, const Constant *&C) {
-  auto Source = StringRef(Loc, Token.range().end() - Loc).str();
-  lex();
+bool MIParser::parseIRConstant(StringRef::iterator Loc, StringRef StringValue,
+                               const Constant *&C) {
+  auto Source = StringValue.str(); // The source has to be null terminated.
   SMDiagnostic Err;
-  C = parseConstantValue(Source.c_str(), Err, *MF.getFunction()->getParent());
+  C = parseConstantValue(Source.c_str(), Err, *MF.getFunction()->getParent(),
+                         &IRSlots);
   if (!C)
     return error(Loc + Err.getColumnNo(), Err.getMessage());
+  return false;
+}
+
+bool MIParser::parseIRConstant(StringRef::iterator Loc, const Constant *&C) {
+  if (parseIRConstant(Loc, StringRef(Loc, Token.range().end() - Loc), C))
+    return true;
+  lex();
   return false;
 }
 
@@ -1442,7 +1429,7 @@ bool MIParser::parseMachineOperand(MachineOperand &Dest,
     }
   // fallthrough
   default:
-    // TODO: parse the other machine operands.
+    // FIXME: Parse the MCSymbol machine operand.
     return error("expected a machine operand");
   }
   return false;
@@ -1546,6 +1533,13 @@ bool MIParser::parseIRValue(const Value *&V) {
     if (parseGlobalValue(GV))
       return true;
     V = GV;
+    break;
+  }
+  case MIToken::QuotedIRValue: {
+    const Constant *C = nullptr;
+    if (parseIRConstant(Token.location(), Token.stringValue(), C))
+      return true;
+    V = C;
     break;
   }
   default:
@@ -1653,7 +1647,8 @@ bool MIParser::parseMachinePointerInfo(MachinePointerInfo &Dest) {
   }
   if (Token.isNot(MIToken::NamedIRValue) && Token.isNot(MIToken::IRValue) &&
       Token.isNot(MIToken::GlobalValue) &&
-      Token.isNot(MIToken::NamedGlobalValue))
+      Token.isNot(MIToken::NamedGlobalValue) &&
+      Token.isNot(MIToken::QuotedIRValue))
     return error("expected an IR value reference");
   const Value *V = nullptr;
   if (parseIRValue(V))

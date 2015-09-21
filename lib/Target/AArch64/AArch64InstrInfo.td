@@ -24,6 +24,7 @@ def HasCrypto        : Predicate<"Subtarget->hasCrypto()">,
                                  AssemblerPredicate<"FeatureCrypto", "crypto">;
 def HasCRC           : Predicate<"Subtarget->hasCRC()">,
                                  AssemblerPredicate<"FeatureCRC", "crc">;
+def HasPerfMon       : Predicate<"Subtarget->hasPerfMon()">;
 def IsLE             : Predicate<"Subtarget->isLittleEndian()">;
 def IsBE             : Predicate<"!Subtarget->isLittleEndian()">;
 def IsCyclone        : Predicate<"Subtarget->isCyclone()">;
@@ -403,6 +404,10 @@ def MSRpstate: MSRpstateI;
 // The thread pointer (on Linux, at least, where this has been implemented) is
 // TPIDR_EL0.
 def : Pat<(AArch64threadpointer), (MRS 0xde82)>;
+
+// The cycle counter PMC register is PMCCNTR_EL0.
+let Predicates = [HasPerfMon] in
+def : Pat<(readcyclecounter), (MRS 0xdce8)>;
 
 // Generic system instructions
 def SYSxt  : SystemXtI<0, "sys">;
@@ -2847,9 +2852,9 @@ defm SABD     : SIMDThreeSameVectorBHS<0,0b01110,"sabd", sabsdiff>;
 defm SHADD    : SIMDThreeSameVectorBHS<0,0b00000,"shadd", int_aarch64_neon_shadd>;
 defm SHSUB    : SIMDThreeSameVectorBHS<0,0b00100,"shsub", int_aarch64_neon_shsub>;
 defm SMAXP    : SIMDThreeSameVectorBHS<0,0b10100,"smaxp", int_aarch64_neon_smaxp>;
-defm SMAX     : SIMDThreeSameVectorBHS<0,0b01100,"smax", int_aarch64_neon_smax>;
+defm SMAX     : SIMDThreeSameVectorBHS<0,0b01100,"smax", smax>;
 defm SMINP    : SIMDThreeSameVectorBHS<0,0b10101,"sminp", int_aarch64_neon_sminp>;
-defm SMIN     : SIMDThreeSameVectorBHS<0,0b01101,"smin", int_aarch64_neon_smin>;
+defm SMIN     : SIMDThreeSameVectorBHS<0,0b01101,"smin", smin>;
 defm SQADD    : SIMDThreeSameVector<0,0b00001,"sqadd", int_aarch64_neon_sqadd>;
 defm SQDMULH  : SIMDThreeSameVectorHS<0,0b10110,"sqdmulh",int_aarch64_neon_sqdmulh>;
 defm SQRDMULH : SIMDThreeSameVectorHS<1,0b10110,"sqrdmulh",int_aarch64_neon_sqrdmulh>;
@@ -2866,9 +2871,9 @@ defm UABD     : SIMDThreeSameVectorBHS<1,0b01110,"uabd", uabsdiff>;
 defm UHADD    : SIMDThreeSameVectorBHS<1,0b00000,"uhadd", int_aarch64_neon_uhadd>;
 defm UHSUB    : SIMDThreeSameVectorBHS<1,0b00100,"uhsub", int_aarch64_neon_uhsub>;
 defm UMAXP    : SIMDThreeSameVectorBHS<1,0b10100,"umaxp", int_aarch64_neon_umaxp>;
-defm UMAX     : SIMDThreeSameVectorBHS<1,0b01100,"umax", int_aarch64_neon_umax>;
+defm UMAX     : SIMDThreeSameVectorBHS<1,0b01100,"umax", umax>;
 defm UMINP    : SIMDThreeSameVectorBHS<1,0b10101,"uminp", int_aarch64_neon_uminp>;
-defm UMIN     : SIMDThreeSameVectorBHS<1,0b01101,"umin", int_aarch64_neon_umin>;
+defm UMIN     : SIMDThreeSameVectorBHS<1,0b01101,"umin", umin>;
 defm UQADD    : SIMDThreeSameVector<1,0b00001,"uqadd", int_aarch64_neon_uqadd>;
 defm UQRSHL   : SIMDThreeSameVector<1,0b01011,"uqrshl", int_aarch64_neon_uqrshl>;
 defm UQSHL    : SIMDThreeSameVector<1,0b01001,"uqshl", int_aarch64_neon_uqshl>;
@@ -2893,54 +2898,6 @@ defm ORN : SIMDLogicalThreeVector<0, 0b11, "orn",
                                   BinOpFrag<(or node:$LHS, (vnot node:$RHS))> >;
 defm ORR : SIMDLogicalThreeVector<0, 0b10, "orr", or>;
 
-def : Pat<(v8i8 (smin V64:$Rn, V64:$Rm)),
-          (SMINv8i8 V64:$Rn, V64:$Rm)>;
-def : Pat<(v4i16 (smin V64:$Rn, V64:$Rm)),
-          (SMINv4i16 V64:$Rn, V64:$Rm)>;
-def : Pat<(v2i32 (smin V64:$Rn, V64:$Rm)),
-          (SMINv2i32 V64:$Rn, V64:$Rm)>;
-def : Pat<(v16i8 (smin V128:$Rn, V128:$Rm)),
-          (SMINv16i8 V128:$Rn, V128:$Rm)>;
-def : Pat<(v8i16 (smin V128:$Rn, V128:$Rm)),
-          (SMINv8i16 V128:$Rn, V128:$Rm)>;
-def : Pat<(v4i32 (smin V128:$Rn, V128:$Rm)),
-          (SMINv4i32 V128:$Rn, V128:$Rm)>;
-def : Pat<(v8i8 (smax V64:$Rn, V64:$Rm)),
-          (SMAXv8i8 V64:$Rn, V64:$Rm)>;
-def : Pat<(v4i16 (smax V64:$Rn, V64:$Rm)),
-          (SMAXv4i16 V64:$Rn, V64:$Rm)>;
-def : Pat<(v2i32 (smax V64:$Rn, V64:$Rm)),
-          (SMAXv2i32 V64:$Rn, V64:$Rm)>;
-def : Pat<(v16i8 (smax V128:$Rn, V128:$Rm)),
-          (SMAXv16i8 V128:$Rn, V128:$Rm)>;
-def : Pat<(v8i16 (smax V128:$Rn, V128:$Rm)),
-          (SMAXv8i16 V128:$Rn, V128:$Rm)>;
-def : Pat<(v4i32 (smax V128:$Rn, V128:$Rm)),
-          (SMAXv4i32 V128:$Rn, V128:$Rm)>;
-def : Pat<(v8i8 (umin V64:$Rn, V64:$Rm)),
-          (UMINv8i8 V64:$Rn, V64:$Rm)>;
-def : Pat<(v4i16 (umin V64:$Rn, V64:$Rm)),
-          (UMINv4i16 V64:$Rn, V64:$Rm)>;
-def : Pat<(v2i32 (umin V64:$Rn, V64:$Rm)),
-          (UMINv2i32 V64:$Rn, V64:$Rm)>;
-def : Pat<(v16i8 (umin V128:$Rn, V128:$Rm)),
-          (UMINv16i8 V128:$Rn, V128:$Rm)>;
-def : Pat<(v8i16 (umin V128:$Rn, V128:$Rm)),
-          (UMINv8i16 V128:$Rn, V128:$Rm)>;
-def : Pat<(v4i32 (umin V128:$Rn, V128:$Rm)),
-          (UMINv4i32 V128:$Rn, V128:$Rm)>;
-def : Pat<(v8i8 (umax V64:$Rn, V64:$Rm)),
-          (UMAXv8i8 V64:$Rn, V64:$Rm)>;
-def : Pat<(v4i16 (umax V64:$Rn, V64:$Rm)),
-          (UMAXv4i16 V64:$Rn, V64:$Rm)>;
-def : Pat<(v2i32 (umax V64:$Rn, V64:$Rm)),
-          (UMAXv2i32 V64:$Rn, V64:$Rm)>;
-def : Pat<(v16i8 (umax V128:$Rn, V128:$Rm)),
-          (UMAXv16i8 V128:$Rn, V128:$Rm)>;
-def : Pat<(v8i16 (umax V128:$Rn, V128:$Rm)),
-          (UMAXv8i16 V128:$Rn, V128:$Rm)>;
-def : Pat<(v4i32 (umax V128:$Rn, V128:$Rm)),
-          (UMAXv4i32 V128:$Rn, V128:$Rm)>;
 
 def : Pat<(AArch64bsl (v8i8 V64:$Rd), V64:$Rn, V64:$Rm),
           (BSLv8i8 V64:$Rd, V64:$Rn, V64:$Rm)>;
@@ -5867,6 +5824,45 @@ def : Pat<(i64 (int_aarch64_neon_srshl (i64 FPR64:$Rn), (i64 FPR64:$Rm))),
           (SRSHLv1i64 FPR64:$Rn, FPR64:$Rm)>;
 def : Pat<(i64 (int_aarch64_neon_urshl (i64 FPR64:$Rn), (i64 FPR64:$Rm))),
           (URSHLv1i64 FPR64:$Rn, FPR64:$Rm)>;
+
+// Patterns for nontemporal/no-allocate stores.
+// We have to resort to tricks to turn a single-input store into a store pair,
+// because there is no single-input nontemporal store, only STNP.
+let Predicates = [IsLE] in {
+let AddedComplexity = 15 in {
+class NTStore128Pat<ValueType VT> :
+  Pat<(nontemporalstore (VT FPR128:$Rt),
+        (am_indexed7s64 GPR64sp:$Rn, simm7s8:$offset)),
+      (STNPDi (EXTRACT_SUBREG FPR128:$Rt, dsub),
+              (CPYi64 FPR128:$Rt, (i64 1)),
+              GPR64sp:$Rn, simm7s8:$offset)>;
+
+def : NTStore128Pat<v2i64>;
+def : NTStore128Pat<v4i32>;
+def : NTStore128Pat<v8i16>;
+def : NTStore128Pat<v16i8>;
+
+class NTStore64Pat<ValueType VT> :
+  Pat<(nontemporalstore (VT FPR64:$Rt),
+        (am_indexed7s32 GPR64sp:$Rn, simm7s4:$offset)),
+      (STNPSi (EXTRACT_SUBREG FPR64:$Rt, ssub),
+              (CPYi32 (SUBREG_TO_REG (i64 0), FPR64:$Rt, dsub), (i64 1)),
+              GPR64sp:$Rn, simm7s4:$offset)>;
+
+// FIXME: Shouldn't v1f64 loads/stores be promoted to v1i64?
+def : NTStore64Pat<v1f64>;
+def : NTStore64Pat<v1i64>;
+def : NTStore64Pat<v2i32>;
+def : NTStore64Pat<v4i16>;
+def : NTStore64Pat<v8i8>;
+
+def : Pat<(nontemporalstore GPR64:$Rt,
+            (am_indexed7s32 GPR64sp:$Rn, simm7s4:$offset)),
+          (STNPWi (EXTRACT_SUBREG GPR64:$Rt, sub_32),
+                  (EXTRACT_SUBREG (UBFMXri GPR64:$Rt, 0, 31), sub_32),
+                  GPR64sp:$Rn, simm7s4:$offset)>;
+} // AddedComplexity=10
+} // Predicates = [IsLE]
 
 // Tail call return handling. These are all compiler pseudo-instructions,
 // so no encoding information or anything like that.

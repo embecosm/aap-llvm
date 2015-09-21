@@ -438,7 +438,7 @@ struct LoopInterchange : public FunctionPass {
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<ScalarEvolutionWrapperPass>();
-    AU.addRequired<AliasAnalysis>();
+    AU.addRequired<AAResultsWrapperPass>();
     AU.addRequired<DominatorTreeWrapperPass>();
     AU.addRequired<LoopInfoWrapperPass>();
     AU.addRequired<DependenceAnalysis>();
@@ -698,9 +698,9 @@ bool LoopInterchangeLegality::findInductionAndReductions(
     return false;
   for (BasicBlock::iterator I = L->getHeader()->begin(); isa<PHINode>(I); ++I) {
     RecurrenceDescriptor RD;
+    InductionDescriptor ID;
     PHINode *PHI = cast<PHINode>(I);
-    ConstantInt *StepValue = nullptr;
-    if (isInductionPHI(PHI, SE, StepValue))
+    if (InductionDescriptor::isInductionPHI(PHI, SE, ID))
       Inductions.push_back(PHI);
     else if (RecurrenceDescriptor::isReductionPHI(PHI, L, RD))
       Reductions.push_back(PHI);
@@ -1286,7 +1286,7 @@ bool LoopInterchangeTransform::adjustLoopLinks() {
 char LoopInterchange::ID = 0;
 INITIALIZE_PASS_BEGIN(LoopInterchange, "loop-interchange",
                       "Interchanges loops for cache reuse", false, false)
-INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
+INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(DependenceAnalysis)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)

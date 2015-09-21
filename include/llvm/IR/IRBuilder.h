@@ -24,6 +24,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/ValueHandle.h"
@@ -577,12 +578,15 @@ public:
   //===--------------------------------------------------------------------===//
 
 private:
-  /// \brief Helper to add branch weight metadata onto an instruction.
+  /// \brief Helper to add branch weight and unpredictable metadata onto an
+  /// instruction.
   /// \returns The annotated instruction.
   template <typename InstTy>
-  InstTy *addBranchWeights(InstTy *I, MDNode *Weights) {
+  InstTy *addBranchMetadata(InstTy *I, MDNode *Weights, MDNode *Unpredictable) {
     if (Weights)
       I->setMetadata(LLVMContext::MD_prof, Weights);
+    if (Unpredictable)
+      I->setMetadata(LLVMContext::MD_unpredictable, Unpredictable);
     return I;
   }
 
@@ -619,18 +623,20 @@ public:
   /// \brief Create a conditional 'br Cond, TrueDest, FalseDest'
   /// instruction.
   BranchInst *CreateCondBr(Value *Cond, BasicBlock *True, BasicBlock *False,
-                           MDNode *BranchWeights = nullptr) {
-    return Insert(addBranchWeights(BranchInst::Create(True, False, Cond),
-                                   BranchWeights));
+                           MDNode *BranchWeights = nullptr,
+                           MDNode *Unpredictable = nullptr) {
+    return Insert(addBranchMetadata(BranchInst::Create(True, False, Cond),
+                                    BranchWeights, Unpredictable));
   }
 
   /// \brief Create a switch instruction with the specified value, default dest,
   /// and with a hint for the number of cases that will be added (for efficient
   /// allocation).
   SwitchInst *CreateSwitch(Value *V, BasicBlock *Dest, unsigned NumCases = 10,
-                           MDNode *BranchWeights = nullptr) {
-    return Insert(addBranchWeights(SwitchInst::Create(V, Dest, NumCases),
-                                   BranchWeights));
+                           MDNode *BranchWeights = nullptr,
+                           MDNode *Unpredictable = nullptr) {
+    return Insert(addBranchMetadata(SwitchInst::Create(V, Dest, NumCases),
+                                    BranchWeights, Unpredictable));
   }
 
   /// \brief Create an indirect branch instruction with the specified address
@@ -671,15 +677,19 @@ public:
     return Insert(ResumeInst::Create(Exn));
   }
 
-  CleanupReturnInst *CreateCleanupRet(BasicBlock *UnwindBB = nullptr,
-                                      Value *RetVal = nullptr) {
-    return Insert(CleanupReturnInst::Create(Context, RetVal, UnwindBB));
+  CleanupReturnInst *CreateCleanupRet(CleanupPadInst *CleanupPad,
+                                      BasicBlock *UnwindBB = nullptr) {
+    return Insert(CleanupReturnInst::Create(CleanupPad, UnwindBB));
   }
 
-  CatchPadInst *CreateCatchPad(Type *Ty, BasicBlock *NormalDest,
-                               BasicBlock *UnwindDest, ArrayRef<Value *> Args,
-                               const Twine &Name = "") {
-    return Insert(CatchPadInst::Create(Ty, NormalDest, UnwindDest, Args), Name);
+  CleanupEndPadInst *CreateCleanupEndPad(CleanupPadInst *CleanupPad,
+                                         BasicBlock *UnwindBB = nullptr) {
+    return Insert(CleanupEndPadInst::Create(CleanupPad, UnwindBB));
+  }
+
+  CatchPadInst *CreateCatchPad(BasicBlock *NormalDest, BasicBlock *UnwindDest,
+                               ArrayRef<Value *> Args, const Twine &Name = "") {
+    return Insert(CatchPadInst::Create(NormalDest, UnwindDest, Args), Name);
   }
 
   CatchEndPadInst *CreateCatchEndPad(BasicBlock *UnwindBB = nullptr) {
@@ -692,13 +702,13 @@ public:
     return Insert(TerminatePadInst::Create(Context, UnwindBB, Args), Name);
   }
 
-  CleanupPadInst *CreateCleanupPad(Type *Ty, ArrayRef<Value *> Args,
+  CleanupPadInst *CreateCleanupPad(ArrayRef<Value *> Args,
                                    const Twine &Name = "") {
-    return Insert(CleanupPadInst::Create(Ty, Args), Name);
+    return Insert(CleanupPadInst::Create(Context, Args), Name);
   }
 
-  CatchReturnInst *CreateCatchRet(BasicBlock *BB, Value *RetVal = nullptr) {
-    return Insert(CatchReturnInst::Create(BB, RetVal));
+  CatchReturnInst *CreateCatchRet(CatchPadInst *CatchPad, BasicBlock *BB) {
+    return Insert(CatchReturnInst::Create(CatchPad, BB));
   }
 
   UnreachableInst *CreateUnreachable() {
@@ -1355,9 +1365,11 @@ public:
                                 const Twine &Name = "") {
     if (V->getType() == DestTy)
       return V;
-    if (V->getType()->isPointerTy() && DestTy->isIntegerTy())
+    if (V->getType()->getScalarType()->isPointerTy() &&
+        DestTy->getScalarType()->isIntegerTy())
       return CreatePtrToInt(V, DestTy, Name);
-    if (V->getType()->isIntegerTy() && DestTy->isPointerTy())
+    if (V->getType()->getScalarType()->isIntegerTy() &&
+        DestTy->getScalarType()->isPointerTy())
       return CreateIntToPtr(V, DestTy, Name);
 
     return CreateBitCast(V, DestTy, Name);
@@ -1621,6 +1633,32 @@ public:
     return CreateExactSDiv(Difference,
                            ConstantExpr::getSizeOf(ArgType->getElementType()),
                            Name);
+  }
+
+  /// \brief Create an invariant.group.barrier intrinsic call, that stops
+  /// optimizer to propagate equality using invariant.group metadata.
+  /// If Ptr type is different from i8*, it's casted to i8* before call
+  /// and casted back to Ptr type after call.
+  Value *CreateInvariantGroupBarrier(Value *Ptr) {
+    Module *M = BB->getParent()->getParent();
+    Function *FnInvariantGroupBarrier = Intrinsic::getDeclaration(M,
+            Intrinsic::invariant_group_barrier);
+
+    Type *ArgumentAndReturnType = FnInvariantGroupBarrier->getReturnType();
+    assert(ArgumentAndReturnType ==
+        FnInvariantGroupBarrier->getFunctionType()->getParamType(0) &&
+        "InvariantGroupBarrier should take and return the same type");
+    Type *PtrType = Ptr->getType();
+
+    bool PtrTypeConversionNeeded = PtrType != ArgumentAndReturnType;
+    if (PtrTypeConversionNeeded)
+      Ptr = CreateBitCast(Ptr, ArgumentAndReturnType);
+
+    CallInst *Fn = CreateCall(FnInvariantGroupBarrier, {Ptr});
+
+    if (PtrTypeConversionNeeded)
+      return CreateBitCast(Fn, PtrType);
+    return Fn;
   }
 
   /// \brief Return a vector value that contains \arg V broadcasted to \p

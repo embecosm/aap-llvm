@@ -182,6 +182,8 @@ namespace llvm {
 
       /// Compute Sum of Absolute Differences.
       PSADBW,
+      /// Compute Double Block Packed Sum-Absolute-Differences
+      DBPSADBW,
 
       /// Bitwise Logical AND NOT of Packed FP values.
       ANDNP,
@@ -211,6 +213,8 @@ namespace llvm {
 
       // FP vector get exponent 
       FGETEXP_RND,
+      // Extract Normalized Mantissas
+      VGETMANT,
       // FP Scale
       SCALEF,
       // Integer add/sub with unsigned saturation.
@@ -235,6 +239,9 @@ namespace llvm {
 
       // Integer absolute value
       ABS,
+
+      // Detect Conflicts Within a Vector
+      CONFLICT,
 
       /// Floating point max and min.
       FMAX, FMIN,
@@ -348,6 +355,7 @@ namespace llvm {
 
       // OR/AND test for masks
       KORTEST,
+      KTEST,
 
       // Several flavors of instructions with vector shuffle behaviors.
       PACKSS,
@@ -389,6 +397,8 @@ namespace llvm {
       VREDUCE,
       // RndScale - Round FP Values To Include A Given Number Of Fraction Bits
       VRNDSCALE,
+      // VFPCLASS - Tests Types Of a FP Values
+      VFPCLASS, 
       // Broadcast scalar to vector
       VBROADCAST,
       // Broadcast subvector to vector
@@ -445,9 +455,6 @@ namespace llvm {
       // segmented stacks. Check if the current stacklet has enough space, and
       // falls back to heap allocation if not.
       SEG_ALLOCA,
-
-      // Windows's _ftol2 runtime routine to do fptoui.
-      WIN_FTOL,
 
       // Memory barrier
       MEMBARRIER,
@@ -856,15 +863,6 @@ namespace llvm {
       (VT == MVT::f32 && X86ScalarSSEf32);   // f32 is when SSE1
     }
 
-    /// Return true if the target uses the MSVC _ftol2 routine for fptoui.
-    bool isTargetFTOL() const;
-
-    /// Return true if the MSVC _ftol2 routine should be used for fptoui to the
-    /// given type.
-    bool isIntegerTypeFTOL(EVT VT) const {
-      return isTargetFTOL() && VT == MVT::i64;
-    }
-
     /// \brief Returns true if it is beneficial to convert a load of a constant
     /// to just the constant itself.
     bool shouldConvertConstantLoadToIntImm(const APInt &Imm,
@@ -902,7 +900,7 @@ namespace llvm {
     /// \brief Customize the preferred legalization strategy for certain types.
     LegalizeTypeAction getPreferredVectorAction(EVT VT) const override;
 
-    bool isIntDivCheap(EVT VT, bool OptSize) const override;
+    bool isIntDivCheap(EVT VT, AttributeSet Attr) const override;
 
   protected:
     std::pair<const TargetRegisterClass *, uint8_t>
@@ -1010,6 +1008,7 @@ namespace llvm {
     SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerFRAME_TO_ARGS_OFFSET(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerEH_RETURN(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerCLEANUPRET(SDValue Op, SelectionDAG &DAG) const;
     SDValue lowerEH_SJLJ_SETJMP(SDValue Op, SelectionDAG &DAG) const;
     SDValue lowerEH_SJLJ_LONGJMP(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerINIT_TRAMPOLINE(SDValue Op, SelectionDAG &DAG) const;
@@ -1047,9 +1046,10 @@ namespace llvm {
 
     const MCPhysReg *getScratchRegisters(CallingConv::ID CC) const override;
 
-    bool shouldExpandAtomicLoadInIR(LoadInst *SI) const override;
+    TargetLoweringBase::AtomicExpansionKind
+    shouldExpandAtomicLoadInIR(LoadInst *SI) const override;
     bool shouldExpandAtomicStoreInIR(StoreInst *SI) const override;
-    TargetLoweringBase::AtomicRMWExpansionKind
+    TargetLoweringBase::AtomicExpansionKind
     shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const override;
 
     LoadInst *

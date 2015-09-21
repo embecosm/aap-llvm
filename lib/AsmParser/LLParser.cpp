@@ -49,7 +49,9 @@ bool LLParser::Run() {
          ValidateEndOfModule();
 }
 
-bool LLParser::parseStandaloneConstantValue(Constant *&C) {
+bool LLParser::parseStandaloneConstantValue(Constant *&C,
+                                            const SlotMapping *Slots) {
+  restoreParsingState(Slots);
   Lex.Lex();
 
   Type *Ty = nullptr;
@@ -58,6 +60,19 @@ bool LLParser::parseStandaloneConstantValue(Constant *&C) {
   if (Lex.getKind() != lltok::Eof)
     return Error(Lex.getLoc(), "expected end of string");
   return false;
+}
+
+void LLParser::restoreParsingState(const SlotMapping *Slots) {
+  if (!Slots)
+    return;
+  NumberedVals = Slots->GlobalValues;
+  NumberedMetadata = Slots->MetadataNodes;
+  for (const auto &I : Slots->NamedTypes)
+    NamedTypes.insert(
+        std::make_pair(I.getKey(), std::make_pair(I.second, LocTy())));
+  for (const auto &I : Slots->Types)
+    NumberedTypes.insert(
+        std::make_pair(I.first, std::make_pair(I.second, LocTy())));
 }
 
 /// ValidateEndOfModule - Do final validity and sanity checks at the end of the
@@ -181,6 +196,10 @@ bool LLParser::ValidateEndOfModule() {
   // the mapping from LLParser as it doesn't need it anymore.
   Slots->GlobalValues = std::move(NumberedVals);
   Slots->MetadataNodes = std::move(NumberedMetadata);
+  for (const auto &I : NamedTypes)
+    Slots->NamedTypes.insert(std::make_pair(I.getKey(), I.second.first));
+  for (const auto &I : NumberedTypes)
+    Slots->Types.insert(std::make_pair(I.first, I.second.first));
 
   return false;
 }
@@ -659,6 +678,12 @@ bool LLParser::ParseAlias(const std::string &Name, LocTy NameLoc, unsigned L,
     return Error(NameLoc,
                  "symbol with local linkage must have default visibility");
 
+  Type *Ty;
+  LocTy ExplicitTypeLoc = Lex.getLoc();
+  if (ParseType(Ty) ||
+      ParseToken(lltok::comma, "expected comma after alias's type"))
+    return true;
+
   Constant *Aliasee;
   LocTy AliaseeLoc = Lex.getLoc();
   if (Lex.getKind() != lltok::kw_bitcast &&
@@ -681,11 +706,17 @@ bool LLParser::ParseAlias(const std::string &Name, LocTy NameLoc, unsigned L,
   auto *PTy = dyn_cast<PointerType>(AliaseeType);
   if (!PTy)
     return Error(AliaseeLoc, "An alias must have pointer type");
+  unsigned AddrSpace = PTy->getAddressSpace();
+
+  if (Ty != PTy->getElementType())
+    return Error(
+        ExplicitTypeLoc,
+        "explicit pointee type doesn't match operand's pointee type");
 
   // Okay, create the alias but do not insert it into the module yet.
   std::unique_ptr<GlobalAlias> GA(
-      GlobalAlias::create(PTy, (GlobalValue::LinkageTypes)Linkage, Name,
-                          Aliasee, /*Parent*/ nullptr));
+      GlobalAlias::create(Ty, AddrSpace, (GlobalValue::LinkageTypes)Linkage,
+                          Name, Aliasee, /*Parent*/ nullptr));
   GA->setThreadLocalMode(TLM);
   GA->setVisibility((GlobalValue::VisibilityTypes)Visibility);
   GA->setDLLStorageClass((GlobalValue::DLLStorageClassTypes)DLLStorageClass);
@@ -1021,6 +1052,17 @@ bool LLParser::ParseFnAttributeValuePairs(AttrBuilder &B,
 // GlobalValue Reference/Resolution Routines.
 //===----------------------------------------------------------------------===//
 
+static inline GlobalValue *createGlobalFwdRef(Module *M, PointerType *PTy,
+                                              const std::string &Name) {
+  if (auto *FT = dyn_cast<FunctionType>(PTy->getElementType()))
+    return Function::Create(FT, GlobalValue::ExternalWeakLinkage, Name, M);
+  else
+    return new GlobalVariable(*M, PTy->getElementType(), false,
+                              GlobalValue::ExternalWeakLinkage, nullptr, Name,
+                              nullptr, GlobalVariable::NotThreadLocal,
+                              PTy->getAddressSpace());
+}
+
 /// GetGlobalVal - Get a value with the specified name or ID, creating a
 /// forward reference record if needed.  This can return null if the value
 /// exists but does not have the right type.
@@ -1054,15 +1096,7 @@ GlobalValue *LLParser::GetGlobalVal(const std::string &Name, Type *Ty,
   }
 
   // Otherwise, create a new forward reference for this value and remember it.
-  GlobalValue *FwdVal;
-  if (FunctionType *FT = dyn_cast<FunctionType>(PTy->getElementType()))
-    FwdVal = Function::Create(FT, GlobalValue::ExternalWeakLinkage, Name, M);
-  else
-    FwdVal = new GlobalVariable(*M, PTy->getElementType(), false,
-                                GlobalValue::ExternalWeakLinkage, nullptr, Name,
-                                nullptr, GlobalVariable::NotThreadLocal,
-                                PTy->getAddressSpace());
-
+  GlobalValue *FwdVal = createGlobalFwdRef(M, PTy, Name);
   ForwardRefVals[Name] = std::make_pair(FwdVal, Loc);
   return FwdVal;
 }
@@ -1094,13 +1128,7 @@ GlobalValue *LLParser::GetGlobalVal(unsigned ID, Type *Ty, LocTy Loc) {
   }
 
   // Otherwise, create a new forward reference for this value and remember it.
-  GlobalValue *FwdVal;
-  if (FunctionType *FT = dyn_cast<FunctionType>(PTy->getElementType()))
-    FwdVal = Function::Create(FT, GlobalValue::ExternalWeakLinkage, "", M);
-  else
-    FwdVal = new GlobalVariable(*M, PTy->getElementType(), false,
-                                GlobalValue::ExternalWeakLinkage, nullptr, "");
-
+  GlobalValue *FwdVal = createGlobalFwdRef(M, PTy, "");
   ForwardRefValIDs[ID] = std::make_pair(FwdVal, Loc);
   return FwdVal;
 }
@@ -1352,6 +1380,13 @@ bool LLParser::ParseOptionalReturnAttrs(AttrBuilder &B) {
       B.addDereferenceableOrNullAttr(Bytes);
       continue;
     }
+    case lltok::kw_align: {
+      unsigned Alignment;
+      if (ParseOptionalAlignment(Alignment))
+        return true;
+      B.addAlignmentAttr(Alignment);
+      continue;
+    }
     case lltok::kw_inreg:           B.addAttribute(Attribute::InReg); break;
     case lltok::kw_noalias:         B.addAttribute(Attribute::NoAlias); break;
     case lltok::kw_nonnull:         B.addAttribute(Attribute::NonNull); break;
@@ -1359,7 +1394,6 @@ bool LLParser::ParseOptionalReturnAttrs(AttrBuilder &B) {
     case lltok::kw_zeroext:         B.addAttribute(Attribute::ZExt); break;
 
     // Error handling.
-    case lltok::kw_align:
     case lltok::kw_byval:
     case lltok::kw_inalloca:
     case lltok::kw_nest:
@@ -2218,8 +2252,8 @@ bool LLParser::PerFunctionState::FinishFunction() {
 /// GetVal - Get a value with the specified name or ID, creating a
 /// forward reference record if needed.  This can return null if the value
 /// exists but does not have the right type.
-Value *LLParser::PerFunctionState::GetVal(const std::string &Name,
-                                          Type *Ty, LocTy Loc) {
+Value *LLParser::PerFunctionState::GetVal(const std::string &Name, Type *Ty,
+                                          LocTy Loc, OperatorConstraint OC) {
   // Look this name up in the normal function symbol table.
   Value *Val = F.getValueSymbolTable().lookup(Name);
 
@@ -2234,6 +2268,24 @@ Value *LLParser::PerFunctionState::GetVal(const std::string &Name,
 
   // If we have the value in the symbol table or fwd-ref table, return it.
   if (Val) {
+    // Check operator constraints.
+    switch (OC) {
+    case OC_None:
+      // no constraint
+      break;
+    case OC_CatchPad:
+      if (!isa<CatchPadInst>(Val)) {
+        P.Error(Loc, "'%" + Name + "' is not a catchpad");
+        return nullptr;
+      }
+      break;
+    case OC_CleanupPad:
+      if (!isa<CleanupPadInst>(Val)) {
+        P.Error(Loc, "'%" + Name + "' is not a cleanuppad");
+        return nullptr;
+      }
+      break;
+    }
     if (Val->getType() == Ty) return Val;
     if (Ty->isLabelTy())
       P.Error(Loc, "'%" + Name + "' is not a basic block");
@@ -2251,17 +2303,31 @@ Value *LLParser::PerFunctionState::GetVal(const std::string &Name,
 
   // Otherwise, create a new forward reference for this value and remember it.
   Value *FwdVal;
-  if (Ty->isLabelTy())
+  if (Ty->isLabelTy()) {
+    assert(!OC);
     FwdVal = BasicBlock::Create(F.getContext(), Name, &F);
-  else
+  } else if (!OC) {
     FwdVal = new Argument(Ty, Name);
+  } else {
+    switch (OC) {
+    case OC_CatchPad:
+      FwdVal = CatchPadInst::Create(&F.getEntryBlock(), &F.getEntryBlock(), {},
+                                    Name);
+      break;
+    case OC_CleanupPad:
+      FwdVal = CleanupPadInst::Create(F.getContext(), {}, Name);
+      break;
+    default:
+      llvm_unreachable("unexpected constraint");
+    }
+  }
 
   ForwardRefVals[Name] = std::make_pair(FwdVal, Loc);
   return FwdVal;
 }
 
-Value *LLParser::PerFunctionState::GetVal(unsigned ID, Type *Ty,
-                                          LocTy Loc) {
+Value *LLParser::PerFunctionState::GetVal(unsigned ID, Type *Ty, LocTy Loc,
+                                          OperatorConstraint OC) {
   // Look this name up in the normal function symbol table.
   Value *Val = ID < NumberedVals.size() ? NumberedVals[ID] : nullptr;
 
@@ -2276,6 +2342,24 @@ Value *LLParser::PerFunctionState::GetVal(unsigned ID, Type *Ty,
 
   // If we have the value in the symbol table or fwd-ref table, return it.
   if (Val) {
+    // Check operator constraint.
+    switch (OC) {
+    case OC_None:
+      // no constraint
+      break;
+    case OC_CatchPad:
+      if (!isa<CatchPadInst>(Val)) {
+        P.Error(Loc, "'%" + Twine(ID) + "' is not a catchpad");
+        return nullptr;
+      }
+      break;
+    case OC_CleanupPad:
+      if (!isa<CleanupPadInst>(Val)) {
+        P.Error(Loc, "'%" + Twine(ID) + "' is not a cleanuppad");
+        return nullptr;
+      }
+      break;
+    }
     if (Val->getType() == Ty) return Val;
     if (Ty->isLabelTy())
       P.Error(Loc, "'%" + Twine(ID) + "' is not a basic block");
@@ -2292,10 +2376,23 @@ Value *LLParser::PerFunctionState::GetVal(unsigned ID, Type *Ty,
 
   // Otherwise, create a new forward reference for this value and remember it.
   Value *FwdVal;
-  if (Ty->isLabelTy())
+  if (Ty->isLabelTy()) {
+    assert(!OC);
     FwdVal = BasicBlock::Create(F.getContext(), "", &F);
-  else
+  } else if (!OC) {
     FwdVal = new Argument(Ty);
+  } else {
+    switch (OC) {
+    case OC_CatchPad:
+      FwdVal = CatchPadInst::Create(&F.getEntryBlock(), &F.getEntryBlock(), {});
+      break;
+    case OC_CleanupPad:
+      FwdVal = CleanupPadInst::Create(F.getContext(), {});
+      break;
+    default:
+      llvm_unreachable("unexpected constraint");
+    }
+  }
 
   ForwardRefValIDs[ID] = std::make_pair(FwdVal, Loc);
   return FwdVal;
@@ -2327,11 +2424,24 @@ bool LLParser::PerFunctionState::SetInstName(int NameID,
     std::map<unsigned, std::pair<Value*, LocTy> >::iterator FI =
       ForwardRefValIDs.find(NameID);
     if (FI != ForwardRefValIDs.end()) {
-      if (FI->second.first->getType() != Inst->getType())
+      Value *Sentinel = FI->second.first;
+      if (Sentinel->getType() != Inst->getType())
         return P.Error(NameLoc, "instruction forward referenced with type '" +
                        getTypeString(FI->second.first->getType()) + "'");
-      FI->second.first->replaceAllUsesWith(Inst);
-      delete FI->second.first;
+      // Check operator constraints.  We only put cleanuppads or catchpads in
+      // the forward value map if the value is constrained to match.
+      if (isa<CatchPadInst>(Sentinel)) {
+        if (!isa<CatchPadInst>(Inst))
+          return P.Error(FI->second.second,
+                         "'%" + Twine(NameID) + "' is not a catchpad");
+      } else if (isa<CleanupPadInst>(Sentinel)) {
+        if (!isa<CleanupPadInst>(Inst))
+          return P.Error(FI->second.second,
+                         "'%" + Twine(NameID) + "' is not a cleanuppad");
+      }
+
+      Sentinel->replaceAllUsesWith(Inst);
+      delete Sentinel;
       ForwardRefValIDs.erase(FI);
     }
 
@@ -2343,11 +2453,24 @@ bool LLParser::PerFunctionState::SetInstName(int NameID,
   std::map<std::string, std::pair<Value*, LocTy> >::iterator
     FI = ForwardRefVals.find(NameStr);
   if (FI != ForwardRefVals.end()) {
-    if (FI->second.first->getType() != Inst->getType())
+    Value *Sentinel = FI->second.first;
+    if (Sentinel->getType() != Inst->getType())
       return P.Error(NameLoc, "instruction forward referenced with type '" +
                      getTypeString(FI->second.first->getType()) + "'");
-    FI->second.first->replaceAllUsesWith(Inst);
-    delete FI->second.first;
+    // Check operator constraints.  We only put cleanuppads or catchpads in
+    // the forward value map if the value is constrained to match.
+    if (isa<CatchPadInst>(Sentinel)) {
+      if (!isa<CatchPadInst>(Inst))
+        return P.Error(FI->second.second,
+                       "'%" + NameStr + "' is not a catchpad");
+    } else if (isa<CleanupPadInst>(Sentinel)) {
+      if (!isa<CleanupPadInst>(Inst))
+        return P.Error(FI->second.second,
+                       "'%" + NameStr + "' is not a cleanuppad");
+    }
+
+    Sentinel->replaceAllUsesWith(Inst);
+    delete Sentinel;
     ForwardRefVals.erase(FI);
   }
 
@@ -3639,6 +3762,7 @@ bool LLParser::ParseDICompileUnit(MDNode *&Result, bool IsDistinct) {
 ///                     isOptimized: false, function: void ()* @_Z3foov,
 ///                     templateParams: !4, declaration: !5, variables: !6)
 bool LLParser::ParseDISubprogram(MDNode *&Result, bool IsDistinct) {
+  auto Loc = Lex.getLoc();
 #define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                    \
   OPTIONAL(scope, MDField, );                                                  \
   OPTIONAL(name, MDStringField, );                                             \
@@ -3660,6 +3784,11 @@ bool LLParser::ParseDISubprogram(MDNode *&Result, bool IsDistinct) {
   OPTIONAL(variables, MDField, );
   PARSE_MD_FIELDS();
 #undef VISIT_MD_FIELDS
+
+  if (isDefinition.Val && !IsDistinct)
+    return Lex.Error(
+        Loc,
+        "missing 'distinct', required for !DISubprogram when 'isDefinition'");
 
   Result = GET_OR_DISTINCT(
       DISubprogram, (Context, scope.Val, name.Val, linkageName.Val, file.Val,
@@ -3988,22 +4117,33 @@ bool LLParser::ParseMetadata(Metadata *&MD, PerFunctionState *PFS) {
 //===----------------------------------------------------------------------===//
 
 bool LLParser::ConvertValIDToValue(Type *Ty, ValID &ID, Value *&V,
-                                   PerFunctionState *PFS) {
+                                   PerFunctionState *PFS,
+                                   OperatorConstraint OC) {
   if (Ty->isFunctionTy())
     return Error(ID.Loc, "functions are not values, refer to them as pointers");
+
+  if (OC && ID.Kind != ValID::t_LocalID && ID.Kind != ValID::t_LocalName) {
+    switch (OC) {
+    case OC_CatchPad:
+      return Error(ID.Loc, "Catchpad value required in this position");
+    case OC_CleanupPad:
+      return Error(ID.Loc, "Cleanuppad value required in this position");
+    default:
+      llvm_unreachable("Unexpected constraint kind");
+    }
+  }
 
   switch (ID.Kind) {
   case ValID::t_LocalID:
     if (!PFS) return Error(ID.Loc, "invalid use of function-local name");
-    V = PFS->GetVal(ID.UIntVal, Ty, ID.Loc);
+    V = PFS->GetVal(ID.UIntVal, Ty, ID.Loc, OC);
     return V == nullptr;
   case ValID::t_LocalName:
     if (!PFS) return Error(ID.Loc, "invalid use of function-local name");
-    V = PFS->GetVal(ID.StrVal, Ty, ID.Loc);
+    V = PFS->GetVal(ID.StrVal, Ty, ID.Loc, OC);
     return V == nullptr;
   case ValID::t_InlineAsm: {
-    assert(ID.FTy);
-    if (!InlineAsm::Verify(ID.FTy, ID.StrVal2))
+    if (!ID.FTy || !InlineAsm::Verify(ID.FTy, ID.StrVal2))
       return Error(ID.Loc, "invalid type for inline asm constraint string");
     V = InlineAsm::get(ID.FTy, ID.StrVal, ID.StrVal2, ID.UIntVal & 1,
                        (ID.UIntVal >> 1) & 1,
@@ -4106,6 +4246,7 @@ bool LLParser::parseConstantValue(Type *Ty, Constant *&C) {
   switch (ID.Kind) {
   case ValID::t_APSInt:
   case ValID::t_APFloat:
+  case ValID::t_Undef:
   case ValID::t_Constant:
   case ValID::t_ConstantStruct:
   case ValID::t_PackedConstantStruct: {
@@ -4121,11 +4262,11 @@ bool LLParser::parseConstantValue(Type *Ty, Constant *&C) {
   }
 }
 
-bool LLParser::ParseValue(Type *Ty, Value *&V, PerFunctionState *PFS) {
+bool LLParser::ParseValue(Type *Ty, Value *&V, PerFunctionState *PFS,
+                          OperatorConstraint OC) {
   V = nullptr;
   ValID ID;
-  return ParseValID(ID, PFS) ||
-         ConvertValIDToValue(Ty, ID, V, PFS);
+  return ParseValID(ID, PFS) || ConvertValIDToValue(Ty, ID, V, PFS, OC);
 }
 
 bool LLParser::ParseTypeAndValue(Value *&V, PerFunctionState *PFS) {
@@ -4560,6 +4701,7 @@ int LLParser::ParseInstruction(Instruction *&Inst, BasicBlock *BB,
   case lltok::kw_terminatepad: return ParseTerminatePad(Inst, PFS);
   case lltok::kw_cleanuppad: return ParseCleanupPad(Inst, PFS);
   case lltok::kw_catchendpad: return ParseCatchEndPad(Inst, PFS);
+  case lltok::kw_cleanupendpad: return ParseCleanupEndPad(Inst, PFS);
   // Binary Operators.
   case lltok::kw_add:
   case lltok::kw_sub:
@@ -4966,7 +5108,7 @@ bool LLParser::ParseResume(Instruction *&Inst, PerFunctionState &PFS) {
 
 bool LLParser::ParseExceptionArgs(SmallVectorImpl<Value *> &Args,
                                   PerFunctionState &PFS) {
-  if (ParseToken(lltok::lsquare, "expected '[' in cleanuppad"))
+  if (ParseToken(lltok::lsquare, "expected '[' in catchpad/cleanuppad"))
     return true;
 
   while (Lex.getKind() != lltok::rsquare) {
@@ -4997,16 +5139,12 @@ bool LLParser::ParseExceptionArgs(SmallVectorImpl<Value *> &Args,
 }
 
 /// ParseCleanupRet
-///   ::= 'cleanupret' ('void' | TypeAndValue) unwind ('to' 'caller' | TypeAndValue)
+///   ::= 'cleanupret' Value unwind ('to' 'caller' | TypeAndValue)
 bool LLParser::ParseCleanupRet(Instruction *&Inst, PerFunctionState &PFS) {
-  Type *RetTy = nullptr;
-  Value *RetVal = nullptr;
-  if (ParseType(RetTy, /*AllowVoid=*/true))
-    return true;
+  Value *CleanupPad = nullptr;
 
-  if (!RetTy->isVoidTy())
-    if (ParseValue(RetTy, RetVal, PFS))
-      return true;
+  if (ParseValue(Type::getTokenTy(Context), CleanupPad, PFS, OC_CleanupPad))
+    return true;
 
   if (ParseToken(lltok::kw_unwind, "expected 'unwind' in cleanupret"))
     return true;
@@ -5022,39 +5160,32 @@ bool LLParser::ParseCleanupRet(Instruction *&Inst, PerFunctionState &PFS) {
     }
   }
 
-  Inst = CleanupReturnInst::Create(Context, RetVal, UnwindBB);
+  Inst = CleanupReturnInst::Create(cast<CleanupPadInst>(CleanupPad), UnwindBB);
   return false;
 }
 
 /// ParseCatchRet
-///   ::= 'catchret' ('void' | TypeAndValue) 'to' TypeAndValue
+///   ::= 'catchret' Value 'to' TypeAndValue
 bool LLParser::ParseCatchRet(Instruction *&Inst, PerFunctionState &PFS) {
-  Type *RetTy = nullptr;
-  Value *RetVal = nullptr;
+  Value *CatchPad = nullptr;
 
-  if (ParseType(RetTy, /*AllowVoid=*/true))
+  if (ParseValue(Type::getTokenTy(Context), CatchPad, PFS, OC_CatchPad))
     return true;
-
-  if (!RetTy->isVoidTy())
-    if (ParseValue(RetTy, RetVal, PFS))
-      return true;
 
   BasicBlock *BB;
   if (ParseToken(lltok::kw_to, "expected 'to' in catchret") ||
       ParseTypeAndBasicBlock(BB, PFS))
       return true;
 
-  Inst = CatchReturnInst::Create(BB, RetVal);
+  Inst = CatchReturnInst::Create(cast<CatchPadInst>(CatchPad), BB);
   return false;
 }
 
 /// ParseCatchPad
-///   ::= 'catchpad' Type ParamList 'to' TypeAndValue 'unwind' TypeAndValue
+///   ::= 'catchpad' ParamList 'to' TypeAndValue 'unwind' TypeAndValue
 bool LLParser::ParseCatchPad(Instruction *&Inst, PerFunctionState &PFS) {
-  Type *RetType = nullptr;
-
   SmallVector<Value *, 8> Args;
-  if (ParseType(RetType, /*AllowVoid=*/true) || ParseExceptionArgs(Args, PFS))
+  if (ParseExceptionArgs(Args, PFS))
     return true;
 
   BasicBlock *NormalBB, *UnwindBB;
@@ -5064,7 +5195,7 @@ bool LLParser::ParseCatchPad(Instruction *&Inst, PerFunctionState &PFS) {
       ParseTypeAndBasicBlock(UnwindBB, PFS))
     return true;
 
-  Inst = CatchPadInst::Create(RetType, NormalBB, UnwindBB, Args);
+  Inst = CatchPadInst::Create(NormalBB, UnwindBB, Args);
   return false;
 }
 
@@ -5096,13 +5227,11 @@ bool LLParser::ParseTerminatePad(Instruction *&Inst, PerFunctionState &PFS) {
 /// ParseCleanupPad
 ///   ::= 'cleanuppad' ParamList
 bool LLParser::ParseCleanupPad(Instruction *&Inst, PerFunctionState &PFS) {
-  Type *RetType = nullptr;
-
   SmallVector<Value *, 8> Args;
-  if (ParseType(RetType, /*AllowVoid=*/true) || ParseExceptionArgs(Args, PFS))
+  if (ParseExceptionArgs(Args, PFS))
     return true;
 
-  Inst = CleanupPadInst::Create(RetType, Args);
+  Inst = CleanupPadInst::Create(Context, Args);
   return false;
 }
 
@@ -5127,6 +5256,35 @@ bool LLParser::ParseCatchEndPad(Instruction *&Inst, PerFunctionState &PFS) {
   }
 
   Inst = CatchEndPadInst::Create(Context, UnwindBB);
+  return false;
+}
+
+/// ParseCatchEndPad
+///   ::= 'cleanupendpad' Value unwind ('to' 'caller' | TypeAndValue)
+bool LLParser::ParseCleanupEndPad(Instruction *&Inst, PerFunctionState &PFS) {
+  Value *CleanupPad = nullptr;
+
+  if (ParseValue(Type::getTokenTy(Context), CleanupPad, PFS, OC_CleanupPad))
+    return true;
+
+  if (ParseToken(lltok::kw_unwind, "expected 'unwind' in catchendpad"))
+    return true;
+
+  BasicBlock *UnwindBB = nullptr;
+  if (Lex.getKind() == lltok::kw_to) {
+    Lex.Lex();
+    if (Lex.getKind() == lltok::kw_caller) {
+      Lex.Lex();
+    } else {
+      return true;
+    }
+  } else {
+    if (ParseTypeAndBasicBlock(UnwindBB, PFS)) {
+      return true;
+    }
+  }
+
+  Inst = CleanupEndPadInst::Create(cast<CleanupPadInst>(CleanupPad), UnwindBB);
   return false;
 }
 

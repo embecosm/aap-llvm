@@ -2431,7 +2431,7 @@ void X86InstrInfo::reMaterialize(MachineBasicBlock &MBB,
 }
 
 /// True if MI has a condition code def, e.g. EFLAGS, that is not marked dead.
-static bool hasLiveCondCodeDef(MachineInstr *MI) {
+bool X86InstrInfo::hasLiveCondCodeDef(MachineInstr *MI) const {
   for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
     MachineOperand &MO = MI->getOperand(i);
     if (MO.isReg() && MO.isDef() &&
@@ -4807,8 +4807,12 @@ bool X86InstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const {
     return true;
   case X86::KSET0B:
   case X86::KSET0W: return Expand2AddrUndef(MIB, get(X86::KXORWrr));
+  case X86::KSET0D: return Expand2AddrUndef(MIB, get(X86::KXORDrr));
+  case X86::KSET0Q: return Expand2AddrUndef(MIB, get(X86::KXORQrr));
   case X86::KSET1B:
   case X86::KSET1W: return Expand2AddrUndef(MIB, get(X86::KXNORWrr));
+  case X86::KSET1D: return Expand2AddrUndef(MIB, get(X86::KXNORDrr));
+  case X86::KSET1Q: return Expand2AddrUndef(MIB, get(X86::KXNORQrr));
   case TargetOpcode::LOAD_STACK_GUARD:
     expandLoadStackGuard(MIB, *this);
     return true;
@@ -5508,9 +5512,10 @@ bool X86InstrInfo::unfoldMemoryOperand(MachineFunction &MF, MachineInstr *MI,
 
   const MCInstrDesc &MCID = get(Opc);
   const TargetRegisterClass *RC = getRegClass(MCID, Index, &RI, MF);
+  // TODO: Check if 32-byte or greater accesses are slow too?
   if (!MI->hasOneMemOperand() &&
       RC == &X86::VR128RegClass &&
-      !Subtarget.isUnalignedMemAccessFast())
+      Subtarget.isUnalignedMem16Slow())
     // Without memoperands, loadRegFromAddr and storeRegToStackSlot will
     // conservatively assume the address is unaligned. That's bad for
     // performance.
@@ -5658,9 +5663,11 @@ X86InstrInfo::unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
                             cast<MachineSDNode>(N)->memoperands_end());
     if (!(*MMOs.first) &&
         RC == &X86::VR128RegClass &&
-        !Subtarget.isUnalignedMemAccessFast())
+        Subtarget.isUnalignedMem16Slow())
       // Do not introduce a slow unaligned load.
       return false;
+    // FIXME: If a VR128 can have size 32, we should be checking if a 32-byte
+    // memory access is slow above.
     unsigned Alignment = RC->getSize() == 32 ? 32 : 16;
     bool isAligned = (*MMOs.first) &&
                      (*MMOs.first)->getAlignment() >= Alignment;
@@ -5701,9 +5708,11 @@ X86InstrInfo::unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
                              cast<MachineSDNode>(N)->memoperands_end());
     if (!(*MMOs.first) &&
         RC == &X86::VR128RegClass &&
-        !Subtarget.isUnalignedMemAccessFast())
+        Subtarget.isUnalignedMem16Slow())
       // Do not introduce a slow unaligned store.
       return false;
+    // FIXME: If a VR128 can have size 32, we should be checking if a 32-byte
+    // memory access is slow above.
     unsigned Alignment = RC->getSize() == 32 ? 32 : 16;
     bool isAligned = (*MMOs.first) &&
                      (*MMOs.first)->getAlignment() >= Alignment;
@@ -6384,22 +6393,52 @@ static bool hasReassociableSibling(const MachineInstr &Inst, bool &Commuted) {
 
 // TODO: There are many more machine instruction opcodes to match:
 //       1. Other data types (integer, vectors)
-//       2. Other math / logic operations (and, or)
+//       2. Other math / logic operations (xor, or)
 //       3. Other forms of the same operation (intrinsics and other variants)
 static bool isAssociativeAndCommutative(const MachineInstr &Inst) {
   switch (Inst.getOpcode()) {
+  case X86::AND8rr:
+  case X86::AND16rr:
+  case X86::AND32rr:
+  case X86::AND64rr:
+  case X86::OR8rr:
+  case X86::OR16rr:
+  case X86::OR32rr:
+  case X86::OR64rr:
+  case X86::XOR8rr:
+  case X86::XOR16rr:
+  case X86::XOR32rr:
+  case X86::XOR64rr:
   case X86::IMUL16rr:
   case X86::IMUL32rr:
   case X86::IMUL64rr:
+  case X86::PANDrr:
+  case X86::PORrr:
+  case X86::PXORrr:
+  case X86::VPANDrr:
+  case X86::VPORrr:
+  case X86::VPXORrr:
   // Normal min/max instructions are not commutative because of NaN and signed
   // zero semantics, but these are. Thus, there's no need to check for global
   // relaxed math; the instructions themselves have the properties we need.
+  case X86::MAXCPDrr:
+  case X86::MAXCPSrr:
   case X86::MAXCSDrr:
   case X86::MAXCSSrr:
+  case X86::MINCPDrr:
+  case X86::MINCPSrr:
   case X86::MINCSDrr:
   case X86::MINCSSrr:
+  case X86::VMAXCPDrr:
+  case X86::VMAXCPSrr:
+  case X86::VMAXCPDYrr:
+  case X86::VMAXCPSYrr:
   case X86::VMAXCSDrr:
   case X86::VMAXCSSrr:
+  case X86::VMINCPDrr:
+  case X86::VMINCPSrr:
+  case X86::VMINCPDYrr:
+  case X86::VMINCPSYrr:
   case X86::VMINCSDrr:
   case X86::VMINCSSrr:
     return true;
@@ -6633,7 +6672,7 @@ X86InstrInfo::decomposeMachineOperandsTargetFlags(unsigned TF) const {
 ArrayRef<std::pair<unsigned, const char *>>
 X86InstrInfo::getSerializableDirectMachineOperandTargetFlags() const {
   using namespace X86II;
-  static std::pair<unsigned, const char *> TargetFlags[] = {
+  static const std::pair<unsigned, const char *> TargetFlags[] = {
       {MO_GOT_ABSOLUTE_ADDRESS, "x86-got-absolute-address"},
       {MO_PIC_BASE_OFFSET, "x86-pic-base-offset"},
       {MO_GOT, "x86-got"},

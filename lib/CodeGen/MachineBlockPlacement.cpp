@@ -51,7 +51,7 @@ using namespace llvm;
 #define DEBUG_TYPE "block-placement"
 
 STATISTIC(NumCondBranches, "Number of conditional branches");
-STATISTIC(NumUncondBranches, "Number of uncondittional branches");
+STATISTIC(NumUncondBranches, "Number of unconditional branches");
 STATISTIC(CondBranchTakenFreq,
           "Potential frequency of taking conditional branches");
 STATISTIC(UncondBranchTakenFreq,
@@ -678,7 +678,7 @@ MachineBlockPlacement::findBestLoopExit(MachineFunction &F, MachineLoop &L,
     uint32_t WeightScale = 0;
     uint32_t SumWeight = MBPI->getSumForBlock(MBB, WeightScale);
     for (MachineBasicBlock *Succ : MBB->successors()) {
-      if (Succ->isLandingPad())
+      if (Succ->isEHPad())
         continue;
       if (Succ == MBB)
         continue;

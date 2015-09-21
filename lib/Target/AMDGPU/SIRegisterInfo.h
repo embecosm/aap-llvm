@@ -23,7 +23,10 @@
 namespace llvm {
 
 struct SIRegisterInfo : public AMDGPURegisterInfo {
+private:
+  void reserveRegisterTuples(BitVector &, unsigned Reg) const;
 
+public:
   SIRegisterInfo();
 
   BitVector getReservedRegs(const MachineFunction &MF) const override;
@@ -36,10 +39,6 @@ struct SIRegisterInfo : public AMDGPURegisterInfo {
   void eliminateFrameIndex(MachineBasicBlock::iterator MI, int SPAdj,
                            unsigned FIOperandNum,
                            RegScavenger *RS) const override;
-
-  /// \brief get the register class of the specified type to use in the
-  /// CFGStructurizer
-  const TargetRegisterClass * getCFGStructurizerRegClass(MVT VT) const override;
 
   unsigned getHWRegIndex(unsigned Reg) const override;
 

@@ -32,6 +32,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/BuildLibCalls.h"
+#include "llvm/Transforms/Utils/Local.h"
 
 using namespace llvm;
 using namespace PatternMatch;
@@ -862,6 +863,27 @@ Value *LibCallSimplifier::optimizeMemCmp(CallInst *CI, IRBuilder<> &B) {
     return B.CreateSub(LHSV, RHSV, "chardiff");
   }
 
+  // memcmp(S1,S2,N/8)==0 -> (*(intN_t*)S1 != *(intN_t*)S2)==0
+  if (DL.isLegalInteger(Len * 8) && isOnlyUsedInZeroEqualityComparison(CI)) {
+
+    IntegerType *IntType = IntegerType::get(CI->getContext(), Len * 8);
+    unsigned PrefAlignment = DL.getPrefTypeAlignment(IntType);
+
+    if (getKnownAlignment(LHS, DL, CI) >= PrefAlignment &&
+        getKnownAlignment(RHS, DL, CI) >= PrefAlignment) {
+
+      Type *LHSPtrTy =
+          IntType->getPointerTo(LHS->getType()->getPointerAddressSpace());
+      Type *RHSPtrTy =
+          IntType->getPointerTo(RHS->getType()->getPointerAddressSpace());
+
+      Value *LHSV = B.CreateLoad(B.CreateBitCast(LHS, LHSPtrTy, "lhsc"), "lhsv");
+      Value *RHSV = B.CreateLoad(B.CreateBitCast(RHS, RHSPtrTy, "rhsc"), "rhsv");
+
+      return B.CreateZExt(B.CreateICmpNE(LHSV, RHSV), CI->getType(), "memcmp");
+    }
+  }
+
   // Constant folding: memcmp(x, y, l) -> cnst (all arguments are constant)
   StringRef LHSStr, RHSStr;
   if (getConstantStringInfo(LHS, LHSStr) &&
@@ -1220,7 +1242,7 @@ Value *LibCallSimplifier::optimizeFMinFMax(CallInst *CI, IRBuilder<> &B) {
       return nullptr;
     // No-signed-zeros is implied by the definitions of fmax/fmin themselves:
     // "Ideally, fmax would be sensitive to the sign of zero, for example
-    // fmax(−0. 0, +0. 0) would return +0; however, implementation in software
+    // fmax(-0. 0, +0. 0) would return +0; however, implementation in software
     // might be impractical."
     FMF.setNoSignedZeros();
     FMF.setNoNaNs();
@@ -2202,7 +2224,7 @@ void LibCallSimplifier::replaceAllUsesWith(Instruction *I, Value *With) {
 // cbrt:
 //   * cbrt(expN(X))  -> expN(x/3)
 //   * cbrt(sqrt(x))  -> pow(x,1/6)
-//   * cbrt(sqrt(x))  -> pow(x,1/9)
+//   * cbrt(cbrt(x))  -> pow(x,1/9)
 //
 // exp, expf, expl:
 //   * exp(log(x))  -> x

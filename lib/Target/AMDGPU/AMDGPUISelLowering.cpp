@@ -113,6 +113,9 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(TargetMachine &TM,
   setOperationAction(ISD::BR_JT, MVT::Other, Expand);
   setOperationAction(ISD::BRIND, MVT::Other, Expand);
 
+  // This is totally unsupported, just custom lower to produce an error.
+  setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i32, Custom);
+
   // We need to custom lower some of the intrinsics
   setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
 
@@ -613,6 +616,15 @@ SDValue AMDGPUTargetLowering::LowerCall(CallLoweringInfo &CLI,
   return SDValue();
 }
 
+SDValue AMDGPUTargetLowering::LowerDYNAMIC_STACKALLOC(SDValue Op,
+                                                      SelectionDAG &DAG) const {
+  const Function &Fn = *DAG.getMachineFunction().getFunction();
+
+  DiagnosticInfoUnsupported NoDynamicAlloca(Fn, "dynamic alloca");
+  DAG.getContext()->diagnose(NoDynamicAlloca);
+  return SDValue();
+}
+
 SDValue AMDGPUTargetLowering::LowerOperation(SDValue Op,
                                              SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
@@ -639,6 +651,7 @@ SDValue AMDGPUTargetLowering::LowerOperation(SDValue Op,
   case ISD::UINT_TO_FP: return LowerUINT_TO_FP(Op, DAG);
   case ISD::FP_TO_SINT: return LowerFP_TO_SINT(Op, DAG);
   case ISD::FP_TO_UINT: return LowerFP_TO_UINT(Op, DAG);
+  case ISD::DYNAMIC_STACKALLOC: return LowerDYNAMIC_STACKALLOC(Op, DAG);
   }
   return Op;
 }
@@ -1075,6 +1088,7 @@ SDValue AMDGPUTargetLowering::LowerIntrinsicLRP(SDValue Op,
                                                 SelectionDAG &DAG) const {
   SDLoc DL(Op);
   EVT VT = Op.getValueType();
+  // TODO: Should this propagate fast-math-flags?
   SDValue OneSubA = DAG.getNode(ISD::FSUB, DL, VT,
                                 DAG.getConstantFP(1.0f, DL, MVT::f32),
                                 Op.getOperand(1));
@@ -1589,6 +1603,7 @@ SDValue AMDGPUTargetLowering::LowerDIVREM24(SDValue Op, SelectionDAG &DAG, bool 
   // float fb = (float)ib;
   SDValue fb = DAG.getNode(ToFp, DL, FltVT, ib);
 
+  // TODO: Should this propagate fast-math-flags?
   // float fq = native_divide(fa, fb);
   SDValue fq = DAG.getNode(ISD::FMUL, DL, FltVT,
                            fa, DAG.getNode(AMDGPUISD::RCP, DL, FltVT, fb));
@@ -1899,6 +1914,8 @@ SDValue AMDGPUTargetLowering::LowerFREM(SDValue Op, SelectionDAG &DAG) const {
   SDValue X = Op.getOperand(0);
   SDValue Y = Op.getOperand(1);
 
+  // TODO: Should this propagate fast-math-flags?
+
   SDValue Div = DAG.getNode(ISD::FDIV, SL, VT, X, Y);
   SDValue Floor = DAG.getNode(ISD::FTRUNC, SL, VT, Div);
   SDValue Mul = DAG.getNode(ISD::FMUL, SL, VT, Floor, Y);
@@ -1927,6 +1944,7 @@ SDValue AMDGPUTargetLowering::LowerFCEIL(SDValue Op, SelectionDAG &DAG) const {
   SDValue And = DAG.getNode(ISD::AND, SL, SetCCVT, Lt0, NeTrunc);
 
   SDValue Add = DAG.getNode(ISD::SELECT, SL, MVT::f64, And, One, Zero);
+  // TODO: Should this propagate fast-math-flags?
   return DAG.getNode(ISD::FADD, SL, MVT::f64, Trunc, Add);
 }
 
@@ -2004,6 +2022,8 @@ SDValue AMDGPUTargetLowering::LowerFRINT(SDValue Op, SelectionDAG &DAG) const {
   SDValue C1 = DAG.getConstantFP(C1Val, SL, MVT::f64);
   SDValue CopySign = DAG.getNode(ISD::FCOPYSIGN, SL, MVT::f64, C1, Src);
 
+  // TODO: Should this propagate fast-math-flags?
+
   SDValue Tmp1 = DAG.getNode(ISD::FADD, SL, MVT::f64, Src, CopySign);
   SDValue Tmp2 = DAG.getNode(ISD::FSUB, SL, MVT::f64, Tmp1, CopySign);
 
@@ -2032,6 +2052,8 @@ SDValue AMDGPUTargetLowering::LowerFROUND32(SDValue Op, SelectionDAG &DAG) const
   SDValue X = Op.getOperand(0);
 
   SDValue T = DAG.getNode(ISD::FTRUNC, SL, MVT::f32, X);
+
+  // TODO: Should this propagate fast-math-flags?
 
   SDValue Diff = DAG.getNode(ISD::FSUB, SL, MVT::f32, X, T);
 
@@ -2143,6 +2165,7 @@ SDValue AMDGPUTargetLowering::LowerFFLOOR(SDValue Op, SelectionDAG &DAG) const {
   SDValue And = DAG.getNode(ISD::AND, SL, SetCCVT, Lt0, NeTrunc);
 
   SDValue Add = DAG.getNode(ISD::SELECT, SL, MVT::f64, And, NegOne, Zero);
+  // TODO: Should this propagate fast-math-flags?
   return DAG.getNode(ISD::FADD, SL, MVT::f64, Trunc, Add);
 }
 
@@ -2165,7 +2188,7 @@ SDValue AMDGPUTargetLowering::LowerINT_TO_FP64(SDValue Op, SelectionDAG &DAG,
 
   SDValue LdExp = DAG.getNode(AMDGPUISD::LDEXP, SL, MVT::f64, CvtHi,
                               DAG.getConstant(32, SL, MVT::i32));
-
+  // TODO: Should this propagate fast-math-flags?
   return DAG.getNode(ISD::FADD, SL, MVT::f64, LdExp, CvtLo);
 }
 
@@ -2190,6 +2213,7 @@ SDValue AMDGPUTargetLowering::LowerUINT_TO_FP(SDValue Op,
   SDValue Hi = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, S0,
                            DAG.getConstant(1, DL, MVT::i32));
   SDValue FloatHi = DAG.getNode(ISD::UINT_TO_FP, DL, MVT::f32, Hi);
+  // TODO: Should this propagate fast-math-flags?
   FloatHi = DAG.getNode(ISD::FMUL, DL, MVT::f32, FloatHi,
                         DAG.getConstantFP(4294967296.0f, DL, MVT::f32)); // 2^32
   return DAG.getNode(ISD::FADD, DL, MVT::f32, FloatLo, FloatHi);
@@ -2216,7 +2240,7 @@ SDValue AMDGPUTargetLowering::LowerFP64_TO_INT(SDValue Op, SelectionDAG &DAG,
                                  MVT::f64);
   SDValue K1 = DAG.getConstantFP(BitsToDouble(UINT64_C(0xc1f0000000000000)), SL,
                                  MVT::f64);
-
+  // TODO: Should this propagate fast-math-flags?
   SDValue Mul = DAG.getNode(ISD::FMUL, SL, MVT::f64, Trunc, K0);
 
   SDValue FloorMul = DAG.getNode(ISD::FFLOOR, SL, MVT::f64, Mul);

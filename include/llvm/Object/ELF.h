@@ -86,10 +86,9 @@ public:
   void getRelocationTypeName(uint32_t Type,
                              SmallVectorImpl<char> &Result) const;
 
-  /// \brief Get the symbol table section and symbol for a given relocation.
-  template <class RelT>
-  std::pair<const Elf_Shdr *, const Elf_Sym *>
-  getRelocationSymbol(const Elf_Shdr *RelSec, const RelT *Rel) const;
+  /// \brief Get the symbol for a given relocation.
+  const Elf_Sym *getRelocationSymbol(const Elf_Rel *Rel,
+                                     const Elf_Shdr *SymTab) const;
 
   ELFFile(StringRef Object, std::error_code &EC);
 
@@ -197,9 +196,9 @@ public:
 
   uint64_t getNumSections() const;
   uintX_t getStringTableIndex() const;
-  ELF::Elf64_Word
-  getExtendedSymbolTableIndex(const Elf_Sym *Sym, const Elf_Shdr *SymTab,
-                              ArrayRef<Elf_Word> ShndxTable) const;
+  uint32_t getExtendedSymbolTableIndex(const Elf_Sym *Sym,
+                                       const Elf_Shdr *SymTab,
+                                       ArrayRef<Elf_Word> ShndxTable) const;
   const Elf_Ehdr *getHeader() const { return Header; }
   ErrorOr<const Elf_Shdr *> getSection(const Elf_Sym *Sym,
                                        const Elf_Shdr *SymTab,
@@ -220,13 +219,13 @@ typedef ELFFile<ELFType<support::big, false>> ELF32BEFile;
 typedef ELFFile<ELFType<support::big, true>> ELF64BEFile;
 
 template <class ELFT>
-ELF::Elf64_Word ELFFile<ELFT>::getExtendedSymbolTableIndex(
+uint32_t ELFFile<ELFT>::getExtendedSymbolTableIndex(
     const Elf_Sym *Sym, const Elf_Shdr *SymTab,
     ArrayRef<Elf_Word> ShndxTable) const {
   assert(Sym->st_shndx == ELF::SHN_XINDEX);
   unsigned Index = Sym - symbol_begin(SymTab);
 
-  // FIXME: error checking
+  // The size of the table was checked in getSHNDXTable.
   return ShndxTable[Index];
 }
 
@@ -289,18 +288,13 @@ void ELFFile<ELFT>::getRelocationTypeName(uint32_t Type,
 }
 
 template <class ELFT>
-template <class RelT>
-std::pair<const typename ELFFile<ELFT>::Elf_Shdr *,
-          const typename ELFFile<ELFT>::Elf_Sym *>
-ELFFile<ELFT>::getRelocationSymbol(const Elf_Shdr *Sec, const RelT *Rel) const {
-  if (!Sec->sh_link)
-    return std::make_pair(nullptr, nullptr);
-  ErrorOr<const Elf_Shdr *> SymTableOrErr = getSection(Sec->sh_link);
-  if (std::error_code EC = SymTableOrErr.getError())
-    report_fatal_error(EC.message());
-  const Elf_Shdr *SymTable = *SymTableOrErr;
-  return std::make_pair(
-      SymTable, getEntry<Elf_Sym>(SymTable, Rel->getSymbol(isMips64EL())));
+const typename ELFFile<ELFT>::Elf_Sym *
+ELFFile<ELFT>::getRelocationSymbol(const Elf_Rel *Rel,
+                                   const Elf_Shdr *SymTab) const {
+  uint32_t Index = Rel->getSymbol(isMips64EL());
+  if (Index == 0)
+    return nullptr;
+  return getEntry<Elf_Sym>(SymTab, Index);
 }
 
 template <class ELFT>
@@ -471,13 +465,23 @@ ELFFile<ELFT>::getSHNDXTable(const Elf_Shdr &Section) const {
   assert(Section.sh_type == ELF::SHT_SYMTAB_SHNDX);
   const Elf_Word *ShndxTableBegin =
       reinterpret_cast<const Elf_Word *>(base() + Section.sh_offset);
-  uintX_t Size = Section.sh_offset;
-  if (Size % sizeof(uintX_t))
+  uintX_t Size = Section.sh_size;
+  if (Size % sizeof(uint32_t))
     return object_error::parse_failed;
-  const Elf_Word *ShndxTableEnd = ShndxTableBegin + Size / sizeof(uintX_t);
+  uintX_t NumSymbols = Size / sizeof(uint32_t);
+  const Elf_Word *ShndxTableEnd = ShndxTableBegin + NumSymbols;
   if (reinterpret_cast<const char *>(ShndxTableEnd) > Buf.end())
     return object_error::parse_failed;
-  return ArrayRef<Elf_Word>(ShndxTableBegin, ShndxTableEnd);
+  ErrorOr<const Elf_Shdr *> SymTableOrErr = getSection(Section.sh_link);
+  if (std::error_code EC = SymTableOrErr.getError())
+    return EC;
+  const Elf_Shdr &SymTable = **SymTableOrErr;
+  if (SymTable.sh_type != ELF::SHT_SYMTAB &&
+      SymTable.sh_type != ELF::SHT_DYNSYM)
+    return object_error::parse_failed;
+  if (NumSymbols != (SymTable.sh_size / sizeof(Elf_Sym)))
+    return object_error::parse_failed;
+  return makeArrayRef(ShndxTableBegin, ShndxTableEnd);
 }
 
 template <class ELFT>

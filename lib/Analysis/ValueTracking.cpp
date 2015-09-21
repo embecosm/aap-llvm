@@ -185,6 +185,14 @@ bool llvm::isKnownNonZero(Value *V, const DataLayout &DL, unsigned Depth,
   return ::isKnownNonZero(V, DL, Depth, Query(AC, safeCxtI(V, CxtI), DT));
 }
 
+bool llvm::isKnownNonNegative(Value *V, const DataLayout &DL, unsigned Depth,
+                              AssumptionCache *AC, const Instruction *CxtI,
+                              const DominatorTree *DT) {
+  bool NonNegative, Negative;
+  ComputeSignBit(V, NonNegative, Negative, DL, Depth, AC, CxtI, DT);
+  return NonNegative;
+}
+
 static bool MaskedValueIsZero(Value *V, const APInt &Mask, const DataLayout &DL,
                               unsigned Depth, const Query &Q);
 
@@ -320,7 +328,7 @@ static void computeKnownBitsMul(Value *Op0, Value *Op1, bool NSW,
   }
 
   // If low bits are zero in either operand, output low known-0 bits.
-  // Also compute a conserative estimate for high known-0 bits.
+  // Also compute a conservative estimate for high known-0 bits.
   // More trickiness is possible, but this is sufficient for the
   // interesting case of alignment computation.
   KnownOne.clearAllBits();
@@ -2944,6 +2952,8 @@ static bool isAligned(const Value *Base, APInt Offset, unsigned Align,
     BaseAlign = GV->getAlignment();
   else if (const Argument *A = dyn_cast<Argument>(Base))
     BaseAlign = A->getParamAlignment();
+  else if (auto CS = ImmutableCallSite(Base))
+    BaseAlign = CS.getAttributes().getParamAlignment(AttributeSet::ReturnIndex);
 
   if (!BaseAlign) {
     Type *Ty = Base->getType()->getPointerElementType();
@@ -3199,6 +3209,7 @@ bool llvm::isSafeToSpeculativelyExecute(const Value *V,
   case Instruction::CatchEndPad:
   case Instruction::CatchRet:
   case Instruction::CleanupPad:
+  case Instruction::CleanupEndPad:
   case Instruction::CleanupRet:
   case Instruction::TerminatePad:
     return false; // Misc instructions which have effects
@@ -3211,6 +3222,8 @@ bool llvm::mayBeMemoryDependent(const Instruction &I) {
 
 /// Return true if we know that the specified value is never null.
 bool llvm::isKnownNonNull(const Value *V, const TargetLibraryInfo *TLI) {
+  assert(V->getType()->isPointerTy() && "V must be pointer type");
+
   // Alloca never returns null, malloc might.
   if (isa<AllocaInst>(V)) return true;
 
@@ -3218,9 +3231,12 @@ bool llvm::isKnownNonNull(const Value *V, const TargetLibraryInfo *TLI) {
   if (const Argument *A = dyn_cast<Argument>(V))
     return A->hasByValOrInAllocaAttr() || A->hasNonNullAttr();
 
-  // Global values are not null unless extern weak.
+  // A global variable in address space 0 is non null unless extern weak.
+  // Other address spaces may have null as a valid address for a global,
+  // so we can't assume anything.
   if (const GlobalValue *GV = dyn_cast<GlobalValue>(V))
-    return !GV->hasExternalWeakLinkage();
+    return !GV->hasExternalWeakLinkage() &&
+           GV->getType()->getAddressSpace() == 0;
 
   // A Load tagged w/nonnull metadata is never null. 
   if (const LoadInst *LI = dyn_cast<LoadInst>(V))
@@ -3240,6 +3256,8 @@ bool llvm::isKnownNonNull(const Value *V, const TargetLibraryInfo *TLI) {
 static bool isKnownNonNullFromDominatingCondition(const Value *V,
                                                   const Instruction *CtxI,
                                                   const DominatorTree *DT) {
+  assert(V->getType()->isPointerTy() && "V must be pointer type");
+
   unsigned NumUsesExplored = 0;
   for (auto U : V->users()) {
     // Avoid massive lists
@@ -3368,6 +3386,67 @@ OverflowResult llvm::computeOverflowForUnsignedAdd(Value *LHS, Value *RHS,
   }
 
   return OverflowResult::MayOverflow;
+}
+
+static OverflowResult computeOverflowForSignedAdd(
+    Value *LHS, Value *RHS, AddOperator *Add, const DataLayout &DL,
+    AssumptionCache *AC, const Instruction *CxtI, const DominatorTree *DT) {
+  if (Add && Add->hasNoSignedWrap()) {
+    return OverflowResult::NeverOverflows;
+  }
+
+  bool LHSKnownNonNegative, LHSKnownNegative;
+  bool RHSKnownNonNegative, RHSKnownNegative;
+  ComputeSignBit(LHS, LHSKnownNonNegative, LHSKnownNegative, DL, /*Depth=*/0,
+                 AC, CxtI, DT);
+  ComputeSignBit(RHS, RHSKnownNonNegative, RHSKnownNegative, DL, /*Depth=*/0,
+                 AC, CxtI, DT);
+
+  if ((LHSKnownNonNegative && RHSKnownNegative) ||
+      (LHSKnownNegative && RHSKnownNonNegative)) {
+    // The sign bits are opposite: this CANNOT overflow.
+    return OverflowResult::NeverOverflows;
+  }
+
+  // The remaining code needs Add to be available. Early returns if not so.
+  if (!Add)
+    return OverflowResult::MayOverflow;
+
+  // If the sign of Add is the same as at least one of the operands, this add
+  // CANNOT overflow. This is particularly useful when the sum is
+  // @llvm.assume'ed non-negative rather than proved so from analyzing its
+  // operands.
+  bool LHSOrRHSKnownNonNegative =
+      (LHSKnownNonNegative || RHSKnownNonNegative);
+  bool LHSOrRHSKnownNegative = (LHSKnownNegative || RHSKnownNegative);
+  if (LHSOrRHSKnownNonNegative || LHSOrRHSKnownNegative) {
+    bool AddKnownNonNegative, AddKnownNegative;
+    ComputeSignBit(Add, AddKnownNonNegative, AddKnownNegative, DL,
+                   /*Depth=*/0, AC, CxtI, DT);
+    if ((AddKnownNonNegative && LHSOrRHSKnownNonNegative) ||
+        (AddKnownNegative && LHSOrRHSKnownNegative)) {
+      return OverflowResult::NeverOverflows;
+    }
+  }
+
+  return OverflowResult::MayOverflow;
+}
+
+OverflowResult llvm::computeOverflowForSignedAdd(AddOperator *Add,
+                                                 const DataLayout &DL,
+                                                 AssumptionCache *AC,
+                                                 const Instruction *CxtI,
+                                                 const DominatorTree *DT) {
+  return ::computeOverflowForSignedAdd(Add->getOperand(0), Add->getOperand(1),
+                                       Add, DL, AC, CxtI, DT);
+}
+
+OverflowResult llvm::computeOverflowForSignedAdd(Value *LHS, Value *RHS,
+                                                 const DataLayout &DL,
+                                                 AssumptionCache *AC,
+                                                 const Instruction *CxtI,
+                                                 const DominatorTree *DT) {
+  return ::computeOverflowForSignedAdd(LHS, RHS, nullptr, DL, AC, CxtI, DT);
 }
 
 bool llvm::isGuaranteedToTransferExecutionToSuccessor(const Instruction *I) {
@@ -3678,13 +3757,25 @@ static SelectPatternResult matchSelectPattern(CmpInst::Predicate Pred,
   return {SPF_UNKNOWN, SPNB_NA, false};
 }
 
-static Constant *lookThroughCast(CmpInst *CmpI, Value *V1, Value *V2,
-                                 Instruction::CastOps *CastOp) {
+static Value *lookThroughCast(CmpInst *CmpI, Value *V1, Value *V2,
+                              Instruction::CastOps *CastOp) {
   CastInst *CI = dyn_cast<CastInst>(V1);
   Constant *C = dyn_cast<Constant>(V2);
-  if (!CI || !C)
+  CastInst *CI2 = dyn_cast<CastInst>(V2);
+  if (!CI)
     return nullptr;
   *CastOp = CI->getOpcode();
+
+  if (CI2) {
+    // If V1 and V2 are both the same cast from the same type, we can look
+    // through V1.
+    if (CI2->getOpcode() == CI->getOpcode() &&
+        CI2->getSrcTy() == CI->getSrcTy())
+      return CI2->getOperand(0);
+    return nullptr;
+  } else if (!C) {
+    return nullptr;
+  }
 
   if (isa<SExtInst>(CI) && CmpI->isSigned()) {
     Constant *T = ConstantExpr::getTrunc(C, CI->getSrcTy());
@@ -3745,11 +3836,11 @@ SelectPatternResult llvm::matchSelectPattern(Value *V,
 
   // Deal with type mismatches.
   if (CastOp && CmpLHS->getType() != TrueVal->getType()) {
-    if (Constant *C = lookThroughCast(CmpI, TrueVal, FalseVal, CastOp))
+    if (Value *C = lookThroughCast(CmpI, TrueVal, FalseVal, CastOp))
       return ::matchSelectPattern(Pred, FMF, CmpLHS, CmpRHS,
                                   cast<CastInst>(TrueVal)->getOperand(0), C,
                                   LHS, RHS);
-    if (Constant *C = lookThroughCast(CmpI, FalseVal, TrueVal, CastOp))
+    if (Value *C = lookThroughCast(CmpI, FalseVal, TrueVal, CastOp))
       return ::matchSelectPattern(Pred, FMF, CmpLHS, CmpRHS,
                                   C, cast<CastInst>(FalseVal)->getOperand(0),
                                   LHS, RHS);

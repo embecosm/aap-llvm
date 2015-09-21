@@ -106,8 +106,6 @@ def SDT_X86TLSCALL : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 
 def SDT_X86SEG_ALLOCA : SDTypeProfile<1, 1, [SDTCisVT<0, iPTR>, SDTCisVT<1, iPTR>]>;
 
-def SDT_X86WIN_FTOL : SDTypeProfile<0, 1, [SDTCisFP<0>]>;
-
 def SDT_X86EHRET : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 
 def SDT_X86TCRET : SDTypeProfile<0, 2, [SDTCisPtrTy<0>, SDTCisVT<1, i32>]>;
@@ -250,9 +248,6 @@ def X86SegAlloca : SDNode<"X86ISD::SEG_ALLOCA", SDT_X86SEG_ALLOCA,
 def X86TLSCall : SDNode<"X86ISD::TLSCALL", SDT_X86TLSCALL,
                         [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
-def X86WinFTOL : SDNode<"X86ISD::WIN_FTOL", SDT_X86WIN_FTOL,
-                        [SDNPHasChain, SDNPOutGlue]>;
-
 //===----------------------------------------------------------------------===//
 // X86 Operand Definitions.
 //
@@ -344,18 +339,21 @@ def vy64xmem : X86VMemOperand<VR256X, "printi64mem", X86MemVY64XOperand>;
 def vz32mem  : X86VMemOperand<VR512,  "printi32mem", X86MemVZ32Operand>;
 def vz64mem  : X86VMemOperand<VR512,  "printi64mem", X86MemVZ64Operand>;
 
-// A version of i8mem for use on x86-64 that uses GR64_NOREX instead of
-// plain GR64, so that it doesn't potentially require a REX prefix.
-def i8mem_NOREX : Operand<i64> {
+// A version of i8mem for use on x86-64 and x32 that uses a NOREX GPR instead
+// of a plain GPR, so that it doesn't potentially require a REX prefix.
+def ptr_rc_norex : PointerLikeRegClass<2>;
+def ptr_rc_norex_nosp : PointerLikeRegClass<3>;
+
+def i8mem_NOREX : Operand<iPTR> {
   let PrintMethod = "printi8mem";
-  let MIOperandInfo = (ops GR64_NOREX, i8imm, GR64_NOREX_NOSP, i32imm, i8imm);
+  let MIOperandInfo = (ops ptr_rc_norex, i8imm, ptr_rc_norex_nosp, i32imm, i8imm);
   let ParserMatchClass = X86Mem8AsmOperand;
   let OperandType = "OPERAND_MEMORY";
 }
 
 // GPRs available for tailcall.
 // It represents GR32_TC, GR64_TC or GR64_TCW64.
-def ptr_rc_tailcall : PointerLikeRegClass<2>;
+def ptr_rc_tailcall : PointerLikeRegClass<4>;
 
 // Special i32mem for addresses of load folding tail calls. These are not
 // allowed to use callee-saved registers since they must be scheduled
