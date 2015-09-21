@@ -217,7 +217,7 @@ public:
   static bool isImm10(const MCExpr *I) { return isImmInRange(I, 0, 1023); }
   static bool isImm12(const MCExpr *I) { return isImmInRange(I, 0, 4095); }
   static bool isImm16(const MCExpr *I) { return isImmInRange(I, -32768, 65535); }
-  static bool isOff3(const MCExpr *I)  { return isImmInRange(I, -4, 3); }
+  static bool isOff3(const MCExpr *I)  { return isConstInRange(I, -4, 3); }
   static bool isOff10(const MCExpr *I) { return isImmInRange(I, -512, 511); }
   static bool isShiftConst3(const MCExpr *I) { return isConstInRange(I, 1, 8); }
   static bool isShiftImm6(const MCExpr *I)   { return isImmInRange(I, 1, 64); }
