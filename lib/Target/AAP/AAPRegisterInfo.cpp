@@ -26,9 +26,15 @@ using namespace llvm;
 
 AAPRegisterInfo::AAPRegisterInfo() : AAPGenRegisterInfo(getLinkRegister()) {}
 
-const uint16_t *
+const MCPhysReg *
 AAPRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   return CSR_SaveList;
+}
+
+const uint32_t *
+AAPRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
+                                      CallingConv::ID) const {
+  return CSR_RegMask;
 }
 
 BitVector AAPRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
@@ -41,10 +47,6 @@ BitVector AAPRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
     Reserved.set(getFramePtrRegister());
   }
 
-  // Restrict the size of the register set
-  for (unsigned i = AAP::R16; i <= AAP::R63; i++) {
-    Reserved.set(i);
-  }
   return Reserved;
 }
 

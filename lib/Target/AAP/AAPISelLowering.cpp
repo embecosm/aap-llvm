@@ -41,7 +41,7 @@ using namespace llvm;
 
 AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
                                      const AAPSubtarget &STI)
-    : TargetLowering(TM) {
+    : TargetLowering(TM), Subtarget(STI) {
 
   // Set up the register classes.
   addRegisterClass(MVT::i16, &AAP::GR8RegClass);
@@ -751,9 +751,10 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   // Returns a chain & a flag for retval copy to use.
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
   SmallVector<SDValue, 8> Ops;
-  // Add the link register as a return
   Ops.push_back(Chain);
   Ops.push_back(Callee);
+
+  // Add the link register as the first operand
   Ops.push_back(DAG.getRegister(AAPRegisterInfo::getLinkRegister(), MVT::i16));
 
   // Add argument registers to the end of the list so that they are
@@ -761,6 +762,13 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   for (unsigned i = 0, e = RegsToPass.size(); i != e; ++i)
     Ops.push_back(DAG.getRegister(RegsToPass[i].first,
                                   RegsToPass[i].second.getValueType()));
+
+  // Add the caller saved registers as a register mask operand to the call
+  const TargetRegisterInfo *TRI = Subtarget.getRegisterInfo();
+  const uint32_t *Mask =
+    TRI->getCallPreservedMask(DAG.getMachineFunction(), CallConv);
+  assert(Mask && "No call preserved mask for the calling convention");
+  Ops.push_back(DAG.getRegisterMask(Mask));
 
   if (InFlag.getNode())
     Ops.push_back(InFlag);

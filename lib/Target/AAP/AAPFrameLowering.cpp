@@ -122,55 +122,14 @@ bool AAPFrameLowering::spillCalleeSavedRegisters(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
     const std::vector<CalleeSavedInfo> &CSI,
     const TargetRegisterInfo *TRI) const {
-  if (CSI.empty()) {
-    return false;
-  }
-
-  MachineFunction &MF = *MBB.getParent();
-  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
-  AAPMachineFunctionInfo *MFuncInfo = MF.getInfo<AAPMachineFunctionInfo>();
-
-  DebugLoc DL = MI != MBB.end() ? MI->getDebugLoc() : DebugLoc();
-
-  // Each spilled register is 2 bytes less adjustment to SP
-  MFuncInfo->setCalleeSavedFrameSize(CSI.size() * 2);
-
-  for (unsigned i = CSI.size(); i != 0; --i) {
-    unsigned Reg = CSI[i - 1].getReg();
-
-    // Add Callee-saved register as live-in. It's killed by the spill
-    const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
-    MBB.addLiveIn(Reg);
-    BuildMI(MBB, MI, DL, TII.get(AAP::STW_predec))
-        .addReg(SP)
-        .addImm(0)
-        .addReg(Reg, RegState::Kill);
-  }
-  return true;
+  return false;
 }
 
 bool AAPFrameLowering::restoreCalleeSavedRegisters(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
     const std::vector<CalleeSavedInfo> &CSI,
     const TargetRegisterInfo *TRI) const {
-  if (CSI.empty()) {
-    return false;
-  }
-
-  MachineFunction &MF = *MBB.getParent();
-  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
-
-  DebugLoc DL = MI != MBB.end() ? MI->getDebugLoc() : DebugLoc();
-
-  for (unsigned i = 0; i != CSI.size(); ++i) {
-    unsigned Reg = CSI[i].getReg();
-
-    const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
-    BuildMI(MBB, MI, DL, TII.get(AAP::LDW_postinc), Reg)
-        .addReg(SP)
-        .addImm(0);
-  }
-  return true;
+  return false;
 }
 
 // This function eliminates ADJCALLSTACKDOWN,

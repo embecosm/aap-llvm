@@ -65,6 +65,9 @@ public:
   EVT getSetCCResultType(const DataLayout &DL, LLVMContext &Context,
                          EVT VT) const override;
 
+private:
+  const AAPSubtarget &Subtarget;
+
 //===--------------------- Custom DAG Combine ---------------------------===//
 public:
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
