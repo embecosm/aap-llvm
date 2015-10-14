@@ -111,6 +111,10 @@ private:
   /// second element.
   std::vector<std::pair<unsigned, unsigned> > LiveIns;
 
+  /// Keep track of the physical registers that are live out of the function.
+  /// Live out values are return values in registers.
+  std::vector<unsigned> LiveOuts;
+
   MachineRegisterInfo(const MachineRegisterInfo&) = delete;
   void operator=(const MachineRegisterInfo&) = delete;
 public:
@@ -733,6 +737,12 @@ public:
     LiveIns.push_back(std::make_pair(Reg, vreg));
   }
 
+  /// addLiveOut - Add the specified register as a live-out.  Note that it
+  /// is an error to add the same register to the same set more than once.
+  void addLiveOut(unsigned Reg) {
+    LiveOuts.push_back(Reg);
+  }
+
   // Iteration support for the live-ins set.  It's kept in sorted order
   // by register number.
   typedef std::vector<std::pair<unsigned,unsigned> >::const_iterator
@@ -742,6 +752,14 @@ public:
   bool            livein_empty() const { return LiveIns.empty(); }
 
   bool isLiveIn(unsigned Reg) const;
+
+  // Iteration support for the live-outs set. Not necessarily in sorted order.
+  typedef std::vector<unsigned>::const_iterator liveout_iterator;
+  liveout_iterator liveout_begin() const { return LiveOuts.begin(); }
+  liveout_iterator liveout_end()   const { return LiveOuts.end(); }
+  bool             liveout_empty() const { return LiveOuts.empty(); }
+
+  bool isLiveOut(unsigned Reg) const;
 
   /// getLiveInPhysReg - If VReg is a live-in virtual register, return the
   /// corresponding live-in physical register.

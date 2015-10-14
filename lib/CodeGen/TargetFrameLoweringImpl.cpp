@@ -80,4 +80,12 @@ void TargetFrameLowering::determineCalleeSaves(MachineFunction &MF,
     if (CallsUnwindInit || MRI.isPhysRegModified(Reg))
       SavedRegs.set(Reg);
   }
+
+  // Don't save any register which is live out of the function
+  for (unsigned i = 0; CSRegs[i]; ++i) {
+    unsigned Reg = CSRegs[i];
+    if (MRI.isLiveOut(Reg)) {
+      SavedRegs.reset(Reg);
+    }
+  }
 }
