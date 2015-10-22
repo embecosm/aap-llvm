@@ -572,6 +572,9 @@ public:
                         bool isKill = false, bool isDead = false,
                         bool isUndef = false, bool isDebug = false);
 
+  /// ChangeToRegMask - Replace this operand with a new register mask operand.
+  void ChangeToRegMask(const uint32_t *Mask);
+
   //===--------------------------------------------------------------------===//
   // Construction methods.
   //===--------------------------------------------------------------------===//

@@ -49,8 +49,11 @@ static cl::opt<bool> EnableSelectionDAGSP("enable-selectiondag-sp",
                                           cl::init(true), cl::Hidden);
 
 char StackProtector::ID = 0;
-INITIALIZE_PASS(StackProtector, "stack-protector", "Insert stack protectors",
-                false, true)
+INITIALIZE_PASS_BEGIN(StackProtector, "stack-protector",
+                      "Insert stack protectors", false, true)
+INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
+INITIALIZE_PASS_END(StackProtector, "stack-protector",
+                    "Insert stack protectors", false, true)
 
 FunctionPass *llvm::createStackProtectorPass(const TargetMachine *TM) {
   return new StackProtector(TM);
@@ -88,6 +91,9 @@ bool StackProtector::runOnFunction(Function &Fn) {
   DominatorTreeWrapperPass *DTWP =
       getAnalysisIfAvailable<DominatorTreeWrapperPass>();
   DT = DTWP ? &DTWP->getDomTree() : nullptr;
+  if (!TM)
+    return false;
+
   TLI = TM->getSubtargetImpl(Fn)->getTargetLowering();
 
   Attribute Attr = Fn.getFnAttribute("stack-protector-buffer-size");

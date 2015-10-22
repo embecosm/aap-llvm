@@ -36,6 +36,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/LibCallSemantics.h"
+#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/ValueHandle.h"
@@ -55,10 +56,11 @@ class BlockAddress;
 class MDNode;
 class MMIAddrLabelMap;
 class MachineBasicBlock;
-class MachineFunction;
+class MachineFunctionInitializer;
 class Module;
 class PointerType;
 class StructType;
+class TargetMachine;
 struct WinEHFuncInfo;
 
 struct SEHHandler {
@@ -114,6 +116,10 @@ class MachineModuleInfo : public ImmutablePass {
   /// Context - This is the MCContext used for the entire code generator.
   MCContext Context;
 
+  /// TM - Needed when doing initialization of MachineFunctionAnalysis passes
+  const TargetMachine *TM;
+  MachineFunctionInitializer *MFInitializer;
+
   /// TheModule - This is the LLVM Module being worked on.
   const Module *TheModule;
 
@@ -155,6 +161,16 @@ class MachineModuleInfo : public ImmutablePass {
   /// Personalities - Vector of all personality functions ever seen. Used to
   /// emit common EH frames.
   std::vector<const Function *> Personalities;
+
+  /// MachineFunctions - Stores a mapping from a Function to the corresponding
+  /// MachineFunction
+  DenseMap<const Function *,
+           std::unique_ptr<MachineFunction> > MachineFunctions;
+
+  /// FunctionClobbers - Stores a mapping from a Function to a mask of the
+  /// physical registers which it clobbers.
+  DenseMap<const Function *,
+           std::unique_ptr<const uint32_t[]> > FunctionClobbers;
 
   /// AddrLabelSymbols - This map keeps track of which symbol is being used for
   /// the specified basic block's address of label.
@@ -203,7 +219,8 @@ public:
   MachineModuleInfo();  // DUMMY CONSTRUCTOR, DO NOT CALL.
   // Real constructor.
   MachineModuleInfo(const MCAsmInfo &MAI, const MCRegisterInfo &MRI,
-                    const MCObjectFileInfo *MOFI);
+                    const MCObjectFileInfo *MOFI, const TargetMachine *TM,
+                    MachineFunctionInitializer *MFI);
   ~MachineModuleInfo() override;
 
   // Initialization and Finalization
@@ -219,6 +236,33 @@ public:
 
   void setModule(const Module *M) { TheModule = M; }
   const Module *getModule() const { return TheModule; }
+
+  const TargetMachine *getTargetMachine() const { return TM; }
+  MachineFunctionInitializer *getMachineFunctionInitializer() {
+    return MFInitializer;
+  }
+
+  void addMachineFunction(const Function *F, MachineFunction *MF) {
+    auto &Ptr = MachineFunctions[F];
+    assert(!Ptr && "Entry already exists for this function!");
+    Ptr.reset(MF);
+  }
+
+  MachineFunction *getMachineFunction(const Function *F) {
+    const auto &Ptr = MachineFunctions[F];
+    return Ptr.get();
+  }
+
+  void setClobbersForFunction(const Function &F, const uint32_t *Clobbers) {
+    std::unique_ptr<const uint32_t[]> &Ptr = FunctionClobbers[&F];
+    assert(!Ptr && "Clobbers already calculated for this function!");
+    Ptr.reset(Clobbers);
+  }
+
+  const uint32_t *getClobbersForFunction(const Function &F) {
+    const auto &Ptr = FunctionClobbers[&F];
+    return Ptr.get();
+  }
 
   const Function *getWinEHParent(const Function *F) const;
   WinEHFuncInfo &getWinEHFuncInfo(const Function *F);

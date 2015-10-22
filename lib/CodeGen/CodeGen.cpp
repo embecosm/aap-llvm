@@ -63,6 +63,7 @@ void llvm::initializeCodeGen(PassRegistry &Registry) {
   initializePostRASchedulerPass(Registry);
   initializeProcessImplicitDefsPass(Registry);
   initializeRegisterCoalescerPass(Registry);
+  initializeRegisterResurrectPass(Registry);
   initializeShrinkWrapPass(Registry);
   initializeSlotIndexesPass(Registry);
   initializeStackColoringPass(Registry);

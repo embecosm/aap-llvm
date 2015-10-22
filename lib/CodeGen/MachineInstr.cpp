@@ -211,6 +211,17 @@ void MachineOperand::ChangeToRegister(unsigned Reg, bool isDef, bool isImp,
     RegInfo->addRegOperandToUseList(this);
 }
 
+void MachineOperand::ChangeToRegMask(const uint32_t *Mask)
+{
+  assert((!isReg() || !isTied()) &&
+         "Cannot change a tied operand into a regmask");
+
+  removeRegFromUses();
+
+  OpKind = MO_RegisterMask;
+  Contents.RegMask = Mask;
+}
+
 /// isIdenticalTo - Return true if this operand is identical to the specified
 /// operand. Note that this should stay in sync with the hash_value overload
 /// below.

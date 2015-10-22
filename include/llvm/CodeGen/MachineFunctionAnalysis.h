@@ -26,15 +26,14 @@ class TargetMachine;
 /// MachineFunction object.
 struct MachineFunctionAnalysis : public FunctionPass {
 private:
-  const TargetMachine &TM;
+  const TargetMachine *TM;
   MachineFunction *MF;
   unsigned NextFnNum;
   MachineFunctionInitializer *MFInitializer;
 
 public:
   static char ID;
-  explicit MachineFunctionAnalysis(const TargetMachine &tm,
-                                   MachineFunctionInitializer *MFInitializer);
+  MachineFunctionAnalysis();
   ~MachineFunctionAnalysis() override;
 
   MachineFunction &getMF() const { return *MF; }

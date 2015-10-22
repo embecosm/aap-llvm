@@ -19,6 +19,7 @@
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/CodeGen/MachineFunctionAnalysis.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/ValueMap.h"
 #include "llvm/Pass.h"
@@ -117,6 +118,7 @@ public:
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addPreserved<DominatorTreeWrapperPass>();
+    AU.addPreserved<MachineFunctionAnalysis>();
   }
 
   SSPLayoutKind getSSPLayout(const AllocaInst *AI) const;

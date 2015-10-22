@@ -16,13 +16,13 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineFunctionInitializer.h"
+#include "llvm/Pass.h"
 using namespace llvm;
 
 char MachineFunctionAnalysis::ID = 0;
 
-MachineFunctionAnalysis::MachineFunctionAnalysis(
-    const TargetMachine &tm, MachineFunctionInitializer *MFInitializer)
-    : FunctionPass(ID), TM(tm), MF(nullptr), MFInitializer(MFInitializer) {
+MachineFunctionAnalysis::MachineFunctionAnalysis()
+    : FunctionPass(ID), TM(nullptr), MF(nullptr), MFInitializer(nullptr) {
   initializeMachineModuleInfoPass(*PassRegistry::getPassRegistry());
 }
 
@@ -39,6 +39,9 @@ void MachineFunctionAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
 bool MachineFunctionAnalysis::doInitialization(Module &M) {
   MachineModuleInfo *MMI = getAnalysisIfAvailable<MachineModuleInfo>();
   assert(MMI && "MMI not around yet??");
+
+  TM = MMI->getTargetMachine();
+  MFInitializer = MMI->getMachineFunctionInitializer();
   MMI->setModule(&M);
   NextFnNum = 0;
   return false;
@@ -46,15 +49,24 @@ bool MachineFunctionAnalysis::doInitialization(Module &M) {
 
 
 bool MachineFunctionAnalysis::runOnFunction(Function &F) {
+  assert(TM && "No LLVMTargetMachine");
   assert(!MF && "MachineFunctionAnalysis already initialized!");
-  MF = new MachineFunction(&F, TM, NextFnNum++,
-                           getAnalysis<MachineModuleInfo>());
+
+  MachineModuleInfo &MMI = getAnalysis<MachineModuleInfo>();
+  MF = MMI.getMachineFunction(&F);
+  if (!MF) {
+    MF = new MachineFunction(&F, *TM, NextFnNum++, MMI);
+    MMI.addMachineFunction(&F, MF);
+  }
   if (MFInitializer)
     MFInitializer->initializeMachineFunction(*MF);
   return false;
 }
 
 void MachineFunctionAnalysis::releaseMemory() {
-  delete MF;
+  // MF is owned by MachineModuleInfo, so do not delete here
   MF = nullptr;
 }
+
+INITIALIZE_PASS(MachineFunctionAnalysis, "machine-function-analysis",
+                "Machine Function Analysis", false, false)

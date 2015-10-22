@@ -31,7 +31,9 @@ class MachineFunction;
 /// override runOnMachineFunction.
 class MachineFunctionPass : public FunctionPass {
 protected:
-  explicit MachineFunctionPass(char &ID) : FunctionPass(ID) {}
+  explicit MachineFunctionPass(char &ID) : FunctionPass(ID) {
+    initializeMachineFunctionAnalysisPass(*PassRegistry::getPassRegistry());
+  }
 
   /// runOnMachineFunction - This method must be overloaded to perform the
   /// desired machine code transformation or analysis.

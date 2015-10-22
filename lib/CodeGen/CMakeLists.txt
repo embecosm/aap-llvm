@@ -101,6 +101,7 @@ add_llvm_library(LLVMCodeGen
   RegisterClassInfo.cpp
   RegisterCoalescer.cpp
   RegisterPressure.cpp
+  RegisterResurrect.cpp
   RegisterScavenging.cpp
   ScheduleDAG.cpp
   ScheduleDAGInstrs.cpp

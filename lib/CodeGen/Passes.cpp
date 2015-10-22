@@ -29,6 +29,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Instrumentation.h"
+#include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/SymbolRewriter.h"
 
@@ -74,6 +75,8 @@ static cl::opt<bool> DisableCopyProp("disable-copyprop", cl::Hidden,
     cl::desc("Disable Copy Propagation pass"));
 static cl::opt<bool> DisablePartialLibcallInlining("disable-partial-libcall-inlining",
     cl::Hidden, cl::desc("Disable Partial Libcall Inlining"));
+static cl::opt<bool> DisableRegisterResurrect("disable-register-resurrect",
+    cl::Hidden, cl::desc("Disable register resurrection"));
 static cl::opt<bool> EnableImplicitNullChecks(
     "enable-implicit-null-checks",
     cl::desc("Fold null checks into faulting memory operations"),
@@ -517,6 +520,18 @@ void TargetPassConfig::addMachinePasses() {
 
   // Print the instruction selected machine code...
   printAndVerify("After Instruction Selection");
+
+  // Resurrect registers at call sites for registers which are not clobbered
+  // by calls.
+  //
+  // Note: This is a CallGraphSCCPass, and it requires that the rest of the
+  // passes in the pipeline are also run in call graph order so that the
+  // register allocation of the callee is finalized before the caller is
+  // handled.
+  if ((getOptLevel() != CodeGenOpt::None) &&
+      !DisableRegisterResurrect) {
+    addPass(&RegisterResurrectID);
+  }
 
   // Expand pseudo-instructions emitted by ISel.
   addPass(&ExpandISelPseudosID);

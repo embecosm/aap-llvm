@@ -185,10 +185,10 @@ INITIALIZE_PASS_END(StackColoring,
                    "stack-coloring", "Merge disjoint stack slots", false, false)
 
 void StackColoring::getAnalysisUsage(AnalysisUsage &AU) const {
+  AU.addRequired<StackProtector>();
+  AU.addRequired<SlotIndexes>();
   AU.addRequired<MachineDominatorTree>();
   AU.addPreserved<MachineDominatorTree>();
-  AU.addRequired<SlotIndexes>();
-  AU.addRequired<StackProtector>();
   MachineFunctionPass::getAnalysisUsage(AU);
 }
 

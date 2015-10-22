@@ -15,6 +15,7 @@
 #ifndef LLVM_CODEGEN_PASSES_H
 #define LLVM_CODEGEN_PASSES_H
 
+#include "llvm/Analysis/CallGraphSCCPass.h"
 #include "llvm/Pass.h"
 #include "llvm/Target/TargetMachine.h"
 #include <functional>
@@ -365,6 +366,8 @@ protected:
 namespace llvm {
   FunctionPass *createAtomicExpandPass(const TargetMachine *TM);
 
+  CallGraphSCCPass *createRegisterResurrectPass();
+
   /// createUnreachableBlockEliminationPass - The LLVM code generator does not
   /// work well with unreachable basic blocks (what live ranges make sense for a
   /// block that cannot be reached?).  As such, a code generator should either
@@ -390,6 +393,10 @@ namespace llvm {
   /// AtomicExpandID -- Lowers atomic operations in terms of either cmpxchg
   /// load-linked/store-conditional loops.
   extern char &AtomicExpandID;
+
+  /// RegisterResurrectID -- Eliminates defs of registers at call sites where
+  /// the register is determined to not be clobbered by the called function
+  extern char &RegisterResurrectID;
 
   /// MachineLoopInfo - This pass is a loop analysis pass.
   extern char &MachineLoopInfoID;

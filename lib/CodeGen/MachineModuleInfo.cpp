@@ -188,8 +188,11 @@ void MMIAddrLabelMapCallbackPtr::allUsesReplacedWith(Value *V2) {
 
 MachineModuleInfo::MachineModuleInfo(const MCAsmInfo &MAI,
                                      const MCRegisterInfo &MRI,
-                                     const MCObjectFileInfo *MOFI)
-  : ImmutablePass(ID), Context(&MAI, &MRI, MOFI, nullptr, false) {
+                                     const MCObjectFileInfo *MOFI,
+                                     const TargetMachine *TM,
+                                     MachineFunctionInitializer *MFI)
+  : ImmutablePass(ID), Context(&MAI, &MRI, MOFI, nullptr, false), TM(TM),
+    MFInitializer(MFI) {
   initializeMachineModuleInfoPass(*PassRegistry::getPassRegistry());
 }
 
