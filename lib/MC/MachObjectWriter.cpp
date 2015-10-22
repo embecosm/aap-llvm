@@ -78,7 +78,6 @@ uint64_t MachObjectWriter::getSymbolAddress(const MCSymbol &S,
           dyn_cast<const MCConstantExpr>(S.getVariableValue()))
       return C->getValue();
 
-
     MCValue Target;
     if (!S.getVariableValue()->evaluateAsRelocatable(Target, &Layout, nullptr))
       report_fatal_error("unable to evaluate offset for variable '" +
@@ -457,9 +456,9 @@ void MachObjectWriter::bindIndirectSymbols(MCAssembler &Asm) {
     if (Section.getType() != MachO::S_NON_LAZY_SYMBOL_POINTERS &&
         Section.getType() != MachO::S_LAZY_SYMBOL_POINTERS &&
         Section.getType() != MachO::S_SYMBOL_STUBS) {
-	MCSymbol &Symbol = *it->Symbol;
-	report_fatal_error("indirect symbol '" + Symbol.getName() +
-                           "' not in a symbol pointer or stub section");
+      MCSymbol &Symbol = *it->Symbol;
+      report_fatal_error("indirect symbol '" + Symbol.getName() +
+                         "' not in a symbol pointer or stub section");
     }
   }
 
@@ -627,6 +626,18 @@ void MachObjectWriter::executePostLayoutBinding(MCAssembler &Asm,
 }
 
 bool MachObjectWriter::isSymbolRefDifferenceFullyResolvedImpl(
+    const MCAssembler &Asm, const MCSymbol &A, const MCSymbol &B,
+    bool InSet) const {
+  // FIXME: We don't handle things like
+  // foo = .
+  // creating atoms.
+  if (A.isVariable() || B.isVariable())
+    return false;
+  return MCObjectWriter::isSymbolRefDifferenceFullyResolvedImpl(Asm, A, B,
+                                                                InSet);
+}
+
+bool MachObjectWriter::isSymbolRefDifferenceFullyResolvedImpl(
     const MCAssembler &Asm, const MCSymbol &SymA, const MCFragment &FB,
     bool InSet, bool IsPCRel) const {
   if (InSet)
@@ -745,7 +756,7 @@ void MachObjectWriter::writeObject(MCAssembler &Asm,
     ++NumLoadCommands;
     LoadCommandsSize += ComputeLinkerOptionsLoadCommandSize(Option, is64Bit());
   }
-  
+
   // Compute the total size of the section data, as well as its file size and vm
   // size.
   uint64_t SectionDataStart = (is64Bit() ? sizeof(MachO::mach_header_64) :

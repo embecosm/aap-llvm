@@ -1251,72 +1251,6 @@ define <8 x i16> @test_x86_sse41_pminuw(<8 x i16> %a0, <8 x i16> %a1) {
 declare <8 x i16> @llvm.x86.sse41.pminuw(<8 x i16>, <8 x i16>) nounwind readnone
 
 
-define <4 x i32> @test_x86_sse41_pmovsxbd(<16 x i8> %a0) {
-; CHECK-LABEL: test_x86_sse41_pmovsxbd:
-; CHECK:       ## BB#0:
-; CHECK-NEXT:    vpmovsxbd %xmm0, %xmm0
-; CHECK-NEXT:    retl
-  %res = call <4 x i32> @llvm.x86.sse41.pmovsxbd(<16 x i8> %a0) ; <<4 x i32>> [#uses=1]
-  ret <4 x i32> %res
-}
-declare <4 x i32> @llvm.x86.sse41.pmovsxbd(<16 x i8>) nounwind readnone
-
-
-define <2 x i64> @test_x86_sse41_pmovsxbq(<16 x i8> %a0) {
-; CHECK-LABEL: test_x86_sse41_pmovsxbq:
-; CHECK:       ## BB#0:
-; CHECK-NEXT:    vpmovsxbq %xmm0, %xmm0
-; CHECK-NEXT:    retl
-  %res = call <2 x i64> @llvm.x86.sse41.pmovsxbq(<16 x i8> %a0) ; <<2 x i64>> [#uses=1]
-  ret <2 x i64> %res
-}
-declare <2 x i64> @llvm.x86.sse41.pmovsxbq(<16 x i8>) nounwind readnone
-
-
-define <8 x i16> @test_x86_sse41_pmovsxbw(<16 x i8> %a0) {
-; CHECK-LABEL: test_x86_sse41_pmovsxbw:
-; CHECK:       ## BB#0:
-; CHECK-NEXT:    vpmovsxbw %xmm0, %xmm0
-; CHECK-NEXT:    retl
-  %res = call <8 x i16> @llvm.x86.sse41.pmovsxbw(<16 x i8> %a0) ; <<8 x i16>> [#uses=1]
-  ret <8 x i16> %res
-}
-declare <8 x i16> @llvm.x86.sse41.pmovsxbw(<16 x i8>) nounwind readnone
-
-
-define <2 x i64> @test_x86_sse41_pmovsxdq(<4 x i32> %a0) {
-; CHECK-LABEL: test_x86_sse41_pmovsxdq:
-; CHECK:       ## BB#0:
-; CHECK-NEXT:    vpmovsxdq %xmm0, %xmm0
-; CHECK-NEXT:    retl
-  %res = call <2 x i64> @llvm.x86.sse41.pmovsxdq(<4 x i32> %a0) ; <<2 x i64>> [#uses=1]
-  ret <2 x i64> %res
-}
-declare <2 x i64> @llvm.x86.sse41.pmovsxdq(<4 x i32>) nounwind readnone
-
-
-define <4 x i32> @test_x86_sse41_pmovsxwd(<8 x i16> %a0) {
-; CHECK-LABEL: test_x86_sse41_pmovsxwd:
-; CHECK:       ## BB#0:
-; CHECK-NEXT:    vpmovsxwd %xmm0, %xmm0
-; CHECK-NEXT:    retl
-  %res = call <4 x i32> @llvm.x86.sse41.pmovsxwd(<8 x i16> %a0) ; <<4 x i32>> [#uses=1]
-  ret <4 x i32> %res
-}
-declare <4 x i32> @llvm.x86.sse41.pmovsxwd(<8 x i16>) nounwind readnone
-
-
-define <2 x i64> @test_x86_sse41_pmovsxwq(<8 x i16> %a0) {
-; CHECK-LABEL: test_x86_sse41_pmovsxwq:
-; CHECK:       ## BB#0:
-; CHECK-NEXT:    vpmovsxwq %xmm0, %xmm0
-; CHECK-NEXT:    retl
-  %res = call <2 x i64> @llvm.x86.sse41.pmovsxwq(<8 x i16> %a0) ; <<2 x i64>> [#uses=1]
-  ret <2 x i64> %res
-}
-declare <2 x i64> @llvm.x86.sse41.pmovsxwq(<8 x i16>) nounwind readnone
-
-
 define <4 x i32> @test_x86_sse41_pmovzxbd(<16 x i8> %a0) {
 ; CHECK-LABEL: test_x86_sse41_pmovzxbd:
 ; CHECK:       ## BB#0:
@@ -2602,102 +2536,102 @@ define <32 x i8> @test_x86_avx_ldu_dq_256(i8* %a0) {
 declare <32 x i8> @llvm.x86.avx.ldu.dq.256(i8*) nounwind readonly
 
 
-define <2 x double> @test_x86_avx_maskload_pd(i8* %a0, <2 x double> %a1) {
+define <2 x double> @test_x86_avx_maskload_pd(i8* %a0, <2 x i64> %mask) {
 ; CHECK-LABEL: test_x86_avx_maskload_pd:
 ; CHECK:       ## BB#0:
 ; CHECK-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; CHECK-NEXT:    vmaskmovpd (%eax), %xmm0, %xmm0
 ; CHECK-NEXT:    retl
-  %res = call <2 x double> @llvm.x86.avx.maskload.pd(i8* %a0, <2 x double> %a1) ; <<2 x double>> [#uses=1]
+  %res = call <2 x double> @llvm.x86.avx.maskload.pd(i8* %a0, <2 x i64> %mask) ; <<2 x double>> [#uses=1]
   ret <2 x double> %res
 }
-declare <2 x double> @llvm.x86.avx.maskload.pd(i8*, <2 x double>) nounwind readonly
+declare <2 x double> @llvm.x86.avx.maskload.pd(i8*, <2 x i64>) nounwind readonly
 
 
-define <4 x double> @test_x86_avx_maskload_pd_256(i8* %a0, <4 x double> %a1) {
+define <4 x double> @test_x86_avx_maskload_pd_256(i8* %a0, <4 x i64> %mask) {
 ; CHECK-LABEL: test_x86_avx_maskload_pd_256:
 ; CHECK:       ## BB#0:
 ; CHECK-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; CHECK-NEXT:    vmaskmovpd (%eax), %ymm0, %ymm0
 ; CHECK-NEXT:    retl
-  %res = call <4 x double> @llvm.x86.avx.maskload.pd.256(i8* %a0, <4 x double> %a1) ; <<4 x double>> [#uses=1]
+  %res = call <4 x double> @llvm.x86.avx.maskload.pd.256(i8* %a0, <4 x i64> %mask) ; <<4 x double>> [#uses=1]
   ret <4 x double> %res
 }
-declare <4 x double> @llvm.x86.avx.maskload.pd.256(i8*, <4 x double>) nounwind readonly
+declare <4 x double> @llvm.x86.avx.maskload.pd.256(i8*, <4 x i64>) nounwind readonly
 
 
-define <4 x float> @test_x86_avx_maskload_ps(i8* %a0, <4 x float> %a1) {
+define <4 x float> @test_x86_avx_maskload_ps(i8* %a0, <4 x i32> %mask) {
 ; CHECK-LABEL: test_x86_avx_maskload_ps:
 ; CHECK:       ## BB#0:
 ; CHECK-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; CHECK-NEXT:    vmaskmovps (%eax), %xmm0, %xmm0
 ; CHECK-NEXT:    retl
-  %res = call <4 x float> @llvm.x86.avx.maskload.ps(i8* %a0, <4 x float> %a1) ; <<4 x float>> [#uses=1]
+  %res = call <4 x float> @llvm.x86.avx.maskload.ps(i8* %a0, <4 x i32> %mask) ; <<4 x float>> [#uses=1]
   ret <4 x float> %res
 }
-declare <4 x float> @llvm.x86.avx.maskload.ps(i8*, <4 x float>) nounwind readonly
+declare <4 x float> @llvm.x86.avx.maskload.ps(i8*, <4 x i32>) nounwind readonly
 
 
-define <8 x float> @test_x86_avx_maskload_ps_256(i8* %a0, <8 x float> %a1) {
+define <8 x float> @test_x86_avx_maskload_ps_256(i8* %a0, <8 x i32> %mask) {
 ; CHECK-LABEL: test_x86_avx_maskload_ps_256:
 ; CHECK:       ## BB#0:
 ; CHECK-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; CHECK-NEXT:    vmaskmovps (%eax), %ymm0, %ymm0
 ; CHECK-NEXT:    retl
-  %res = call <8 x float> @llvm.x86.avx.maskload.ps.256(i8* %a0, <8 x float> %a1) ; <<8 x float>> [#uses=1]
+  %res = call <8 x float> @llvm.x86.avx.maskload.ps.256(i8* %a0, <8 x i32> %mask) ; <<8 x float>> [#uses=1]
   ret <8 x float> %res
 }
-declare <8 x float> @llvm.x86.avx.maskload.ps.256(i8*, <8 x float>) nounwind readonly
+declare <8 x float> @llvm.x86.avx.maskload.ps.256(i8*, <8 x i32>) nounwind readonly
 
 
-define void @test_x86_avx_maskstore_pd(i8* %a0, <2 x double> %a1, <2 x double> %a2) {
+define void @test_x86_avx_maskstore_pd(i8* %a0, <2 x i64> %mask, <2 x double> %a2) {
 ; CHECK-LABEL: test_x86_avx_maskstore_pd:
 ; CHECK:       ## BB#0:
 ; CHECK-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; CHECK-NEXT:    vmaskmovpd %xmm1, %xmm0, (%eax)
 ; CHECK-NEXT:    retl
-  call void @llvm.x86.avx.maskstore.pd(i8* %a0, <2 x double> %a1, <2 x double> %a2)
+  call void @llvm.x86.avx.maskstore.pd(i8* %a0, <2 x i64> %mask, <2 x double> %a2)
   ret void
 }
-declare void @llvm.x86.avx.maskstore.pd(i8*, <2 x double>, <2 x double>) nounwind
+declare void @llvm.x86.avx.maskstore.pd(i8*, <2 x i64>, <2 x double>) nounwind
 
 
-define void @test_x86_avx_maskstore_pd_256(i8* %a0, <4 x double> %a1, <4 x double> %a2) {
+define void @test_x86_avx_maskstore_pd_256(i8* %a0, <4 x i64> %mask, <4 x double> %a2) {
 ; CHECK-LABEL: test_x86_avx_maskstore_pd_256:
 ; CHECK:       ## BB#0:
 ; CHECK-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; CHECK-NEXT:    vmaskmovpd %ymm1, %ymm0, (%eax)
 ; CHECK-NEXT:    vzeroupper
 ; CHECK-NEXT:    retl
-  call void @llvm.x86.avx.maskstore.pd.256(i8* %a0, <4 x double> %a1, <4 x double> %a2)
+  call void @llvm.x86.avx.maskstore.pd.256(i8* %a0, <4 x i64> %mask, <4 x double> %a2)
   ret void
 }
-declare void @llvm.x86.avx.maskstore.pd.256(i8*, <4 x double>, <4 x double>) nounwind
+declare void @llvm.x86.avx.maskstore.pd.256(i8*, <4 x i64>, <4 x double>) nounwind
 
 
-define void @test_x86_avx_maskstore_ps(i8* %a0, <4 x float> %a1, <4 x float> %a2) {
+define void @test_x86_avx_maskstore_ps(i8* %a0, <4 x i32> %mask, <4 x float> %a2) {
 ; CHECK-LABEL: test_x86_avx_maskstore_ps:
 ; CHECK:       ## BB#0:
 ; CHECK-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; CHECK-NEXT:    vmaskmovps %xmm1, %xmm0, (%eax)
 ; CHECK-NEXT:    retl
-  call void @llvm.x86.avx.maskstore.ps(i8* %a0, <4 x float> %a1, <4 x float> %a2)
+  call void @llvm.x86.avx.maskstore.ps(i8* %a0, <4 x i32> %mask, <4 x float> %a2)
   ret void
 }
-declare void @llvm.x86.avx.maskstore.ps(i8*, <4 x float>, <4 x float>) nounwind
+declare void @llvm.x86.avx.maskstore.ps(i8*, <4 x i32>, <4 x float>) nounwind
 
 
-define void @test_x86_avx_maskstore_ps_256(i8* %a0, <8 x float> %a1, <8 x float> %a2) {
+define void @test_x86_avx_maskstore_ps_256(i8* %a0, <8 x i32> %mask, <8 x float> %a2) {
 ; CHECK-LABEL: test_x86_avx_maskstore_ps_256:
 ; CHECK:       ## BB#0:
 ; CHECK-NEXT:    movl {{[0-9]+}}(%esp), %eax
 ; CHECK-NEXT:    vmaskmovps %ymm1, %ymm0, (%eax)
 ; CHECK-NEXT:    vzeroupper
 ; CHECK-NEXT:    retl
-  call void @llvm.x86.avx.maskstore.ps.256(i8* %a0, <8 x float> %a1, <8 x float> %a2)
+  call void @llvm.x86.avx.maskstore.ps.256(i8* %a0, <8 x i32> %mask, <8 x float> %a2)
   ret void
 }
-declare void @llvm.x86.avx.maskstore.ps.256(i8*, <8 x float>, <8 x float>) nounwind
+declare void @llvm.x86.avx.maskstore.ps.256(i8*, <8 x i32>, <8 x float>) nounwind
 
 
 define <4 x double> @test_x86_avx_max_pd_256(<4 x double> %a0, <4 x double> %a1) {
@@ -3378,7 +3312,7 @@ define void @movnt_dq(i8* %p, <2 x i64> %a1) nounwind {
 ; CHECK-LABEL: movnt_dq:
 ; CHECK:       ## BB#0:
 ; CHECK-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; CHECK-NEXT:    vpaddq LCPI282_0, %xmm0, %xmm0
+; CHECK-NEXT:    vpaddq LCPI276_0, %xmm0, %xmm0
 ; CHECK-NEXT:    vmovntdq %ymm0, (%eax)
 ; CHECK-NEXT:    vzeroupper
 ; CHECK-NEXT:    retl

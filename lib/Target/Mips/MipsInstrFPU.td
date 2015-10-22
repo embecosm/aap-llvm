@@ -353,11 +353,8 @@ def FNEG_S : MMRel, ABSS_FT<"neg.s", FGR32Opnd, FGR32Opnd, II_NEG, fneg>,
 defm FABS : ABSS_M<"abs.d", II_ABS, fabs>, ABSS_FM<0x5, 17>;
 defm FNEG : ABSS_M<"neg.d", II_NEG, fneg>, ABSS_FM<0x7, 17>;
 
-let AdditionalPredicates = [NotInMicroMips] in {
-def FSQRT_S : MMRel, ABSS_FT<"sqrt.s", FGR32Opnd, FGR32Opnd, II_SQRT_S, fsqrt>,
-              ABSS_FM<0x4, 16>, ISA_MIPS2;
-}
-
+def FSQRT_S : MMRel, StdMMR6Rel, ABSS_FT<"sqrt.s", FGR32Opnd, FGR32Opnd,
+              II_SQRT_S, fsqrt>, ABSS_FM<0x4, 16>, ISA_MIPS2;
 defm FSQRT : ABSS_M<"sqrt.d", II_SQRT_D, fsqrt>, ABSS_FM<0x4, 17>, ISA_MIPS2;
 
 // The odd-numbered registers are only referenced when doing loads,
@@ -514,13 +511,13 @@ let AdditionalPredicates = [NoNaNsFPMath],
 def MIPS_BRANCH_F  : PatLeaf<(i32 0)>;
 def MIPS_BRANCH_T  : PatLeaf<(i32 1)>;
 
-def BC1F : MMRel, BC1F_FT<"bc1f", brtarget, IIBranch, MIPS_BRANCH_F>,
+def BC1F : MMRel, BC1F_FT<"bc1f", brtarget, II_BC1F, MIPS_BRANCH_F>,
            BC1F_FM<0, 0>, ISA_MIPS1_NOT_32R6_64R6;
-def BC1FL : MMRel, BC1F_FT<"bc1fl", brtarget, IIBranch, MIPS_BRANCH_F, 0>,
+def BC1FL : MMRel, BC1F_FT<"bc1fl", brtarget, II_BC1FL, MIPS_BRANCH_F, 0>,
             BC1F_FM<1, 0>, ISA_MIPS2_NOT_32R6_64R6;
-def BC1T : MMRel, BC1F_FT<"bc1t", brtarget, IIBranch, MIPS_BRANCH_T>,
+def BC1T : MMRel, BC1F_FT<"bc1t", brtarget, II_BC1T, MIPS_BRANCH_T>,
            BC1F_FM<0, 1>, ISA_MIPS1_NOT_32R6_64R6;
-def BC1TL : MMRel, BC1F_FT<"bc1tl", brtarget, IIBranch, MIPS_BRANCH_T, 0>,
+def BC1TL : MMRel, BC1F_FT<"bc1tl", brtarget, II_BC1TL, MIPS_BRANCH_T, 0>,
             BC1F_FM<1, 1>, ISA_MIPS2_NOT_32R6_64R6;
 
 /// Floating Point Compare

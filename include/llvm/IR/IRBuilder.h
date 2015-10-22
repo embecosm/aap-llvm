@@ -52,6 +52,7 @@ protected:
 /// \brief Common base class shared among various IRBuilders.
 class IRBuilderBase {
   DebugLoc CurDbgLocation;
+
 protected:
   BasicBlock *BB;
   BasicBlock::iterator InsertPt;
@@ -59,8 +60,8 @@ protected:
 
   MDNode *DefaultFPMathTag;
   FastMathFlags FMF;
-public:
 
+public:
   IRBuilderBase(LLVMContext &context, MDNode *FPMathTag = nullptr)
     : Context(context), DefaultFPMathTag(FPMathTag), FMF() {
     ClearInsertionPoint();
@@ -74,7 +75,7 @@ public:
   /// inserted into a block.
   void ClearInsertionPoint() {
     BB = nullptr;
-    InsertPt = nullptr;
+    InsertPt.reset(nullptr);
   }
 
   BasicBlock *GetInsertBlock() const { return BB; }
@@ -92,8 +93,8 @@ public:
   /// the specified instruction.
   void SetInsertPoint(Instruction *I) {
     BB = I->getParent();
-    InsertPt = I;
-    assert(I != BB->end() && "Can't read debug loc from end()");
+    InsertPt = I->getIterator();
+    assert(InsertPt != BB->end() && "Can't read debug loc from end()");
     SetCurrentDebugLocation(I->getDebugLoc());
   }
 
@@ -314,10 +315,8 @@ public:
   }
 
   /// \brief Fetch the type representing a 128-bit integer.
-  IntegerType *getInt128Ty() {
-    return Type::getInt128Ty(Context);
-  }
-  
+  IntegerType *getInt128Ty() { return Type::getInt128Ty(Context); }
+
   /// \brief Fetch the type representing an N-bit integer.
   IntegerType *getIntNTy(unsigned N) {
     return Type::getIntNTy(Context, N);
@@ -427,7 +426,7 @@ public:
 
   /// \brief Create a call to Masked Load intrinsic
   CallInst *CreateMaskedLoad(Value *Ptr, unsigned Align, Value *Mask,
-                             Value *PassThru = 0, const Twine &Name = "");
+                             Value *PassThru = nullptr, const Twine &Name = "");
 
   /// \brief Create a call to Masked Store intrinsic
   CallInst *CreateMaskedStore(Value *Val, Value *Ptr, unsigned Align,
@@ -443,6 +442,16 @@ public:
                                    Value *ActualCallee,
                                    ArrayRef<Value *> CallArgs,
                                    ArrayRef<Value *> DeoptArgs,
+                                   ArrayRef<Value *> GCArgs,
+                                   const Twine &Name = "");
+
+  /// \brief Create a call to the experimental.gc.statepoint intrinsic to
+  /// start a new statepoint sequence.
+  CallInst *CreateGCStatepointCall(uint64_t ID, uint32_t NumPatchBytes,
+                                   Value *ActualCallee, uint32_t Flags,
+                                   ArrayRef<Use> CallArgs,
+                                   ArrayRef<Use> TransitionArgs,
+                                   ArrayRef<Use> DeoptArgs,
                                    ArrayRef<Value *> GCArgs,
                                    const Twine &Name = "");
 
@@ -463,6 +472,15 @@ public:
                            BasicBlock *UnwindDest, ArrayRef<Value *> InvokeArgs,
                            ArrayRef<Value *> DeoptArgs,
                            ArrayRef<Value *> GCArgs, const Twine &Name = "");
+
+  /// brief Create an invoke to the experimental.gc.statepoint intrinsic to
+  /// start a new statepoint sequence.
+  InvokeInst *CreateGCStatepointInvoke(
+      uint64_t ID, uint32_t NumPatchBytes, Value *ActualInvokee,
+      BasicBlock *NormalDest, BasicBlock *UnwindDest, uint32_t Flags,
+      ArrayRef<Use> InvokeArgs, ArrayRef<Use> TransitionArgs,
+      ArrayRef<Use> DeoptArgs, ArrayRef<Value *> GCArgs,
+      const Twine &Name = "");
 
   // Conveninence function for the common case when CallArgs are filled in using
   // makeArrayRef(CS.arg_begin(), CS.arg_end()); Use needs to be .get()'ed to
@@ -517,6 +535,7 @@ template<bool preserveNames = true, typename T = ConstantFolder,
          typename Inserter = IRBuilderDefaultInserter<preserveNames> >
 class IRBuilder : public IRBuilderBase, public Inserter {
   T Folder;
+
 public:
   IRBuilder(LLVMContext &C, const T &F, Inserter I = Inserter(),
             MDNode *FPMathTag = nullptr)
@@ -739,6 +758,7 @@ private:
     I->setFastMathFlags(FMF);
     return I;
   }
+
 public:
   Value *CreateAdd(Value *LHS, Value *RHS, const Twine &Name = "",
                    bool HasNUW = false, bool HasNSW = false) {
@@ -1374,11 +1394,13 @@ public:
 
     return CreateBitCast(V, DestTy, Name);
   }
+
 private:
   // \brief Provided to resolve 'CreateIntCast(Ptr, Ptr, "...")', giving a
   // compile time error, instead of converting the string to bool for the
   // isSigned parameter.
   Value *CreateIntCast(Value *, Type *, const char *) = delete;
+
 public:
   Value *CreateFPCast(Value *V, Type *DestTy, const Twine &Name = "") {
     if (V->getType() == DestTy)
@@ -1743,6 +1765,6 @@ public:
 // Create wrappers for C Binding types (see CBindingWrapping.h).
 DEFINE_SIMPLE_CONVERSION_FUNCTIONS(IRBuilder<>, LLVMBuilderRef)
 
-}
+} // end namespace llvm
 
-#endif
+#endif // LLVM_IR_IRBUILDER_H

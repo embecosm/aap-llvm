@@ -1,12 +1,16 @@
-; RUN: llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx,+fma -fp-contract=fast | FileCheck %s
-; RUN: llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx,+fma4,+fma -fp-contract=fast | FileCheck %s
-; RUN: llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx,+fma4 -fp-contract=fast | FileCheck %s --check-prefix=CHECK_FMA4
+; RUN: llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx,+fma -fp-contract=fast | FileCheck %s --check-prefix=ALL --check-prefix=CHECK_FMA
+; RUN: llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx,+fma4,+fma -fp-contract=fast | FileCheck %s --check-prefix=ALL --check-prefix=CHECK_FMA
+; RUN: llc < %s -mtriple=x86_64-unknown-unknown -mattr=+avx,+fma4 -fp-contract=fast | FileCheck %s --check-prefix=ALL --check-prefix=CHECK_FMA4
+
+;
+; Patterns (+ fneg variants): add(mul(x,y),z), sub(mul(x,y),z)
+;
 
 define <4 x float> @test_x86_fmadd_ps(<4 x float> %a0, <4 x float> %a1, <4 x float> %a2) {
-; CHECK-LABEL: test_x86_fmadd_ps:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfmadd213ps %xmm2, %xmm1, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fmadd_ps:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmadd213ps %xmm2, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmadd_ps:
 ; CHECK_FMA4:       # BB#0:
@@ -18,10 +22,10 @@ define <4 x float> @test_x86_fmadd_ps(<4 x float> %a0, <4 x float> %a1, <4 x flo
 }
 
 define <4 x float> @test_x86_fmsub_ps(<4 x float> %a0, <4 x float> %a1, <4 x float> %a2) {
-; CHECK-LABEL: test_x86_fmsub_ps:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfmsub213ps %xmm2, %xmm1, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fmsub_ps:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmsub213ps %xmm2, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmsub_ps:
 ; CHECK_FMA4:       # BB#0:
@@ -33,10 +37,10 @@ define <4 x float> @test_x86_fmsub_ps(<4 x float> %a0, <4 x float> %a1, <4 x flo
 }
 
 define <4 x float> @test_x86_fnmadd_ps(<4 x float> %a0, <4 x float> %a1, <4 x float> %a2) {
-; CHECK-LABEL: test_x86_fnmadd_ps:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfnmadd213ps %xmm2, %xmm1, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fnmadd_ps:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213ps %xmm2, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fnmadd_ps:
 ; CHECK_FMA4:       # BB#0:
@@ -48,10 +52,10 @@ define <4 x float> @test_x86_fnmadd_ps(<4 x float> %a0, <4 x float> %a1, <4 x fl
 }
 
 define <4 x float> @test_x86_fnmsub_ps(<4 x float> %a0, <4 x float> %a1, <4 x float> %a2) {
-; CHECK-LABEL: test_x86_fnmsub_ps:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfnmsub213ps %xmm2, %xmm1, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fnmsub_ps:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmsub213ps %xmm2, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fnmsub_ps:
 ; CHECK_FMA4:       # BB#0:
@@ -64,10 +68,10 @@ define <4 x float> @test_x86_fnmsub_ps(<4 x float> %a0, <4 x float> %a1, <4 x fl
 }
 
 define <8 x float> @test_x86_fmadd_ps_y(<8 x float> %a0, <8 x float> %a1, <8 x float> %a2) {
-; CHECK-LABEL: test_x86_fmadd_ps_y:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfmadd213ps %ymm2, %ymm1, %ymm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fmadd_ps_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmadd213ps %ymm2, %ymm1, %ymm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmadd_ps_y:
 ; CHECK_FMA4:       # BB#0:
@@ -79,10 +83,10 @@ define <8 x float> @test_x86_fmadd_ps_y(<8 x float> %a0, <8 x float> %a1, <8 x f
 }
 
 define <8 x float> @test_x86_fmsub_ps_y(<8 x float> %a0, <8 x float> %a1, <8 x float> %a2) {
-; CHECK-LABEL: test_x86_fmsub_ps_y:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfmsub213ps %ymm2, %ymm1, %ymm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fmsub_ps_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmsub213ps %ymm2, %ymm1, %ymm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmsub_ps_y:
 ; CHECK_FMA4:       # BB#0:
@@ -94,10 +98,10 @@ define <8 x float> @test_x86_fmsub_ps_y(<8 x float> %a0, <8 x float> %a1, <8 x f
 }
 
 define <8 x float> @test_x86_fnmadd_ps_y(<8 x float> %a0, <8 x float> %a1, <8 x float> %a2) {
-; CHECK-LABEL: test_x86_fnmadd_ps_y:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfnmadd213ps %ymm2, %ymm1, %ymm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fnmadd_ps_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213ps %ymm2, %ymm1, %ymm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fnmadd_ps_y:
 ; CHECK_FMA4:       # BB#0:
@@ -109,10 +113,10 @@ define <8 x float> @test_x86_fnmadd_ps_y(<8 x float> %a0, <8 x float> %a1, <8 x 
 }
 
 define <8 x float> @test_x86_fnmsub_ps_y(<8 x float> %a0, <8 x float> %a1, <8 x float> %a2) {
-; CHECK-LABEL: test_x86_fnmsub_ps_y:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfnmsub213ps %ymm2, %ymm1, %ymm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fnmsub_ps_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmsub213ps %ymm2, %ymm1, %ymm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fnmsub_ps_y:
 ; CHECK_FMA4:       # BB#0:
@@ -125,10 +129,10 @@ define <8 x float> @test_x86_fnmsub_ps_y(<8 x float> %a0, <8 x float> %a1, <8 x 
 }
 
 define <4 x double> @test_x86_fmadd_pd_y(<4 x double> %a0, <4 x double> %a1, <4 x double> %a2) {
-; CHECK-LABEL: test_x86_fmadd_pd_y:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfmadd213pd %ymm2, %ymm1, %ymm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fmadd_pd_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmadd213pd %ymm2, %ymm1, %ymm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmadd_pd_y:
 ; CHECK_FMA4:       # BB#0:
@@ -140,10 +144,10 @@ define <4 x double> @test_x86_fmadd_pd_y(<4 x double> %a0, <4 x double> %a1, <4 
 }
 
 define <4 x double> @test_x86_fmsub_pd_y(<4 x double> %a0, <4 x double> %a1, <4 x double> %a2) {
-; CHECK-LABEL: test_x86_fmsub_pd_y:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfmsub213pd %ymm2, %ymm1, %ymm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fmsub_pd_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmsub213pd %ymm2, %ymm1, %ymm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmsub_pd_y:
 ; CHECK_FMA4:       # BB#0:
@@ -155,10 +159,10 @@ define <4 x double> @test_x86_fmsub_pd_y(<4 x double> %a0, <4 x double> %a1, <4 
 }
 
 define <2 x double> @test_x86_fmsub_pd(<2 x double> %a0, <2 x double> %a1, <2 x double> %a2) {
-; CHECK-LABEL: test_x86_fmsub_pd:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfmsub213pd %xmm2, %xmm1, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fmsub_pd:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmsub213pd %xmm2, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmsub_pd:
 ; CHECK_FMA4:       # BB#0:
@@ -170,10 +174,10 @@ define <2 x double> @test_x86_fmsub_pd(<2 x double> %a0, <2 x double> %a1, <2 x 
 }
 
 define float @test_x86_fnmadd_ss(float %a0, float %a1, float %a2) {
-; CHECK-LABEL: test_x86_fnmadd_ss:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfnmadd213ss %xmm2, %xmm1, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fnmadd_ss:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213ss %xmm2, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fnmadd_ss:
 ; CHECK_FMA4:       # BB#0:
@@ -185,10 +189,10 @@ define float @test_x86_fnmadd_ss(float %a0, float %a1, float %a2) {
 }
 
 define double @test_x86_fnmadd_sd(double %a0, double %a1, double %a2) {
-; CHECK-LABEL: test_x86_fnmadd_sd:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfnmadd213sd %xmm2, %xmm1, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fnmadd_sd:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213sd %xmm2, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fnmadd_sd:
 ; CHECK_FMA4:       # BB#0:
@@ -200,10 +204,10 @@ define double @test_x86_fnmadd_sd(double %a0, double %a1, double %a2) {
 }
 
 define double @test_x86_fmsub_sd(double %a0, double %a1, double %a2) {
-; CHECK-LABEL: test_x86_fmsub_sd:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfmsub213sd %xmm2, %xmm1, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fmsub_sd:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmsub213sd %xmm2, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmsub_sd:
 ; CHECK_FMA4:       # BB#0:
@@ -215,10 +219,10 @@ define double @test_x86_fmsub_sd(double %a0, double %a1, double %a2) {
 }
 
 define float @test_x86_fnmsub_ss(float %a0, float %a1, float %a2) {
-; CHECK-LABEL: test_x86_fnmsub_ss:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vfnmsub213ss %xmm2, %xmm1, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fnmsub_ss:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmsub213ss %xmm2, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fnmsub_ss:
 ; CHECK_FMA4:       # BB#0:
@@ -231,11 +235,11 @@ define float @test_x86_fnmsub_ss(float %a0, float %a1, float %a2) {
 }
 
 define <4 x float> @test_x86_fmadd_ps_load(<4 x float>* %a0, <4 x float> %a1, <4 x float> %a2) {
-; CHECK-LABEL: test_x86_fmadd_ps_load:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vmovaps (%rdi), %xmm2
-; CHECK-NEXT:    vfmadd213ps %xmm1, %xmm2, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fmadd_ps_load:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vmovaps (%rdi), %xmm2
+; CHECK_FMA-NEXT:    vfmadd213ps %xmm1, %xmm2, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmadd_ps_load:
 ; CHECK_FMA4:       # BB#0:
@@ -248,11 +252,11 @@ define <4 x float> @test_x86_fmadd_ps_load(<4 x float>* %a0, <4 x float> %a1, <4
 }
 
 define <4 x float> @test_x86_fmsub_ps_load(<4 x float>* %a0, <4 x float> %a1, <4 x float> %a2) {
-; CHECK-LABEL: test_x86_fmsub_ps_load:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vmovaps (%rdi), %xmm2
-; CHECK-NEXT:    vfmsub213ps %xmm1, %xmm2, %xmm0
-; CHECK-NEXT:    retq
+; CHECK_FMA-LABEL: test_x86_fmsub_ps_load:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vmovaps (%rdi), %xmm2
+; CHECK_FMA-NEXT:    vfmsub213ps %xmm1, %xmm2, %xmm0
+; CHECK_FMA-NEXT:    retq
 ;
 ; CHECK_FMA4-LABEL: test_x86_fmsub_ps_load:
 ; CHECK_FMA4:       # BB#0:
@@ -264,3 +268,338 @@ define <4 x float> @test_x86_fmsub_ps_load(<4 x float>* %a0, <4 x float> %a1, <4
   ret <4 x float> %res
 }
 
+;
+; Patterns (+ fneg variants): mul(add(1.0,x),y), mul(sub(1.0,x),y), mul(sub(x,1.0),y)
+;
+
+define <4 x float> @test_v4f32_mul_add_x_one_y(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_add_x_one_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmadd213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_add_x_one_y:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfmaddps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %a = fadd <4 x float> %x, <float 1.0, float 1.0, float 1.0, float 1.0>
+  %m = fmul <4 x float> %a, %y
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_y_add_x_one(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_y_add_x_one:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmadd213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_y_add_x_one:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfmaddps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %a = fadd <4 x float> %x, <float 1.0, float 1.0, float 1.0, float 1.0>
+  %m = fmul <4 x float> %y, %a
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_add_x_negone_y(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_add_x_negone_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmsub213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_add_x_negone_y:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfmsubps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %a = fadd <4 x float> %x, <float -1.0, float -1.0, float -1.0, float -1.0>
+  %m = fmul <4 x float> %a, %y
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_y_add_x_negone(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_y_add_x_negone:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmsub213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_y_add_x_negone:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfmsubps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %a = fadd <4 x float> %x, <float -1.0, float -1.0, float -1.0, float -1.0>
+  %m = fmul <4 x float> %y, %a
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_sub_one_x_y(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_sub_one_x_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_sub_one_x_y:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfnmaddps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %s = fsub <4 x float> <float 1.0, float 1.0, float 1.0, float 1.0>, %x
+  %m = fmul <4 x float> %s, %y
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_y_sub_one_x(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_y_sub_one_x:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_y_sub_one_x:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfnmaddps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %s = fsub <4 x float> <float 1.0, float 1.0, float 1.0, float 1.0>, %x
+  %m = fmul <4 x float> %y, %s
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_sub_negone_x_y(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_sub_negone_x_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmsub213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_sub_negone_x_y:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfnmsubps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %s = fsub <4 x float> <float -1.0, float -1.0, float -1.0, float -1.0>, %x
+  %m = fmul <4 x float> %s, %y
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_y_sub_negone_x(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_y_sub_negone_x:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmsub213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_y_sub_negone_x:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfnmsubps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %s = fsub <4 x float> <float -1.0, float -1.0, float -1.0, float -1.0>, %x
+  %m = fmul <4 x float> %y, %s
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_sub_x_one_y(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_sub_x_one_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmsub213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_sub_x_one_y:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfmsubps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %s = fsub <4 x float> %x, <float 1.0, float 1.0, float 1.0, float 1.0>
+  %m = fmul <4 x float> %s, %y
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_y_sub_x_one(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_y_sub_x_one:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmsub213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_y_sub_x_one:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfmsubps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %s = fsub <4 x float> %x, <float 1.0, float 1.0, float 1.0, float 1.0>
+  %m = fmul <4 x float> %y, %s
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_sub_x_negone_y(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_sub_x_negone_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmadd213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_sub_x_negone_y:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfmaddps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %s = fsub <4 x float> %x, <float -1.0, float -1.0, float -1.0, float -1.0>
+  %m = fmul <4 x float> %s, %y
+  ret <4 x float> %m
+}
+
+define <4 x float> @test_v4f32_mul_y_sub_x_negone(<4 x float> %x, <4 x float> %y) {
+; CHECK_FMA-LABEL: test_v4f32_mul_y_sub_x_negone:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfmadd213ps %xmm1, %xmm1, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_mul_y_sub_x_negone:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfmaddps %xmm1, %xmm1, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %s = fsub <4 x float> %x, <float -1.0, float -1.0, float -1.0, float -1.0>
+  %m = fmul <4 x float> %y, %s
+  ret <4 x float> %m
+}
+
+;
+; Interpolation Patterns: add(mul(x,t),mul(sub(1.0,t),y))
+;
+
+define float @test_f32_interp(float %x, float %y, float %t) {
+; CHECK_FMA-LABEL: test_f32_interp:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213ss %xmm1, %xmm2, %xmm1
+; CHECK_FMA-NEXT:    vfmadd213ss %xmm1, %xmm2, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_f32_interp:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfnmaddss %xmm1, %xmm1, %xmm2, %xmm1
+; CHECK_FMA4-NEXT:    vfmaddss %xmm1, %xmm2, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %t1 = fsub float 1.0, %t
+  %tx = fmul float %x, %t
+  %ty = fmul float %y, %t1
+  %r = fadd float %tx, %ty
+  ret float %r
+}
+
+define <4 x float> @test_v4f32_interp(<4 x float> %x, <4 x float> %y, <4 x float> %t) {
+; CHECK_FMA-LABEL: test_v4f32_interp:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213ps %xmm1, %xmm2, %xmm1
+; CHECK_FMA-NEXT:    vfmadd213ps %xmm1, %xmm2, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_interp:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfnmaddps %xmm1, %xmm1, %xmm2, %xmm1
+; CHECK_FMA4-NEXT:    vfmaddps %xmm1, %xmm2, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %t1 = fsub <4 x float> <float 1.0, float 1.0, float 1.0, float 1.0>, %t
+  %tx = fmul <4 x float> %x, %t
+  %ty = fmul <4 x float> %y, %t1
+  %r = fadd <4 x float> %tx, %ty
+  ret <4 x float> %r
+}
+
+define <8 x float> @test_v8f32_interp(<8 x float> %x, <8 x float> %y, <8 x float> %t) {
+; CHECK_FMA-LABEL: test_v8f32_interp:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213ps %ymm1, %ymm2, %ymm1
+; CHECK_FMA-NEXT:    vfmadd213ps %ymm1, %ymm2, %ymm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v8f32_interp:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfnmaddps %ymm1, %ymm1, %ymm2, %ymm1
+; CHECK_FMA4-NEXT:    vfmaddps %ymm1, %ymm2, %ymm0, %ymm0
+; CHECK_FMA4-NEXT:    retq
+  %t1 = fsub <8 x float> <float 1.0, float 1.0, float 1.0, float 1.0, float 1.0, float 1.0, float 1.0, float 1.0>, %t
+  %tx = fmul <8 x float> %x, %t
+  %ty = fmul <8 x float> %y, %t1
+  %r = fadd <8 x float> %tx, %ty
+  ret <8 x float> %r
+}
+
+define double @test_f64_interp(double %x, double %y, double %t) {
+; CHECK_FMA-LABEL: test_f64_interp:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213sd %xmm1, %xmm2, %xmm1
+; CHECK_FMA-NEXT:    vfmadd213sd %xmm1, %xmm2, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_f64_interp:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfnmaddsd %xmm1, %xmm1, %xmm2, %xmm1
+; CHECK_FMA4-NEXT:    vfmaddsd %xmm1, %xmm2, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %t1 = fsub double 1.0, %t
+  %tx = fmul double %x, %t
+  %ty = fmul double %y, %t1
+  %r = fadd double %tx, %ty
+  ret double %r
+}
+
+define <2 x double> @test_v2f64_interp(<2 x double> %x, <2 x double> %y, <2 x double> %t) {
+; CHECK_FMA-LABEL: test_v2f64_interp:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213pd %xmm1, %xmm2, %xmm1
+; CHECK_FMA-NEXT:    vfmadd213pd %xmm1, %xmm2, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v2f64_interp:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfnmaddpd %xmm1, %xmm1, %xmm2, %xmm1
+; CHECK_FMA4-NEXT:    vfmaddpd %xmm1, %xmm2, %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %t1 = fsub <2 x double> <double 1.0, double 1.0>, %t
+  %tx = fmul <2 x double> %x, %t
+  %ty = fmul <2 x double> %y, %t1
+  %r = fadd <2 x double> %tx, %ty
+  ret <2 x double> %r
+}
+
+define <4 x double> @test_v4f64_interp(<4 x double> %x, <4 x double> %y, <4 x double> %t) {
+; CHECK_FMA-LABEL: test_v4f64_interp:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vfnmadd213pd %ymm1, %ymm2, %ymm1
+; CHECK_FMA-NEXT:    vfmadd213pd %ymm1, %ymm2, %ymm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f64_interp:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfnmaddpd %ymm1, %ymm1, %ymm2, %ymm1
+; CHECK_FMA4-NEXT:    vfmaddpd %ymm1, %ymm2, %ymm0, %ymm0
+; CHECK_FMA4-NEXT:    retq
+  %t1 = fsub <4 x double> <double 1.0, double 1.0, double 1.0, double 1.0>, %t
+  %tx = fmul <4 x double> %x, %t
+  %ty = fmul <4 x double> %y, %t1
+  %r = fadd <4 x double> %tx, %ty
+  ret <4 x double> %r
+}
+
+; (fma x, c1, (fmul x, c2)) -> (fmul x, c1+c2)
+
+define <4 x float> @test_v4f32_fma_x_c1_fmul_x_c2(<4 x float> %x) #0 {
+; ALL-LABEL: test_v4f32_fma_x_c1_fmul_x_c2:
+; ALL:       # BB#0:
+; ALL-NEXT:    vmulps {{.*}}(%rip), %xmm0, %xmm0
+; ALL-NEXT:    retq
+  %m0 = fmul <4 x float> %x, <float 1.0, float 2.0, float 3.0, float 4.0>
+  %m1 = fmul <4 x float> %x, <float 4.0, float 3.0, float 2.0, float 1.0>
+  %a  = fadd <4 x float> %m0, %m1
+  ret <4 x float> %a
+}
+
+; (fma (fmul x, c1), c2, y) -> (fma x, c1*c2, y)
+
+define <4 x float> @test_v4f32_fma_fmul_x_c1_c2_y(<4 x float> %x, <4 x float> %y) #0 {
+; CHECK_FMA-LABEL: test_v4f32_fma_fmul_x_c1_c2_y:
+; CHECK_FMA:       # BB#0:
+; CHECK_FMA-NEXT:    vmovaps {{.*#+}} xmm2 = [4.000000e+00,6.000000e+00,6.000000e+00,4.000000e+00]
+; CHECK_FMA-NEXT:    vfmadd213ps %xmm1, %xmm2, %xmm0
+; CHECK_FMA-NEXT:    retq
+;
+; CHECK_FMA4-LABEL: test_v4f32_fma_fmul_x_c1_c2_y:
+; CHECK_FMA4:       # BB#0:
+; CHECK_FMA4-NEXT:    vfmaddps %xmm1, {{.*}}(%rip), %xmm0, %xmm0
+; CHECK_FMA4-NEXT:    retq
+  %m0 = fmul <4 x float> %x,  <float 1.0, float 2.0, float 3.0, float 4.0>
+  %m1 = fmul <4 x float> %m0, <float 4.0, float 3.0, float 2.0, float 1.0>
+  %a  = fadd <4 x float> %m1, %y
+  ret <4 x float> %a
+}
+
+attributes #0 = { "unsafe-fp-math"="true" }

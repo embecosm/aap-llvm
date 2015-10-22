@@ -89,6 +89,115 @@ INITIALIZE_PASS_END(FunctionAttrs, "functionattrs",
 
 Pass *llvm::createFunctionAttrsPass() { return new FunctionAttrs(); }
 
+namespace {
+/// The three kinds of memory access relevant to 'readonly' and
+/// 'readnone' attributes.
+enum MemoryAccessKind {
+  MAK_ReadNone = 0,
+  MAK_ReadOnly = 1,
+  MAK_MayWrite = 2
+};
+}
+
+static MemoryAccessKind
+checkFunctionMemoryAccess(Function &F, AAResults &AAR,
+                          const SmallPtrSetImpl<Function *> &SCCNodes) {
+  FunctionModRefBehavior MRB = AAR.getModRefBehavior(&F);
+  if (MRB == FMRB_DoesNotAccessMemory)
+    // Already perfect!
+    return MAK_ReadNone;
+
+  // Definitions with weak linkage may be overridden at linktime with
+  // something that writes memory, so treat them like declarations.
+  if (F.isDeclaration() || F.mayBeOverridden()) {
+    if (AliasAnalysis::onlyReadsMemory(MRB))
+      return MAK_ReadOnly;
+
+    // Conservatively assume it writes to memory.
+    return MAK_MayWrite;
+  }
+
+  // Scan the function body for instructions that may read or write memory.
+  bool ReadsMemory = false;
+  for (inst_iterator II = inst_begin(F), E = inst_end(F); II != E; ++II) {
+    Instruction *I = &*II;
+
+    // Some instructions can be ignored even if they read or write memory.
+    // Detect these now, skipping to the next instruction if one is found.
+    CallSite CS(cast<Value>(I));
+    if (CS) {
+      // Ignore calls to functions in the same SCC.
+      if (CS.getCalledFunction() && SCCNodes.count(CS.getCalledFunction()))
+        continue;
+      FunctionModRefBehavior MRB = AAR.getModRefBehavior(CS);
+      // If the call doesn't access arbitrary memory, we may be able to
+      // figure out something.
+      if (AliasAnalysis::onlyAccessesArgPointees(MRB)) {
+        // If the call does access argument pointees, check each argument.
+        if (AliasAnalysis::doesAccessArgPointees(MRB))
+          // Check whether all pointer arguments point to local memory, and
+          // ignore calls that only access local memory.
+          for (CallSite::arg_iterator CI = CS.arg_begin(), CE = CS.arg_end();
+               CI != CE; ++CI) {
+            Value *Arg = *CI;
+            if (Arg->getType()->isPointerTy()) {
+              AAMDNodes AAInfo;
+              I->getAAMetadata(AAInfo);
+
+              MemoryLocation Loc(Arg, MemoryLocation::UnknownSize, AAInfo);
+              if (!AAR.pointsToConstantMemory(Loc, /*OrLocal=*/true)) {
+                if (MRB & MRI_Mod)
+                  // Writes non-local memory.  Give up.
+                  return MAK_MayWrite;
+                if (MRB & MRI_Ref)
+                  // Ok, it reads non-local memory.
+                  ReadsMemory = true;
+              }
+            }
+          }
+        continue;
+      }
+      // The call could access any memory. If that includes writes, give up.
+      if (MRB & MRI_Mod)
+        return MAK_MayWrite;
+      // If it reads, note it.
+      if (MRB & MRI_Ref)
+        ReadsMemory = true;
+      continue;
+    } else if (LoadInst *LI = dyn_cast<LoadInst>(I)) {
+      // Ignore non-volatile loads from local memory. (Atomic is okay here.)
+      if (!LI->isVolatile()) {
+        MemoryLocation Loc = MemoryLocation::get(LI);
+        if (AAR.pointsToConstantMemory(Loc, /*OrLocal=*/true))
+          continue;
+      }
+    } else if (StoreInst *SI = dyn_cast<StoreInst>(I)) {
+      // Ignore non-volatile stores to local memory. (Atomic is okay here.)
+      if (!SI->isVolatile()) {
+        MemoryLocation Loc = MemoryLocation::get(SI);
+        if (AAR.pointsToConstantMemory(Loc, /*OrLocal=*/true))
+          continue;
+      }
+    } else if (VAArgInst *VI = dyn_cast<VAArgInst>(I)) {
+      // Ignore vaargs on local memory.
+      MemoryLocation Loc = MemoryLocation::get(VI);
+      if (AAR.pointsToConstantMemory(Loc, /*OrLocal=*/true))
+        continue;
+    }
+
+    // Any remaining instructions need to be taken seriously!  Check if they
+    // read or write memory.
+    if (I->mayWriteToMemory())
+      // Writes memory.  Just give up.
+      return MAK_MayWrite;
+
+    // If this instruction may read memory, remember that.
+    ReadsMemory |= I->mayReadFromMemory();
+  }
+
+  return ReadsMemory ? MAK_ReadOnly : MAK_ReadNone;
+}
+
 /// Deduce readonly/readnone attributes for the SCC.
 bool FunctionAttrs::AddReadAttrs(const CallGraphSCC &SCC) {
   SmallPtrSet<Function *, 8> SCCNodes;
@@ -117,97 +226,15 @@ bool FunctionAttrs::AddReadAttrs(const CallGraphSCC &SCC) {
     // work around the limitations of the legacy pass manager.
     AAResults AAR(createLegacyPMAAResults(*this, *F, BAR));
 
-    FunctionModRefBehavior MRB = AAR.getModRefBehavior(F);
-    if (MRB == FMRB_DoesNotAccessMemory)
-      // Already perfect!
-      continue;
-
-    // Definitions with weak linkage may be overridden at linktime with
-    // something that writes memory, so treat them like declarations.
-    if (F->isDeclaration() || F->mayBeOverridden()) {
-      if (!AliasAnalysis::onlyReadsMemory(MRB))
-        // May write memory.  Just give up.
-        return false;
-
+    switch (checkFunctionMemoryAccess(*F, AAR, SCCNodes)) {
+    case MAK_MayWrite:
+      return false;
+    case MAK_ReadOnly:
       ReadsMemory = true;
-      continue;
-    }
-
-    // Scan the function body for instructions that may read or write memory.
-    for (inst_iterator II = inst_begin(F), E = inst_end(F); II != E; ++II) {
-      Instruction *I = &*II;
-
-      // Some instructions can be ignored even if they read or write memory.
-      // Detect these now, skipping to the next instruction if one is found.
-      CallSite CS(cast<Value>(I));
-      if (CS) {
-        // Ignore calls to functions in the same SCC.
-        if (CS.getCalledFunction() && SCCNodes.count(CS.getCalledFunction()))
-          continue;
-        FunctionModRefBehavior MRB = AAR.getModRefBehavior(CS);
-        // If the call doesn't access arbitrary memory, we may be able to
-        // figure out something.
-        if (AliasAnalysis::onlyAccessesArgPointees(MRB)) {
-          // If the call does access argument pointees, check each argument.
-          if (AliasAnalysis::doesAccessArgPointees(MRB))
-            // Check whether all pointer arguments point to local memory, and
-            // ignore calls that only access local memory.
-            for (CallSite::arg_iterator CI = CS.arg_begin(), CE = CS.arg_end();
-                 CI != CE; ++CI) {
-              Value *Arg = *CI;
-              if (Arg->getType()->isPointerTy()) {
-                AAMDNodes AAInfo;
-                I->getAAMetadata(AAInfo);
-
-                MemoryLocation Loc(Arg, MemoryLocation::UnknownSize, AAInfo);
-                if (!AAR.pointsToConstantMemory(Loc, /*OrLocal=*/true)) {
-                  if (MRB & MRI_Mod)
-                    // Writes non-local memory.  Give up.
-                    return false;
-                  if (MRB & MRI_Ref)
-                    // Ok, it reads non-local memory.
-                    ReadsMemory = true;
-                }
-              }
-            }
-          continue;
-        }
-        // The call could access any memory. If that includes writes, give up.
-        if (MRB & MRI_Mod)
-          return false;
-        // If it reads, note it.
-        if (MRB & MRI_Ref)
-          ReadsMemory = true;
-        continue;
-      } else if (LoadInst *LI = dyn_cast<LoadInst>(I)) {
-        // Ignore non-volatile loads from local memory. (Atomic is okay here.)
-        if (!LI->isVolatile()) {
-          MemoryLocation Loc = MemoryLocation::get(LI);
-          if (AAR.pointsToConstantMemory(Loc, /*OrLocal=*/true))
-            continue;
-        }
-      } else if (StoreInst *SI = dyn_cast<StoreInst>(I)) {
-        // Ignore non-volatile stores to local memory. (Atomic is okay here.)
-        if (!SI->isVolatile()) {
-          MemoryLocation Loc = MemoryLocation::get(SI);
-          if (AAR.pointsToConstantMemory(Loc, /*OrLocal=*/true))
-            continue;
-        }
-      } else if (VAArgInst *VI = dyn_cast<VAArgInst>(I)) {
-        // Ignore vaargs on local memory.
-        MemoryLocation Loc = MemoryLocation::get(VI);
-        if (AAR.pointsToConstantMemory(Loc, /*OrLocal=*/true))
-          continue;
-      }
-
-      // Any remaining instructions need to be taken seriously!  Check if they
-      // read or write memory.
-      if (I->mayWriteToMemory())
-        // Writes memory.  Just give up.
-        return false;
-
-      // If this instruction may read memory, remember that.
-      ReadsMemory |= I->mayReadFromMemory();
+      break;
+    case MAK_ReadNone:
+      // Nothing to do!
+      break;
     }
   }
 
@@ -320,7 +347,7 @@ struct ArgumentUsesTracker : public CaptureTracker {
         return true;
       }
       if (PI == U) {
-        Uses.push_back(AI);
+        Uses.push_back(&*AI);
         Found = true;
         break;
       }
@@ -439,7 +466,7 @@ determinePointerReadAttrs(Argument *A,
             return Attribute::None;
           }
           Captures &= !CS.doesNotCapture(A - B);
-          if (SCCNodes.count(AI))
+          if (SCCNodes.count(&*AI))
             continue;
           if (!CS.onlyReadsMemory() && !CS.onlyReadsMemory(A - B))
             return Attribute::None;
@@ -524,7 +551,7 @@ bool FunctionAttrs::AddArgumentAttrs(const CallGraphSCC &SCC) {
       bool HasNonLocalUses = false;
       if (!A->hasNoCaptureAttr()) {
         ArgumentUsesTracker Tracker(SCCNodes);
-        PointerMayBeCaptured(A, &Tracker);
+        PointerMayBeCaptured(&*A, &Tracker);
         if (!Tracker.Captured) {
           if (Tracker.Uses.empty()) {
             // If it's trivially not captured, mark it nocapture now.
@@ -536,7 +563,7 @@ bool FunctionAttrs::AddArgumentAttrs(const CallGraphSCC &SCC) {
             // If it's not trivially captured and not trivially not captured,
             // then it must be calling into another function in our SCC. Save
             // its particulars for Argument-SCC analysis later.
-            ArgumentGraphNode *Node = AG[A];
+            ArgumentGraphNode *Node = AG[&*A];
             for (SmallVectorImpl<Argument *>::iterator
                      UI = Tracker.Uses.begin(),
                      UE = Tracker.Uses.end();
@@ -555,8 +582,8 @@ bool FunctionAttrs::AddArgumentAttrs(const CallGraphSCC &SCC) {
         // will be dependent on the iteration order through the functions in the
         // SCC.
         SmallPtrSet<Argument *, 8> Self;
-        Self.insert(A);
-        Attribute::AttrKind R = determinePointerReadAttrs(A, Self);
+        Self.insert(&*A);
+        Attribute::AttrKind R = determinePointerReadAttrs(&*A, Self);
         if (R != Attribute::None) {
           AttrBuilder B;
           B.addAttribute(R);

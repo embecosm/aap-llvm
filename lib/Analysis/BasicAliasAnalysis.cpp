@@ -627,6 +627,49 @@ static bool isAssumeIntrinsic(ImmutableCallSite CS) {
   return false;
 }
 
+#ifndef NDEBUG
+static const Function *getParent(const Value *V) {
+  if (const Instruction *inst = dyn_cast<Instruction>(V))
+    return inst->getParent()->getParent();
+
+  if (const Argument *arg = dyn_cast<Argument>(V))
+    return arg->getParent();
+
+  return nullptr;
+}
+
+static bool notDifferentParent(const Value *O1, const Value *O2) {
+
+  const Function *F1 = getParent(O1);
+  const Function *F2 = getParent(O2);
+
+  return !F1 || !F2 || F1 == F2;
+}
+#endif
+
+AliasResult BasicAAResult::alias(const MemoryLocation &LocA,
+                                 const MemoryLocation &LocB) {
+  assert(notDifferentParent(LocA.Ptr, LocB.Ptr) &&
+         "BasicAliasAnalysis doesn't support interprocedural queries.");
+
+  // If we have a directly cached entry for these locations, we have recursed
+  // through this once, so just return the cached results. Notably, when this
+  // happens, we don't clear the cache.
+  auto CacheIt = AliasCache.find(LocPair(LocA, LocB));
+  if (CacheIt != AliasCache.end())
+    return CacheIt->second;
+
+  AliasResult Alias = aliasCheck(LocA.Ptr, LocA.Size, LocA.AATags, LocB.Ptr,
+                                 LocB.Size, LocB.AATags);
+  // AliasCache rarely has more than 1 or 2 elements, always use
+  // shrink_and_clear so it quickly returns to the inline capacity of the
+  // SmallDenseMap if it ever grows larger.
+  // FIXME: This should really be shrink_to_inline_capacity_and_clear().
+  AliasCache.shrink_and_clear();
+  VisitedPhiBBs.clear();
+  return Alias;
+}
+
 /// Checks to see if the specified callsite can clobber the specified memory
 /// object.
 ///
@@ -733,10 +776,9 @@ static AliasResult aliasSameBasePointerGEPs(const GEPOperator *GEP1,
   ConstantInt *C2 =
       dyn_cast<ConstantInt>(GEP2->getOperand(GEP2->getNumOperands() - 1));
 
-  // If the last (struct) indices aren't constants, we can't say anything.
-  // If they're identical, the other indices might be also be dynamically
-  // equal, so the GEPs can alias.
-  if (!C1 || !C2 || C1 == C2)
+  // If the last (struct) indices are constants and are equal, the other indices
+  // might be also be dynamically equal, so the GEPs can alias.
+  if (C1 && C2 && C1 == C2)
     return MayAlias;
 
   // Find the last-indexed type of the GEP, i.e., the type you'd get if
@@ -759,12 +801,43 @@ static AliasResult aliasSameBasePointerGEPs(const GEPOperator *GEP1,
     IntermediateIndices.push_back(GEP1->getOperand(i + 1));
   }
 
-  StructType *LastIndexedStruct =
-      dyn_cast<StructType>(GetElementPtrInst::getIndexedType(
-          GEP1->getSourceElementType(), IntermediateIndices));
+  auto *Ty = GetElementPtrInst::getIndexedType(
+    GEP1->getSourceElementType(), IntermediateIndices);
+  StructType *LastIndexedStruct = dyn_cast<StructType>(Ty);
 
-  if (!LastIndexedStruct)
+  if (isa<SequentialType>(Ty)) {
+    // We know that:
+    // - both GEPs begin indexing from the exact same pointer;
+    // - the last indices in both GEPs are constants, indexing into a sequential
+    //   type (array or pointer);
+    // - both GEPs only index through arrays prior to that.
+    //
+    // Because array indices greater than the number of elements are valid in
+    // GEPs, unless we know the intermediate indices are identical between
+    // GEP1 and GEP2 we cannot guarantee that the last indexed arrays don't
+    // partially overlap.
+    for (unsigned i = 0, e = GEP1->getNumIndices() - 1; i != e; ++i)
+      if (GEP1->getOperand(i + 1) != GEP2->getOperand(i + 1))
+        return MayAlias;
+    
+    // Now we know that the array/pointer that GEP1 indexes into and that
+    // that GEP2 indexes into must either precisely overlap or be disjoint.
+    // Because they cannot partially overlap and because fields in an array
+    // cannot overlap, if we can prove the final indices are different between
+    // GEP1 and GEP2, we can conclude GEP1 and GEP2 don't alias.
+    
+    // If the last indices are constants, we've already checked they don't
+    // equal each other so we can exit early.
+    if (C1 && C2)
+      return NoAlias;
+    if (isKnownNonEqual(GEP1->getOperand(GEP1->getNumOperands() - 1),
+                        GEP2->getOperand(GEP2->getNumOperands() - 1),
+                        DL))
+      return NoAlias;
     return MayAlias;
+  } else if (!LastIndexedStruct || !C1 || !C2) {
+    return MayAlias;
+  }
 
   // We know that:
   // - both GEPs begin indexing from the exact same pointer;
@@ -1375,7 +1448,7 @@ bool BasicAAResult::isValueEqualInPotentialCycles(const Value *V,
   // the Values cannot come from different iterations of a potential cycle the
   // phi nodes could be involved in.
   for (auto *P : VisitedPhiBBs)
-    if (isPotentiallyReachable(P->begin(), Inst, DT, LI))
+    if (isPotentiallyReachable(&P->front(), Inst, DT, LI))
       return false;
 
   return true;

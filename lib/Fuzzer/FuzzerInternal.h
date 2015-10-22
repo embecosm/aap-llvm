@@ -56,6 +56,7 @@ bool ToASCII(Unit &U);
 bool IsASCII(const Unit &U);
 
 int NumberOfCpuCores();
+int GetPid();
 
 // Dictionary.
 
@@ -73,6 +74,7 @@ class Fuzzer {
     int Verbosity = 1;
     int MaxLen = 0;
     int UnitTimeoutSec = 300;
+    int MaxTotalTimeSec = 0;
     bool DoCrossOver = true;
     int  MutateDepth = 5;
     bool ExitOnFirst = false;
@@ -80,6 +82,7 @@ class Fuzzer {
     bool UseTraces = false;
     bool UseFullCoverageSet  = false;
     bool Reload = true;
+    bool ShuffleAtStartUp = true;
     int PreferSmallDuringInitialShuffle = -1;
     size_t MaxNumberOfRuns = ULONG_MAX;
     int SyncTimeout = 600;
@@ -89,8 +92,10 @@ class Fuzzer {
     int TBMWidth = 10;
     std::string OutputCorpus;
     std::string SyncCommand;
+    std::string ArtifactPrefix = "./";
     std::vector<std::string> Tokens;
     std::vector<Unit> Dictionary;
+    bool SaveArtifacts = true;
   };
   Fuzzer(UserSuppliedFuzzer &USF, FuzzingOptions Options);
   void AddToCorpus(const Unit &U) { Corpus.push_back(U); }
@@ -115,16 +120,15 @@ class Fuzzer {
   static void StaticAlarmCallback();
 
   Unit SubstituteTokens(const Unit &U) const;
+  void ExecuteCallback(const Unit &U);
 
  private:
   void AlarmCallback();
-  void ExecuteCallback(const Unit &U);
   void MutateAndTestOne(Unit *U);
   void ReportNewCoverage(size_t NewCoverage, const Unit &U);
   size_t RunOne(const Unit &U);
   void RunOneAndUpdateCorpus(Unit &U);
   size_t RunOneMaximizeTotalCoverage(const Unit &U);
-  size_t RunOneMaximizeFullCoverageSet(const Unit &U);
   size_t RunOneMaximizeCoveragePairs(const Unit &U);
   void WriteToOutputCorpus(const Unit &U);
   void WriteUnitToFileWithPrefix(const Unit &U, const char *Prefix);
@@ -154,7 +158,6 @@ class Fuzzer {
 
   std::vector<Unit> Corpus;
   std::unordered_set<std::string> UnitHashesAddedToCorpus;
-  std::unordered_set<uintptr_t> FullCoverageSets;
 
   // For UseCounters
   std::vector<uint8_t> CounterBitmap;
@@ -177,12 +180,19 @@ class SimpleUserSuppliedFuzzer: public UserSuppliedFuzzer {
  public:
   SimpleUserSuppliedFuzzer(FuzzerRandomBase *Rand, UserCallback Callback)
       : UserSuppliedFuzzer(Rand), Callback(Callback) {}
-  virtual void TargetFunction(const uint8_t *Data, size_t Size) {
-    return Callback(Data, Size);
+
+  SimpleUserSuppliedFuzzer(FuzzerRandomBase *Rand, DeprecatedUserCallback Callback)
+      : UserSuppliedFuzzer(Rand), DeprecatedCallback(Callback) {}
+
+  virtual int TargetFunction(const uint8_t *Data, size_t Size) override {
+    if (Callback) return Callback(Data, Size);
+    DeprecatedCallback(Data, Size);
+    return 0;
   }
 
  private:
-  UserCallback Callback;
+  DeprecatedUserCallback DeprecatedCallback = nullptr;
+  UserCallback Callback = nullptr;
 };
 
 };  // namespace fuzzer
