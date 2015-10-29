@@ -222,17 +222,15 @@ class Inst_i16_r<bits<4> opclass, bits<4> opcode, dag outs, dag ins,
                  string asmstr, list<dag> pattern>
     : InstAAP_base<opclass, outs, ins, asmstr, pattern> {
   bits<16> imm;
-  bits<6>  rA;
+  bits<6>  rB;
 
   let Inst{12-9} = opcode;  // Define low bits of opcode field
 
-  let Inst{2-0} = imm{2-0};
-  let Inst{8-6} = imm{5-3};
-  let Inst{18-16} = imm{8-6};
-  let Inst{28-22} = imm{15-9}; // Reuse opcode high bits
+  let Inst{8-3} = imm{5-0};
+  let Inst{28-19} = imm{15-6}; // Reuse opcode high bits
 
-  let Inst{5-3} = rA{2-0};
-  let Inst{21-19} = rA{5-3};
+  let Inst{2-0} = rB{2-0};
+  let Inst{18-16} = rB{5-3};
 }
 class Inst_i6_r_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
                       string asmstr, list<dag> pattern>
