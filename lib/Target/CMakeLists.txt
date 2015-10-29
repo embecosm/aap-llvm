@@ -17,3 +17,6 @@ foreach(t ${LLVM_TARGETS_TO_BUILD})
   message(STATUS "Targeting ${t}")
   add_subdirectory(${t})
 endforeach()
+
+# Special case for AAP Simulator, which lives in Target but isn't one
+add_subdirectory(AAPSimulator)

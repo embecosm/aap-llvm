@@ -20,6 +20,7 @@
 [common]
 subdirectories =
  AAP
+ AAPSimulator
  AMDGPU
  ARM
  AArch64
