@@ -19,5 +19,5 @@
 type = Library
 name = AAPSim
 parent = AAP
-required_libraries = Support
+required_libraries = Support Target MC
 add_to_library_groups = AAP

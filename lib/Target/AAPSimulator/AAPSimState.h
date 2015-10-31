@@ -14,6 +14,7 @@
 #ifndef LLVM_LIB_TARGET_AAPSIMULATOR_AAPSIMSTATE_H
 #define LLVM_LIB_TARGET_AAPSIMULATOR_AAPSIMSTATE_H
 
+#include "llvm/ADT/ArrayRef.h"
 #include <cstdlib>
 
 namespace AAPSim {
@@ -27,6 +28,7 @@ class AAPSimState {
   // One namespace code memory and data memory
   uint8_t *code_memory;
   uint8_t *data_memory;
+  llvm::ArrayRef<uint8_t> *code_array;
 
   AAPSimState(const AAPSimState&) = delete;
 
@@ -44,6 +46,7 @@ public:
   // the disassembler, which takes an array of 8 bits.
   uint8_t getCodeMem(uint32_t address) const;
   void setCodeMem(uint32_t address, uint8_t val);
+  llvm::ArrayRef<uint8_t> *getCodeArray() { return code_array; }
 
   // Read and write data memory
   uint8_t getDataMem(uint32_t address) const;

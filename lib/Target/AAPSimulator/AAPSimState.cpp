@@ -25,6 +25,8 @@ AAPSimState::AAPSimState() {
   code_memory = new uint8_t[0x1ffffff];
   assert(code_memory && "Unable to allocate code memory");
 
+  code_array = new llvm::ArrayRef<uint8_t>(code_memory, 0x1ffffff);
+
   // Data memory is 16-bit byte addressed
   data_memory = new uint8_t[0xffff];
   assert(data_memory && "Unable to allocate data memory");

@@ -14,13 +14,31 @@
 #ifndef LLVM_LIB_TARGET_AAPSIMULATOR_AAPSIMULATOR_H
 #define LLVM_LIB_TARGET_AAPSIMULATOR_AAPSIMULATOR_H
 
+#include "llvm/MC/MCInst.h"
 #include "AAPSimState.h"
 
 namespace AAPSim {
 
+enum SimStatus {
+  SIM_OK,           // Instruction executed
+  SIM_INVALID_INSN, // Invalid instruction
+  SIM_BREAKPOINT,   // Simulator hit a breakpoint
+  SIM_QUIT,         // Signal to exit linear simulator
+  SIM_TRAP          // General trap signal
+};
+
 /// AAPSimulator - AAP Simulator
 class AAPSimulator {
   AAPSimState State;
+
+  // Target/MCInfo
+  const llvm::Target *TheTarget;
+  const llvm::MCRegisterInfo *MRI;
+  const llvm::MCAsmInfo *AsmInfo;
+  const llvm::MCSubtargetInfo *STI;
+  const llvm::MCInstrInfo *MII;
+  llvm::MCDisassembler *DisAsm;
+  llvm::MCInstPrinter *IP;
 
 public:
   AAPSimulator();
@@ -33,6 +51,12 @@ public:
 
   /// Set Program Counter
   void setPC(uint32_t pc_w) { State.setPC(pc_w); }
+
+  /// Execute an instruction
+  SimStatus exec(llvm::MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w);
+
+  /// Step the processor
+  SimStatus step();
 };
 
 } // End AAPSim namespace
