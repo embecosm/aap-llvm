@@ -22,9 +22,14 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "AAPInstrInfo.h"
 #include "AAPSimulator.h"
 #include <cstring>
+
+#define GET_INSTRINFO_ENUM
+#include "AAPGenInstrInfo.inc"
+
+#define GET_REGINFO_ENUM
+#include "AAPGenRegisterInfo.inc"
 
 using namespace llvm;
 using namespace AAPSim;
@@ -91,6 +96,22 @@ void AAPSimulator::WriteCodeSection(llvm::StringRef Bytes, uint32_t address) {
 void AAPSimulator::WriteDataSection(llvm::StringRef Bytes, uint32_t address) {
   for (size_t i = 0; i < Bytes.size(); i++) {
     State.setDataMem(address + i, Bytes[i]);
+  }
+}
+
+static int getLLVMReg(unsigned Reg) {
+  switch (Reg) {
+    default: llvm_unreachable("Invalid register");
+#define REG(x) case AAP::R##x: return x;
+    REG(0)  REG(1)  REG(2)  REG(3)  REG(4)  REG(5)  REG(6)  REG(7)
+    REG(8)  REG(9)  REG(10) REG(11) REG(12) REG(13) REG(14) REG(15)
+    REG(16) REG(17) REG(18) REG(19) REG(20) REG(21) REG(22) REG(23)
+    REG(24) REG(25) REG(26) REG(27) REG(28) REG(29) REG(30) REG(31)
+    REG(32) REG(33) REG(34) REG(35) REG(36) REG(37) REG(38) REG(39)
+    REG(40) REG(41) REG(42) REG(43) REG(44) REG(45) REG(46) REG(47)
+    REG(48) REG(49) REG(50) REG(51) REG(52) REG(53) REG(54) REG(55)
+    REG(56) REG(57) REG(58) REG(59) REG(60) REG(61) REG(62) REG(63)
+#undef REG
   }
 }
 
