@@ -101,6 +101,10 @@ int main(int argc, char **argv) {
 
   // Load Binary
   LoadBinary(Sim, InputFilename);
+  SimStatus status = SimStatus::SIM_OK;
+  while (status == SimStatus::SIM_OK) {
+    status = Sim.step();
+  }
 
   return 0;
 }
