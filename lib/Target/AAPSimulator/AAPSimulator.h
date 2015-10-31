@@ -26,7 +26,12 @@ public:
   AAPSimulator();
 
   AAPSimState &getState() { return State; }
+
+  /// Functions for writing bulk to the code/data memories
   void WriteCodeSection(llvm::StringRef Bytes, uint32_t address);
+  void WriteDataSection(llvm::StringRef Bytes, uint32_t address);
+
+  /// Set Program Counter
   void setPC(uint32_t pc_w) { State.setPC(pc_w); }
 };
 

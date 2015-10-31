@@ -31,3 +31,9 @@ void AAPSimulator::WriteCodeSection(llvm::StringRef Bytes, uint32_t address) {
     State.setCodeMem(address + i, Bytes[i]);
   }
 }
+
+void AAPSimulator::WriteDataSection(llvm::StringRef Bytes, uint32_t address) {
+  for (size_t i = 0; i < Bytes.size(); i++) {
+    State.setDataMem(address + i, Bytes[i]);
+  }
+}
