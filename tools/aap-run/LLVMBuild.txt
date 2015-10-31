@@ -1,4 +1,4 @@
-;===- ./tools/LLVMBuild.txt ------------------------------------*- Conf -*--===;
+;===- ./tools/aap-run/LLVMBuild.txt ----------------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -15,37 +15,8 @@
 ;
 ;===------------------------------------------------------------------------===;
 
-[common]
-subdirectories =
- bugpoint
- dsymutil
- llc
- lli
- llvm-ar
- llvm-as
- llvm-bcanalyzer
- llvm-cov
- llvm-diff
- llvm-dis
- llvm-dwarfdump
- llvm-extract
- llvm-jitlistener
- llvm-link
- llvm-lto
- llvm-mc
- llvm-mcmarkup
- llvm-nm
- llvm-objdump
- llvm-pdbdump
- llvm-profdata
- llvm-rtdyld
- llvm-size
- llvm-split
- opt
- verify-uselistorder
- aap-run
-
 [component_0]
-type = Group
-name = Tools
-parent = $ROOT
+type = Tool
+name = aap-run
+parent = Tools
+required_libraries = DebugInfoDWARF MC MCDisassembler MCParser Object all-targets
