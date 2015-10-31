@@ -126,6 +126,22 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       return SimStatus::SIM_TRAP;
 #endif
       break;
+
+    // Move Instructions
+    case AAP::MOV_r:
+    case AAP::MOV_r_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrc = getLLVMReg(Inst.getOperand(1).getReg());
+      State.setReg(RegDst, State.getReg(RegSrc));
+      break;
+    }
+    case AAP::MOVI_i16:
+    case AAP::MOVI_i6_short: {
+      int Reg = getLLVMReg(Inst.getOperand(0).getReg());
+      uint16_t Val = Inst.getOperand(1).getImm() & 0xffff;
+      State.setReg(Reg, Val);
+      break;
+    }
   }
   return SimStatus::SIM_OK;
 }
