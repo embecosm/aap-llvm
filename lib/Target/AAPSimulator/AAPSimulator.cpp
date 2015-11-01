@@ -157,6 +157,14 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
         newpc_w = Imm;
       break;
     }
+
+    // Jump
+    case AAP::JMP:
+    case AAP::JMP_short: {
+      int Reg = getLLVMReg(Inst.getOperand(0).getReg());
+      newpc_w = State.getReg(Reg);
+      break;
+    }
   }
   return SimStatus::SIM_OK;
 }
