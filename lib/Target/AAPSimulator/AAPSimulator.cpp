@@ -127,14 +127,14 @@ static uint32_t signExtend16(uint16_t val) {
 // Sign extend branch target (long, 13 bits?)
 static int16_t signExtendBranch(uint16_t val) {
   if (val & 0x1000)
-    val |= 0xfffff000;
+    val |= 0xf000;
   return static_cast<int16_t>(val);
 }
 
 // Sign extend branch target (short, 6 bits)
 static int16_t signExtendBranchS(uint16_t val) {
   if (val & 0x200)
-    val |= 0xfffffc00;
+    val |= 0xfc00;
   return static_cast<int16_t>(val);
 }
 
