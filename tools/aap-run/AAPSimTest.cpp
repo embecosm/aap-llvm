@@ -105,6 +105,22 @@ int main(int argc, char **argv) {
   while (status == SimStatus::SIM_OK) {
     status = Sim.step();
   }
+  // Deal with the final simulator status
+  switch (status) {
+    default: break;
+    case SimStatus::SIM_INVALID_INSN:
+      outs() << " *** Attempted to decode invalid instruction ***\n";
+      break;
+    case SimStatus::SIM_BREAKPOINT:
+      outs() << " *** Breakpoint hit ***\n";
+      break;
+    case SimStatus::SIM_TRAP:
+      outs() << " *** Simulator trap ***\n";
+      break;
+    case SimStatus::SIM_QUIT:
+      outs() << " *** EXIT CODE " << Sim.getState().getExitCode() << " ***\n";
+      return Sim.getState().getExitCode();
+  }
 
   return 0;
 }
