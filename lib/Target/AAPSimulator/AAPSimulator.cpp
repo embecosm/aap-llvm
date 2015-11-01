@@ -124,6 +124,20 @@ static uint32_t signExtend16(uint16_t val) {
   return newval;
 }
 
+// Sign extend branch target (long, 13 bits?)
+static int16_t signExtendBranch(uint16_t val) {
+  if (val & 0x1000)
+    val |= 0xfffff000;
+  return static_cast<int16_t>(val);
+}
+
+// Sign extend branch target (short, 6 bits)
+static int16_t signExtendBranchS(uint16_t val) {
+  if (val & 0x200)
+    val |= 0xfffffc00;
+  return static_cast<int16_t>(val);
+}
+
 SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
   switch (Inst.getOpcode()) {
     // Unknown instruction
@@ -532,9 +546,11 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::JAL_short: {
       int Reg = getLLVMReg(Inst.getOperand(1).getReg());
       State.setReg(Reg, newpc_w);
-      uint32_t Imm = Inst.getOperand(0).getImm() & 0xffffff;
+      uint16_t Imm = Inst.getOperand(0).getImm();
+      int16_t SImm = (Inst.getOpcode() == AAP::BAL) ? signExtendBranch(Imm) :
+                                                      signExtendBranchS(Imm);
       if (Inst.getOpcode() == AAP::BAL || Inst.getOpcode() == AAP::BAL_short)
-        newpc_w = pc_w + Imm;
+        newpc_w = pc_w + SImm;
       else
         newpc_w = Imm;
       break;
@@ -544,7 +560,8 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::BRA:
     case AAP::BRA_short: {
       int Reg = getLLVMReg(Inst.getOperand(0).getReg());
-      newpc_w = pc_w + State.getReg(Reg);
+      int16_t Offset = static_cast<int16_t>(State.getReg(Reg));
+      newpc_w = pc_w + Offset;
       break;
     }
 
