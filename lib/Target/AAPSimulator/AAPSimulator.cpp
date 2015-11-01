@@ -556,6 +556,52 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       break;
     }
 
+    // Conditional branches
+    case AAP::BEQ_:
+    case AAP::BEQ_short:
+    case AAP::BNE_:
+    case AAP::BNE_short:
+    case AAP::BLTS_:
+    case AAP::BLTS_short:
+    case AAP::BGTS_:
+    case AAP::BGTS_short:
+    case AAP::BLTU_:
+    case AAP::BLTU_short:
+    case AAP::BGTU_:
+    case AAP::BGTU_short: {
+      uint16_t Imm = Inst.getOperand(0).getImm();
+      uint16_t ValA = State.getReg(getLLVMReg(Inst.getOperand(1).getReg()));
+      int16_t SValA = static_cast<int16_t>(ValA);
+      uint16_t ValB = State.getReg(getLLVMReg(Inst.getOperand(2).getReg()));
+      int16_t SValB = static_cast<int16_t>(ValB);
+      bool longbr = (Inst.getOpcode() == AAP::BEQ_ ||
+                     Inst.getOpcode() == AAP::BNE_ ||
+                     Inst.getOpcode() == AAP::BLTS_ ||
+                     Inst.getOpcode() == AAP::BGTS_ ||
+                     Inst.getOpcode() == AAP::BLTU_ ||
+                     Inst.getOpcode() == AAP::BGTU_) ? true : false;
+      // FIXME: Long should use signExtendBranch
+      int16_t SImm = longbr ? signExtendBranchS(Imm) : signExtendBranchS(Imm);
+      bool branch = false;
+      // Decide whether to branch based on instruction type
+      if (Inst.getOpcode() == AAP::BEQ_ || Inst.getOpcode() == AAP::BEQ_short)
+        branch = (ValA == ValB) ? true : false;
+      if (Inst.getOpcode() == AAP::BNE_ || Inst.getOpcode() == AAP::BNE_short)
+        branch = (ValA != ValB) ? true : false;
+      if (Inst.getOpcode() == AAP::BLTS_ || Inst.getOpcode() == AAP::BLTS_short)
+        branch = (SValA < SValB) ? true : false;
+      if (Inst.getOpcode() == AAP::BGTS_ || Inst.getOpcode() == AAP::BGTS_short)
+        branch = (SValA > SValB) ? true : false;
+      if (Inst.getOpcode() == AAP::BLTU_ || Inst.getOpcode() == AAP::BLTU_short)
+        branch = (ValA < ValB) ? true : false;
+      if (Inst.getOpcode() == AAP::BGTU_ || Inst.getOpcode() == AAP::BGTU_short)
+        branch = (ValA > ValB) ? true : false;
+      // Branch if needed
+      if (branch)
+        newpc_w = pc_w + SImm;
+      break;
+    }
+
     // Branch
     case AAP::BRA:
     case AAP::BRA_short: {
