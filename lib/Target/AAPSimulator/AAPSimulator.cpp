@@ -182,21 +182,6 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       break;
     }
 
-    // Branch and Link, Jump and Link
-    case AAP::BAL:
-    case AAP::BAL_short:
-    case AAP::JAL:
-    case AAP::JAL_short: {
-      int Reg = getLLVMReg(Inst.getOperand(1).getReg());
-      State.setReg(Reg, newpc_w);
-      uint32_t Imm = Inst.getOperand(0).getImm() & 0xffffff;
-      if (Inst.getOpcode() == AAP::BAL || Inst.getOpcode() == AAP::BAL_short)
-        newpc_w = pc_w + Imm;
-      else
-        newpc_w = Imm;
-      break;
-    }
-
     // ADD
     case AAP::ADD_r:
     case AAP::ADD_r_short: {
@@ -433,6 +418,21 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       uint16_t ValB = Inst.getOperand(2).getImm() & 0xf;
       uint16_t Res = ValA >> ValB;
       State.setReg(RegDst, Res);
+      break;
+    }
+
+    // Branch and Link, Jump and Link
+    case AAP::BAL:
+    case AAP::BAL_short:
+    case AAP::JAL:
+    case AAP::JAL_short: {
+      int Reg = getLLVMReg(Inst.getOperand(1).getReg());
+      State.setReg(Reg, newpc_w);
+      uint32_t Imm = Inst.getOperand(0).getImm() & 0xffffff;
+      if (Inst.getOpcode() == AAP::BAL || Inst.getOpcode() == AAP::BAL_short)
+        newpc_w = pc_w + Imm;
+      else
+        newpc_w = Imm;
       break;
     }
 
