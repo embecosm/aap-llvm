@@ -155,6 +155,7 @@ SimStatus AAPSimulator::step() {
   if (DisAsm->getInstruction(Inst, Size, Bytes->slice(pc_w << 1), (pc_w << 1),
                              nulls(), nulls())) {
     // Instruction decoded, execute it and write back our PC
+    dbgs() << format("%06" PRIx64 ":", pc_w);
     IP->printInst(&Inst, dbgs(), "", *STI);
     dbgs() << "\n";
 
