@@ -421,6 +421,110 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       break;
     }
 
+    // Load
+    case AAP::LDB:
+    case AAP::LDB_short:
+    case AAP::LDW:
+    case AAP::LDW_short:
+    case AAP::LDB_postinc:
+    case AAP::LDB_postinc_short:
+    case AAP::LDW_postinc:
+    case AAP::LDW_postinc_short:
+    case AAP::LDB_predec:
+    case AAP::LDB_predec_short:
+    case AAP::LDW_predec:
+    case AAP::LDW_predec_short: {
+      bool postinc = (Inst.getOpcode() == AAP::LDB_postinc ||
+                      Inst.getOpcode() == AAP::LDB_postinc_short ||
+                      Inst.getOpcode() == AAP::LDW_postinc ||
+                      Inst.getOpcode() == AAP::LDW_postinc_short) ? true : false;
+      bool predec  = (Inst.getOpcode() == AAP::LDB_predec ||
+                      Inst.getOpcode() == AAP::LDB_predec_short ||
+                      Inst.getOpcode() == AAP::LDW_predec ||
+                      Inst.getOpcode() == AAP::LDW_predec_short) ? true : false;
+      bool word = (Inst.getOpcode() == AAP::LDW ||
+                   Inst.getOpcode() == AAP::LDW_short ||
+                   Inst.getOpcode() == AAP::LDW_postinc ||
+                   Inst.getOpcode() == AAP::LDW_postinc_short ||
+                   Inst.getOpcode() == AAP::LDW_predec ||
+                   Inst.getOpcode() == AAP::LDW_predec_short) ? true : false;
+      // Initial register values
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegMem = getLLVMReg(Inst.getOperand(1).getReg());
+      int Offset = Inst.getOperand(2).getImm();
+      uint16_t BaseAddress = State.getReg(RegMem);
+      // Handle pre-dec
+      if (predec) {
+        BaseAddress -= word ? 2 : 1;
+        State.setReg(RegMem, BaseAddress);
+      }
+      State.setReg(RegMem, BaseAddress);
+      // Load
+      uint16_t Address = BaseAddress + Offset;
+      uint16_t Val = State.getDataMem(Address);
+      if (word)
+        Val |= State.getDataMem(Address + 1) << 8;
+      State.setReg(RegDst, Val);
+      // Handle post-inc
+      if (postinc) {
+        BaseAddress += word ? 2 : 1;
+        State.setReg(RegMem, BaseAddress);
+      }
+      break;
+    }
+
+    // Store
+    case AAP::STB:
+    case AAP::STB_short:
+    case AAP::STW:
+    case AAP::STW_short:
+    case AAP::STB_postinc:
+    case AAP::STB_postinc_short:
+    case AAP::STW_postinc:
+    case AAP::STW_postinc_short:
+    case AAP::STB_predec:
+    case AAP::STB_predec_short:
+    case AAP::STW_predec:
+    case AAP::STW_predec_short: {
+      bool postinc = (Inst.getOpcode() == AAP::STB_postinc ||
+                      Inst.getOpcode() == AAP::STB_postinc_short ||
+                      Inst.getOpcode() == AAP::STW_postinc ||
+                      Inst.getOpcode() == AAP::STW_postinc_short) ? true : false;
+      bool predec  = (Inst.getOpcode() == AAP::STB_predec ||
+                      Inst.getOpcode() == AAP::STB_predec_short ||
+                      Inst.getOpcode() == AAP::STW_predec ||
+                      Inst.getOpcode() == AAP::STW_predec_short) ? true : false;
+      bool word = (Inst.getOpcode() == AAP::STW ||
+                   Inst.getOpcode() == AAP::STW_short ||
+                   Inst.getOpcode() == AAP::STW_postinc ||
+                   Inst.getOpcode() == AAP::STW_postinc_short ||
+                   Inst.getOpcode() == AAP::STW_predec ||
+                   Inst.getOpcode() == AAP::STW_predec_short) ? true : false;
+      // Initial register values
+      int RegMem = getLLVMReg(Inst.getOperand(0).getReg());
+      int Offset = Inst.getOperand(1).getImm();
+      int RegSrc = getLLVMReg(Inst.getOperand(0).getReg());
+      uint16_t BaseAddress = State.getReg(RegMem);
+      uint16_t Val = State.getReg(RegSrc);
+      // Handle pre-dec
+      if (predec) {
+        BaseAddress -= word ? 2 : 1;
+        State.setReg(RegMem, BaseAddress);
+      }
+      State.setReg(RegMem, BaseAddress);
+      // Store
+      uint16_t Address = BaseAddress + Offset;
+      State.setDataMem(Address, Val & 0xff);
+      if (word)
+        State.setDataMem(Address + 1, Val >> 8);
+      // Handle post-inc
+      if (postinc) {
+        BaseAddress += word ? 2 : 1;
+        State.setReg(RegMem, BaseAddress);
+      }
+      break;
+    }
+
     // Branch and Link, Jump and Link
     case AAP::BAL:
     case AAP::BAL_short:
