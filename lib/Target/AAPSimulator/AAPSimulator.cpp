@@ -115,6 +115,15 @@ static int getLLVMReg(unsigned Reg) {
   }
 }
 
+// Function to sign extend a uint16_t register for detecting overflow
+static uint32_t signExtend16(uint16_t val) {
+  uint32_t newval = static_cast<uint16_t>(val);
+  uint32_t sign = newval & 0x8000;
+  if (sign)
+    newval |= 0xffff0000;
+  return newval;
+}
+
 SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
   switch (Inst.getOpcode()) {
     // Unknown instruction
@@ -188,6 +197,245 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       break;
     }
 
+    // ADD
+    case AAP::ADD_r:
+    case AAP::ADD_r_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
+      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
+      uint32_t ValB = signExtend16(State.getReg(RegSrcB));
+      uint32_t Res = ValA + ValB;
+      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      // Test for overflow
+      int32_t Res_s = static_cast<int32_t>(Res);
+      State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
+      break;
+    }
+
+    // ADDC
+    case AAP::ADDC_r: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
+      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
+      uint32_t ValB = signExtend16(State.getReg(RegSrcB));
+      uint32_t Res = ValA + ValB + State.getOverflow();
+      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      // Test for overflow
+      int32_t Res_s = static_cast<int32_t>(Res);
+      State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
+      break;
+    }
+
+    // ADDI
+    case AAP::ADDI_i10:
+    case AAP::ADDI_i3_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
+      uint32_t ValB = Inst.getOperand(2).getImm();
+      uint32_t Res = ValA + ValB;
+      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      // Test for overflow
+      int32_t Res_s = static_cast<int32_t>(Res);
+      State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
+      break;
+    }
+
+    // SUB
+    case AAP::SUB_r:
+    case AAP::SUB_r_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
+      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
+      uint32_t ValB = signExtend16(State.getReg(RegSrcB));
+      uint32_t Res = ValA - ValB;
+      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      // Test for overflow
+      int32_t Res_s = static_cast<int32_t>(Res);
+      State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
+      break;
+    }
+
+    // SUBC
+    case AAP::SUBC_r: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
+      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
+      uint32_t ValB = signExtend16(State.getReg(RegSrcB));
+      uint32_t Res = ValA - ValB - State.getOverflow();
+      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      // Test for overflow
+      int32_t Res_s = static_cast<int32_t>(Res);
+      State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
+      break;
+    }
+
+    // SUBI
+    case AAP::SUBI_i10:
+    case AAP::SUBI_i3_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
+      uint32_t ValB = Inst.getOperand(2).getImm();
+      uint32_t Res = ValA - ValB;
+      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      // Test for overflow
+      int32_t Res_s = static_cast<int32_t>(Res);
+      State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
+      break;
+    }
+
+    // AND
+    case AAP::AND_r:
+    case AAP::AND_r_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
+      uint16_t ValA = State.getReg(RegSrcA);
+      uint16_t ValB = State.getReg(RegSrcB);
+      uint16_t Res = ValA & ValB;
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // ANDI
+    case AAP::ANDI_i9: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      uint16_t ValA = State.getReg(RegSrcA);
+      uint16_t ValB = Inst.getOperand(2).getImm();
+      uint16_t Res = ValA & ValB;
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // OR
+    case AAP::OR_r:
+    case AAP::OR_r_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
+      uint16_t ValA = State.getReg(RegSrcA);
+      uint16_t ValB = State.getReg(RegSrcB);
+      uint16_t Res = ValA | ValB;
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // ORI
+    case AAP::ORI_i9: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      uint16_t ValA = State.getReg(RegSrcA);
+      uint16_t ValB = Inst.getOperand(2).getImm();
+      uint16_t Res = ValA | ValB;
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // XOR
+    case AAP::XOR_r:
+    case AAP::XOR_r_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
+      uint16_t ValA = State.getReg(RegSrcA);
+      uint16_t ValB = State.getReg(RegSrcB);
+      uint16_t Res = ValA ^ ValB;
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // XORI
+    case AAP::XORI_i9: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      uint16_t ValA = State.getReg(RegSrcA);
+      uint16_t ValB = Inst.getOperand(2).getImm();
+      uint16_t Res = ValA ^ ValB;
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // ASR
+    case AAP::ASR_r:
+    case AAP::ASR_r_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
+      int16_t ValA = static_cast<int16_t>(State.getReg(RegSrcA));
+      int16_t ValB = static_cast<int16_t>(State.getReg(RegSrcB) & 0xf);
+      uint16_t Res = static_cast<uint16_t>(ValA >> ValB);
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // ASRI
+    case AAP::ASRI_i6:
+    case AAP::ASRI_i3_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int16_t ValA = static_cast<int16_t>(State.getReg(RegSrcA));
+      int16_t ValB = static_cast<int16_t>(Inst.getOperand(2).getImm() & 0xf);
+      uint16_t Res = static_cast<uint16_t>(ValA >> ValB);
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // LSL
+    case AAP::LSL_r:
+    case AAP::LSL_r_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
+      uint16_t ValA = State.getReg(RegSrcA);
+      uint16_t ValB = State.getReg(RegSrcB) & 0xf;
+      uint16_t Res = ValA << ValB;
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // LSLI
+    case AAP::LSLI_i6:
+    case AAP::LSLI_i3_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      uint16_t ValA = State.getReg(RegSrcA);
+      uint16_t ValB = Inst.getOperand(2).getImm() & 0xf;
+      uint16_t Res = ValA << ValB;
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // LSR
+    case AAP::LSR_r:
+    case AAP::LSR_r_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
+      uint16_t ValA = State.getReg(RegSrcA);
+      uint16_t ValB = State.getReg(RegSrcB) & 0xf;
+      uint16_t Res = ValA >> ValB;
+      State.setReg(RegDst, Res);
+      break;
+    }
+
+    // LSRI
+    case AAP::LSRI_i6:
+    case AAP::LSRI_i3_short: {
+      int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
+      uint16_t ValA = State.getReg(RegSrcA);
+      uint16_t ValB = Inst.getOperand(2).getImm() & 0xf;
+      uint16_t Res = ValA >> ValB;
+      State.setReg(RegDst, Res);
+      break;
+    }
+
     // Jump
     case AAP::JMP:
     case AAP::JMP_short: {
@@ -195,7 +443,9 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       newpc_w = State.getReg(Reg);
       break;
     }
-  }
+  } // end opcode switch
+
+  // By default, we exected the instruction
   return SimStatus::SIM_OK;
 }
 

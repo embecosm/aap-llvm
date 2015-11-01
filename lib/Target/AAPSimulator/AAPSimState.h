@@ -26,7 +26,8 @@ class AAPSimState {
   uint32_t pc_w : 24;
 
   // Special registers
-  uint16_t exitcode;  // Exit code register
+  uint16_t exitcode;      // Exit code register
+  uint16_t overflow : 1;  // Overflow bit register
 
   // One namespace code memory and data memory
   uint8_t *code_memory;
@@ -58,6 +59,8 @@ public:
   // Special register accesses
   uint16_t getExitCode() const { return exitcode; }
   void setExitCode(uint16_t code) { exitcode = code; }
+  uint16_t getOverflow() const { return overflow; }
+  void setOverflow(uint16_t o) { overflow = o ? 1 : 0; }
 };
 
 } // End AAPSim namespace
