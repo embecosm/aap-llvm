@@ -46,6 +46,7 @@ static void LoadObject(AAPSimulator &Sim, ObjectFile *o) {
     bool Text = Section.isText();
     bool Data = Section.isData();
     bool BSS = Section.isBSS();
+    bool TextFlag = Address & 0x1000000;
     StringRef BytesStr;
     Section.getContents(BytesStr);
     std::string Type = (std::string(Text ? "TEXT " : "") +
@@ -54,11 +55,14 @@ static void LoadObject(AAPSimulator &Sim, ObjectFile *o) {
     if (Text || Data) {
       outs() << format("%3d %-13s %08" PRIx64 " %016" PRIx64 " %s\n", i,
                        Name.str().c_str(), Size, Address, Type.c_str());
-      // FIXME: Flag conversion
-      if (Text) {
+      if (TextFlag) {
         Address = Address & 0xffffff;
-        outs() << format("Writing %s to %08" PRIx64 "\n", Name.str().c_str(), Address);
+        outs() << format("Writing %s to %06" PRIx64 "\n", Name.str().c_str(), Address);
         Sim.WriteCodeSection(BytesStr, Address);
+      } else {
+        Address = Address & 0xffff;
+        outs() << format("Writing %s to %04" PRIx64 "\n", Name.str().c_str(), Address);
+        Sim.WriteDataSection(BytesStr, Address);
       }
     }
     ++i;
