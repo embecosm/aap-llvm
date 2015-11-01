@@ -605,8 +605,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     // Branch
     case AAP::BRA:
     case AAP::BRA_short: {
-      int Reg = getLLVMReg(Inst.getOperand(0).getReg());
-      int16_t Offset = static_cast<int16_t>(State.getReg(Reg));
+      int32_t Offset = Inst.getOperand(0).getImm();
       newpc_w = pc_w + Offset;
       break;
     }
