@@ -127,6 +127,36 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
 #endif
       break;
 
+    // NOP Handling
+    // 0: Breakpoint
+    // 1: NOP
+    // 2: Exit with retcode in Rd
+    // 3: Write char Rd to stdout
+    // 4: Write char Rd to stderr
+    case AAP::NOP:
+    case AAP::NOP_short: {
+      int Reg = getLLVMReg(Inst.getOperand(0).getReg());
+      uint16_t Command = Inst.getOperand(1).getImm();
+      // Load register value and char for NOPs that require it
+      uint16_t RegVal = State.getReg(Reg);
+      char c = static_cast<char>(RegVal);
+      switch (Command) {
+        case 0: return SimStatus::SIM_BREAKPOINT;
+        default:  // Treat unknown values as NOP
+        case 1: break;
+        case 2:
+          State.setExitCode(RegVal);
+          return SimStatus::SIM_QUIT;
+        case 3:
+          outs() << c;
+          break;
+        case 4:
+          errs() << c;
+          break;
+      }
+      break;
+    }
+
     // Move Instructions
     case AAP::MOV_r:
     case AAP::MOV_r_short: {

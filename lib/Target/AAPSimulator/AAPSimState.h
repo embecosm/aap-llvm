@@ -25,6 +25,9 @@ class AAPSimState {
   uint16_t base_regs[64];
   uint32_t pc_w : 24;
 
+  // Special registers
+  uint16_t exitcode;  // Exit code register
+
   // One namespace code memory and data memory
   uint8_t *code_memory;
   uint8_t *data_memory;
@@ -51,6 +54,10 @@ public:
   // Read and write data memory
   uint8_t getDataMem(uint32_t address) const;
   void setDataMem(uint32_t address, uint8_t val);
+
+  // Special register accesses
+  uint16_t getExitCode() const { return exitcode; }
+  void setExitCode(uint16_t code) { exitcode = code; }
 };
 
 } // End AAPSim namespace
