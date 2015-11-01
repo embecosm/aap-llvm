@@ -142,6 +142,21 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       State.setReg(Reg, Val);
       break;
     }
+
+    // Branch and Link, Jump and Link
+    case AAP::BAL:
+    case AAP::BAL_short:
+    case AAP::JAL:
+    case AAP::JAL_short: {
+      int Reg = getLLVMReg(Inst.getOperand(1).getReg());
+      State.setReg(Reg, newpc_w);
+      uint32_t Imm = Inst.getOperand(0).getImm() & 0xffffff;
+      if (Inst.getOpcode() == AAP::BAL || Inst.getOpcode() == AAP::BAL_short)
+        newpc_w = pc_w + Imm;
+      else
+        newpc_w = Imm;
+      break;
+    }
   }
   return SimStatus::SIM_OK;
 }
