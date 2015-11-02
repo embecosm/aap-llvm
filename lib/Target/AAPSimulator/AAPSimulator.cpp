@@ -629,7 +629,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int32_t SOffset = 
           (Inst.getOpcode() == AAP::BRA) ? signExtendBranch(Offset)
                                          : signExtendBranchS(Offset);
-      newpc_w = pc_w + Offset;
+      newpc_w = pc_w + SOffset;
       break;
     }
 
