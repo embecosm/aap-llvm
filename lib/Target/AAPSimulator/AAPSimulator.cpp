@@ -536,7 +536,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       // Initial register values
       int RegMem = getLLVMReg(Inst.getOperand(0).getReg());
       int Offset = Inst.getOperand(1).getImm();
-      int RegSrc = getLLVMReg(Inst.getOperand(0).getReg());
+      int RegSrc = getLLVMReg(Inst.getOperand(2).getReg());
       uint16_t BaseAddress = State.getReg(RegMem);
       uint16_t Val = State.getReg(RegSrc);
       // Handle pre-dec
@@ -641,6 +641,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       break;
     }
   } // end opcode switch
+
+  int Reg = getLLVMReg(AAP::R0);
+  dbgs() << "LR: " << State.getReg(getLLVMReg(AAP::R0)) << "\n"
+         << "SP: " << State.getReg(getLLVMReg(AAP::R1)) << "\n";
 
   // By default, we exected the instruction
   return SimStatus::SIM_OK;
