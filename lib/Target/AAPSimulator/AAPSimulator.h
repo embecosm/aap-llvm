@@ -14,7 +14,12 @@
 #ifndef LLVM_LIB_TARGET_AAPSIMULATOR_AAPSIMULATOR_H
 #define LLVM_LIB_TARGET_AAPSIMULATOR_AAPSIMULATOR_H
 
+#include "llvm/MC/MCDisassembler.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "AAPSimState.h"
 
 namespace AAPSim {
