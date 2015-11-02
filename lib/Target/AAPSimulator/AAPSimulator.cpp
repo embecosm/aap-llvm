@@ -127,22 +127,34 @@ static uint32_t signExtend16(uint16_t val) {
 // Sign extend branch cc target (long, 10 bits)
 static int16_t signExtendBranchCC(uint16_t val) {
   if (val & 0x0200)
-    val |= 0xfe00;
+    val |= 0xfc00;
   return static_cast<int16_t>(val);
 }
 
 // Sign extend branch target (long, 18 bits)
 static int32_t signExtendBranch(uint32_t val) {
   if (val & 0x00020000)
-    val |= 0xfffe0000;
+    val |= 0xfffc0000;
   return static_cast<int32_t>(val);
 }
 
-// Sign extend branch target (short, 6 bits)
+// Sign extend branch target (short, 9 bits)
 static int16_t signExtendBranchS(uint16_t val) {
-  if (val & 0x200)
-    val |= 0xfc00;
+  if (val & 0x100)
+    val |= 0xfe00;
   return static_cast<int16_t>(val);
+}
+
+// Sign extend branch and link target (short, 6 bits)
+static int16_t signExtendBranchAndLinkS(uint16_t val) {
+  if (val & 0x20)
+    val |= 0xffc0;
+  return static_cast<int16_t>(val);
+}
+
+// Sign extend branch conditional target (short, 6 bits)
+static int16_t signExtendBranchCCS(uint16_t val) {
+  return signExtendBranchAndLinkS(val);
 }
 
 SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
@@ -556,7 +568,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       uint16_t Imm = Inst.getOperand(0).getImm();
       int16_t SImm =
           (Inst.getOpcode() == AAP::BAL) ? static_cast<int16_t>(Imm) :
-                                           signExtendBranchS(Imm);
+                                           signExtendBranchAndLinkS(Imm);
       if (Inst.getOpcode() == AAP::BAL || Inst.getOpcode() == AAP::BAL_short)
         newpc_w = pc_w + SImm;
       else
@@ -588,8 +600,8 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
                      Inst.getOpcode() == AAP::BGTS_ ||
                      Inst.getOpcode() == AAP::BLTU_ ||
                      Inst.getOpcode() == AAP::BGTU_) ? true : false;
-      // FIXME: Long should use signExtendBranch
-      int16_t SImm = longbr ? signExtendBranchCC(Imm) : signExtendBranchS(Imm);
+      int16_t SImm = longbr ? signExtendBranchCC(Imm)
+                            : signExtendBranchCCS(Imm);
       bool branch = false;
       // Decide whether to branch based on instruction type
       if (Inst.getOpcode() == AAP::BEQ_ || Inst.getOpcode() == AAP::BEQ_short)
@@ -613,7 +625,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     // Branch
     case AAP::BRA:
     case AAP::BRA_short: {
-      int32_t Offset = Inst.getOperand(0).getImm();
+      uint32_t Offset = Inst.getOperand(0).getImm();
+      int32_t SOffset = 
+          (Inst.getOpcode() == AAP::BRA) ? signExtendBranch(Offset)
+                                         : signExtendBranchS(Offset);
       newpc_w = pc_w + Offset;
       break;
     }
