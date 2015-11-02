@@ -45,6 +45,7 @@ public:
   void setReg(int reg, uint16_t val);
   uint32_t getPC() const;
   void setPC(uint32_t val_w);
+  unsigned int getNumRegs() { return 64; }
 
   // Accesses to code memory is done 8 bits at a time to be consistent with
   // the disassembler, which takes an array of 8 bits.
