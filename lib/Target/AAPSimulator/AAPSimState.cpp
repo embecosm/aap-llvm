@@ -57,21 +57,21 @@ void AAPSimState::setPC(uint32_t val_w) {
 }
 
 uint8_t AAPSimState::getCodeMem(uint32_t address) const {
-  assert (address < 0x1ffffff && "Invalid address");
+  assert (address <= 0x1ffffff && "Invalid address");
   return code_memory[address];
 }
 
 void AAPSimState::setCodeMem(uint32_t address, uint8_t val) {
-  assert (address < 0x1ffffff && "Invalid address");
+  assert (address <= 0x1ffffff && "Invalid address");
   code_memory[address] = val;
 }
 
 uint8_t AAPSimState::getDataMem(uint32_t address) const {
-  assert (address < 0xffff && "Invalid address");
+  assert (address <= 0xffff && "Invalid address");
   return data_memory[address];
 }
 
 void AAPSimState::setDataMem(uint32_t address, uint8_t val) {
-  assert (address < 0xffff && "Invalid address");
+  assert (address <= 0xffff && "Invalid address");
   data_memory[address] = val;
 }
