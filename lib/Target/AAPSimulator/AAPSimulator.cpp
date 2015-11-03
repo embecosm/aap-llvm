@@ -488,8 +488,9 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       uint16_t BaseAddress = State.getReg(RegMem);
       // Handle pre-dec
       if (predec) {
-        BaseAddress -= word ? 2 : 1;
+        BaseAddress -= Offset;
         State.setReg(RegMem, BaseAddress);
+        Offset = 0; // No longer need to add offset for real load
       }
       State.setReg(RegMem, BaseAddress);
       // Load
@@ -500,7 +501,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       State.setReg(RegDst, Val);
       // Handle post-inc
       if (postinc) {
-        BaseAddress += word ? 2 : 1;
+        BaseAddress += Offset;
         State.setReg(RegMem, BaseAddress);
       }
       break;
@@ -541,8 +542,9 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       uint16_t Val = State.getReg(RegSrc);
       // Handle pre-dec
       if (predec) {
-        BaseAddress -= word ? 2 : 1;
+        BaseAddress -= Offset;
         State.setReg(RegMem, BaseAddress);
+        Offset = 0; // No longer need to add offset for real load
       }
       State.setReg(RegMem, BaseAddress);
       // Store
@@ -552,7 +554,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
         State.setDataMem(Address + 1, Val >> 8);
       // Handle post-inc
       if (postinc) {
-        BaseAddress += word ? 2 : 1;
+        BaseAddress += Offset;
         State.setReg(RegMem, BaseAddress);
       }
       break;
