@@ -19,7 +19,8 @@ using namespace llvm;
 void AAPMCAsmInfo::anchor() {}
 
 AAPMCAsmInfo::AAPMCAsmInfo(const llvm::Triple &TT) {
-  PointerSize = CalleeSaveStackSlotSize = 2;
+  CalleeSaveStackSlotSize = 2;
+  PointerSize = 4;
   CommentString = ";";
   SupportsDebugInformation = true;
   UsesELFSectionDirectiveForBSS = true;

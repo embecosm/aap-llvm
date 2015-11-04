@@ -141,7 +141,12 @@ const DataLayout &AsmPrinter::getDataLayout() const {
 
 // Do not use the cached DataLayout because some client use it without a Module
 // (llmv-dsymutil, llvm-dwarfdump).
-unsigned AsmPrinter::getPointerSize() const { return TM.getPointerSize(); }
+// By default, use the pointer size defined by the target machine
+unsigned AsmPrinter::getPointerSize() const {
+  if (MAI)
+    return MAI->getPointerSize();
+  return TM.getPointerSize();
+}
 
 const MCSubtargetInfo &AsmPrinter::getSubtargetInfo() const {
   assert(MF && "getSubtargetInfo requires a valid MachineFunction!");
