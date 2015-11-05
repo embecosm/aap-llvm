@@ -496,8 +496,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
         Offset = 0; // No longer need to add offset for real load
       }
       EXCEPT(State.setReg(RegMem, BaseAddress));
-      // Load
-      uint16_t Address = BaseAddress + Offset;
+      // Load, without adding offset if postincrement
+      uint16_t Address = BaseAddress;
+      if (!postinc)
+        Address += Offset;
       EXCEPT(uint16_t Val = State.getDataMem(Address));
       if (word)
         EXCEPT(Val |= State.getDataMem(Address + 1) << 8);
@@ -550,8 +552,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
         Offset = 0; // No longer need to add offset for real load
       }
       EXCEPT(State.setReg(RegMem, BaseAddress));
-      // Store
-      uint16_t Address = BaseAddress + Offset;
+      // Store, without adding offset if postincrement
+      uint16_t Address = BaseAddress;
+      if (!postinc)
+        Address += Offset;
       EXCEPT(State.setDataMem(Address, Val & 0xff));
       if (word)
         EXCEPT(State.setDataMem(Address + 1, Val >> 8));
