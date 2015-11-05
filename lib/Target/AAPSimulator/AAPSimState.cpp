@@ -19,8 +19,6 @@
 
 using namespace AAPSim;
 
-static bool debug_trace = true;
-
 AAPSimState::AAPSimState() {
   for (int i = 0; i < 64; ++i)
     base_regs[i] = 0;
@@ -38,6 +36,8 @@ AAPSimState::AAPSimState() {
 
   // We haven't hit any exception yet
   status = SimStatus::SIM_OK;
+
+  debug_trace = true;
 }
 
 AAPSimState::~AAPSimState() {

@@ -45,6 +45,8 @@ class AAPSimState {
   uint8_t *data_memory;
   llvm::ArrayRef<uint8_t> *code_array;
 
+  bool debug_trace;
+
   AAPSimState(const AAPSimState&) = delete;
 
 
@@ -78,6 +80,10 @@ public:
   // Get and reset exception state
   SimStatus getStatus() { return status; }
   void resetStatus() { status = SimStatus::SIM_OK; }
+
+  // Trace control
+  bool getTracing() const { return debug_trace; }
+  void setTracing(bool enabled) { debug_trace = enabled; }
 };
 
 } // End AAPSim namespace
