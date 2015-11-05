@@ -121,6 +121,12 @@ int main(int argc, char **argv) {
     case SimStatus::SIM_TRAP:
       outs() << " *** Simulator trap ***\n";
       break;
+    case SimStatus::SIM_EXCEPT_MEM:
+      outs() << " *** Invalid memory trap ***\n";
+      return 1;
+    case SimStatus::SIM_EXCEPT_REG:
+      outs() << " *** Invalid register trap ***\n";
+      return 1;
     case SimStatus::SIM_QUIT:
       outs() << " *** EXIT CODE " << Sim.getState().getExitCode() << " ***\n";
       return Sim.getState().getExitCode();
