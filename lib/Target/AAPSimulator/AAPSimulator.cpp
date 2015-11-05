@@ -37,6 +37,9 @@ using namespace AAPSim;
 // Should the simulator call llvm_unreachable when executing unknown
 #define UNKNOWN_SHOULD_UNREACHABLE 0
 
+// Register and memory exception handlers
+#define EXCEPT(x) x; if (State.getStatus() != SimStatus::SIM_OK) return State.getStatus()
+
 AAPSimulator::AAPSimulator() {
   std::string Error;
   TheTarget = TargetRegistry::lookupTarget("aap-none-none", Error);
@@ -180,7 +183,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int Reg = getLLVMReg(Inst.getOperand(0).getReg());
       uint16_t Command = Inst.getOperand(1).getImm();
       // Load register value and char for NOPs that require it
-      uint16_t RegVal = State.getReg(Reg);
+      EXCEPT(uint16_t RegVal = State.getReg(Reg));
       char c = static_cast<char>(RegVal);
       switch (Command) {
         case 0: return SimStatus::SIM_BREAKPOINT;
@@ -204,14 +207,14 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::MOV_r_short: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrc = getLLVMReg(Inst.getOperand(1).getReg());
-      State.setReg(RegDst, State.getReg(RegSrc));
+      EXCEPT(State.setReg(RegDst, State.getReg(RegSrc)));
       break;
     }
     case AAP::MOVI_i16:
     case AAP::MOVI_i6_short: {
       int Reg = getLLVMReg(Inst.getOperand(0).getReg());
       uint16_t Val = Inst.getOperand(1).getImm() & 0xffff;
-      State.setReg(Reg, Val);
+      EXCEPT(State.setReg(Reg, Val));
       break;
     }
 
@@ -221,10 +224,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
-      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
-      uint32_t ValB = signExtend16(State.getReg(RegSrcB));
+      EXCEPT(uint32_t ValA = signExtend16(State.getReg(RegSrcA)));
+      EXCEPT(uint32_t ValB = signExtend16(State.getReg(RegSrcB)));
       uint32_t Res = ValA + ValB;
-      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      EXCEPT(State.setReg(RegDst, static_cast<uint16_t>(Res)));
       // Test for overflow
       int32_t Res_s = static_cast<int32_t>(Res);
       State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
@@ -236,10 +239,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
-      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
-      uint32_t ValB = signExtend16(State.getReg(RegSrcB));
+      EXCEPT(uint32_t ValA = signExtend16(State.getReg(RegSrcA)));
+      EXCEPT(uint32_t ValB = signExtend16(State.getReg(RegSrcB)));
       uint32_t Res = ValA + ValB + State.getOverflow();
-      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      EXCEPT(State.setReg(RegDst, static_cast<uint16_t>(Res)));
       // Test for overflow
       int32_t Res_s = static_cast<int32_t>(Res);
       State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
@@ -251,10 +254,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::ADDI_i3_short: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
-      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
+      EXCEPT(uint32_t ValA = signExtend16(State.getReg(RegSrcA)));
       uint32_t ValB = Inst.getOperand(2).getImm();
       uint32_t Res = ValA + ValB;
-      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      EXCEPT(State.setReg(RegDst, static_cast<uint16_t>(Res)));
       // Test for overflow
       int32_t Res_s = static_cast<int32_t>(Res);
       State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
@@ -267,10 +270,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
-      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
-      uint32_t ValB = signExtend16(State.getReg(RegSrcB));
+      EXCEPT(uint32_t ValA = signExtend16(State.getReg(RegSrcA)));
+      EXCEPT(uint32_t ValB = signExtend16(State.getReg(RegSrcB)));
       uint32_t Res = ValA - ValB;
-      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      EXCEPT(State.setReg(RegDst, static_cast<uint16_t>(Res)));
       // Test for overflow
       int32_t Res_s = static_cast<int32_t>(Res);
       State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
@@ -282,10 +285,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
-      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
-      uint32_t ValB = signExtend16(State.getReg(RegSrcB));
+      EXCEPT(uint32_t ValA = signExtend16(State.getReg(RegSrcA)));
+      EXCEPT(uint32_t ValB = signExtend16(State.getReg(RegSrcB)));
       uint32_t Res = ValA - ValB - State.getOverflow();
-      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      EXCEPT(State.setReg(RegDst, static_cast<uint16_t>(Res)));
       // Test for overflow
       int32_t Res_s = static_cast<int32_t>(Res);
       State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
@@ -297,10 +300,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::SUBI_i3_short: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
-      uint32_t ValA = signExtend16(State.getReg(RegSrcA));
+      EXCEPT(uint32_t ValA = signExtend16(State.getReg(RegSrcA)));
       uint32_t ValB = Inst.getOperand(2).getImm();
       uint32_t Res = ValA - ValB;
-      State.setReg(RegDst, static_cast<uint16_t>(Res));
+      EXCEPT(State.setReg(RegDst, static_cast<uint16_t>(Res)));
       // Test for overflow
       int32_t Res_s = static_cast<int32_t>(Res);
       State.setOverflow(static_cast<int16_t>(Res_s) != Res_s ? 1 : 0);
@@ -313,10 +316,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
-      uint16_t ValA = State.getReg(RegSrcA);
-      uint16_t ValB = State.getReg(RegSrcB);
+      EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
+      EXCEPT(uint16_t ValB = State.getReg(RegSrcB));
       uint16_t Res = ValA & ValB;
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -324,10 +327,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::ANDI_i9: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
-      uint16_t ValA = State.getReg(RegSrcA);
+      EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
       uint16_t ValB = Inst.getOperand(2).getImm();
       uint16_t Res = ValA & ValB;
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -337,10 +340,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
-      uint16_t ValA = State.getReg(RegSrcA);
-      uint16_t ValB = State.getReg(RegSrcB);
+      EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
+      EXCEPT(uint16_t ValB = State.getReg(RegSrcB));
       uint16_t Res = ValA | ValB;
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -348,10 +351,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::ORI_i9: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
-      uint16_t ValA = State.getReg(RegSrcA);
+      EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
       uint16_t ValB = Inst.getOperand(2).getImm();
       uint16_t Res = ValA | ValB;
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -361,10 +364,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
-      uint16_t ValA = State.getReg(RegSrcA);
-      uint16_t ValB = State.getReg(RegSrcB);
+      EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
+      EXCEPT(uint16_t ValB = State.getReg(RegSrcB));
       uint16_t Res = ValA ^ ValB;
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -372,10 +375,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::XORI_i9: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
-      uint16_t ValA = State.getReg(RegSrcA);
+      EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
       uint16_t ValB = Inst.getOperand(2).getImm();
       uint16_t Res = ValA ^ ValB;
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -385,10 +388,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
-      int16_t ValA = static_cast<int16_t>(State.getReg(RegSrcA));
-      int16_t ValB = static_cast<int16_t>(State.getReg(RegSrcB) & 0xf);
+      EXCEPT(int16_t ValA = static_cast<int16_t>(State.getReg(RegSrcA)));
+      EXCEPT(int16_t ValB = static_cast<int16_t>(State.getReg(RegSrcB) & 0xf));
       uint16_t Res = static_cast<uint16_t>(ValA >> ValB);
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -397,10 +400,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::ASRI_i3_short: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
-      int16_t ValA = static_cast<int16_t>(State.getReg(RegSrcA));
+      EXCEPT(int16_t ValA = static_cast<int16_t>(State.getReg(RegSrcA)));
       int16_t ValB = static_cast<int16_t>(Inst.getOperand(2).getImm() & 0xf);
       uint16_t Res = static_cast<uint16_t>(ValA >> ValB);
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -410,10 +413,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
-      uint16_t ValA = State.getReg(RegSrcA);
-      uint16_t ValB = State.getReg(RegSrcB) & 0xf;
+      EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
+      EXCEPT(uint16_t ValB = State.getReg(RegSrcB) & 0xf);
       uint16_t Res = ValA << ValB;
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -422,10 +425,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::LSLI_i3_short: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
-      uint16_t ValA = State.getReg(RegSrcA);
+      EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
       uint16_t ValB = Inst.getOperand(2).getImm() & 0xf;
       uint16_t Res = ValA << ValB;
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -435,10 +438,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
-      uint16_t ValA = State.getReg(RegSrcA);
-      uint16_t ValB = State.getReg(RegSrcB) & 0xf;
+      EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
+      EXCEPT(uint16_t ValB = State.getReg(RegSrcB) & 0xf);
       uint16_t Res = ValA >> ValB;
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -447,10 +450,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::LSRI_i3_short: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
-      uint16_t ValA = State.getReg(RegSrcA);
-      uint16_t ValB = Inst.getOperand(2).getImm() & 0xf;
+      EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
+      EXCEPT(uint16_t ValB = Inst.getOperand(2).getImm() & 0xf);
       uint16_t Res = ValA >> ValB;
-      State.setReg(RegDst, Res);
+      EXCEPT(State.setReg(RegDst, Res));
       break;
     }
 
@@ -485,24 +488,24 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegMem = getLLVMReg(Inst.getOperand(1).getReg());
       int Offset = Inst.getOperand(2).getImm();
-      uint16_t BaseAddress = State.getReg(RegMem);
+      EXCEPT(uint16_t BaseAddress = State.getReg(RegMem));
       // Handle pre-dec
       if (predec) {
         BaseAddress -= Offset;
-        State.setReg(RegMem, BaseAddress);
+        EXCEPT(State.setReg(RegMem, BaseAddress));
         Offset = 0; // No longer need to add offset for real load
       }
-      State.setReg(RegMem, BaseAddress);
+      EXCEPT(State.setReg(RegMem, BaseAddress));
       // Load
       uint16_t Address = BaseAddress + Offset;
-      uint16_t Val = State.getDataMem(Address);
+      EXCEPT(uint16_t Val = State.getDataMem(Address));
       if (word)
-        Val |= State.getDataMem(Address + 1) << 8;
-      State.setReg(RegDst, Val);
+        EXCEPT(Val |= State.getDataMem(Address + 1) << 8);
+      EXCEPT(State.setReg(RegDst, Val));
       // Handle post-inc
       if (postinc) {
         BaseAddress += Offset;
-        State.setReg(RegMem, BaseAddress);
+        EXCEPT(State.setReg(RegMem, BaseAddress));
       }
       break;
     }
@@ -538,24 +541,24 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       int RegMem = getLLVMReg(Inst.getOperand(0).getReg());
       int Offset = Inst.getOperand(1).getImm();
       int RegSrc = getLLVMReg(Inst.getOperand(2).getReg());
-      uint16_t BaseAddress = State.getReg(RegMem);
-      uint16_t Val = State.getReg(RegSrc);
+      EXCEPT(uint16_t BaseAddress = State.getReg(RegMem));
+      EXCEPT(uint16_t Val = State.getReg(RegSrc));
       // Handle pre-dec
       if (predec) {
         BaseAddress -= Offset;
-        State.setReg(RegMem, BaseAddress);
+        EXCEPT(State.setReg(RegMem, BaseAddress));
         Offset = 0; // No longer need to add offset for real load
       }
-      State.setReg(RegMem, BaseAddress);
+      EXCEPT(State.setReg(RegMem, BaseAddress));
       // Store
       uint16_t Address = BaseAddress + Offset;
-      State.setDataMem(Address, Val & 0xff);
+      EXCEPT(State.setDataMem(Address, Val & 0xff));
       if (word)
-        State.setDataMem(Address + 1, Val >> 8);
+        EXCEPT(State.setDataMem(Address + 1, Val >> 8));
       // Handle post-inc
       if (postinc) {
         BaseAddress += Offset;
-        State.setReg(RegMem, BaseAddress);
+        EXCEPT(State.setReg(RegMem, BaseAddress));
       }
       break;
     }
@@ -566,7 +569,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::JAL:
     case AAP::JAL_short: {
       int Reg = getLLVMReg(Inst.getOperand(1).getReg());
-      State.setReg(Reg, newpc_w);
+      EXCEPT(State.setReg(Reg, newpc_w));
       uint16_t Imm = Inst.getOperand(0).getImm();
       int16_t SImm =
           (Inst.getOpcode() == AAP::BAL) ? static_cast<int16_t>(Imm) :
@@ -592,9 +595,9 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::BGTU_:
     case AAP::BGTU_short: {
       uint16_t Imm = Inst.getOperand(0).getImm();
-      uint16_t ValA = State.getReg(getLLVMReg(Inst.getOperand(1).getReg()));
+      EXCEPT(uint16_t ValA = State.getReg(getLLVMReg(Inst.getOperand(1).getReg())));
       int16_t SValA = static_cast<int16_t>(ValA);
-      uint16_t ValB = State.getReg(getLLVMReg(Inst.getOperand(2).getReg()));
+      EXCEPT(uint16_t ValB = State.getReg(getLLVMReg(Inst.getOperand(2).getReg())));
       int16_t SValB = static_cast<int16_t>(ValB);
       bool longbr = (Inst.getOpcode() == AAP::BEQ_ ||
                      Inst.getOpcode() == AAP::BNE_ ||
@@ -639,14 +642,10 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::JMP:
     case AAP::JMP_short: {
       int Reg = getLLVMReg(Inst.getOperand(0).getReg());
-      newpc_w = State.getReg(Reg);
+      EXCEPT(newpc_w = State.getReg(Reg));
       break;
     }
   } // end opcode switch
-
-  int Reg = getLLVMReg(AAP::R0);
-  dbgs() << "LR: " << State.getReg(getLLVMReg(AAP::R0)) << "\n"
-         << "SP: " << State.getReg(getLLVMReg(AAP::R1)) << "\n";
 
   // By default, we exected the instruction
   return SimStatus::SIM_OK;
@@ -657,6 +656,9 @@ SimStatus AAPSimulator::step() {
   uint64_t Size;
   uint32_t pc_w = State.getPC();
   ArrayRef<uint8_t> *Bytes = State.getCodeArray();
+
+  // Reset any previous exception state
+  State.resetStatus();
 
   if (DisAsm->getInstruction(Inst, Size, Bytes->slice(pc_w << 1), (pc_w << 1),
                              nulls(), nulls())) {
@@ -673,6 +675,10 @@ SimStatus AAPSimulator::step() {
     return status;
   }
   else {
-    return SimStatus::SIM_INVALID_INSN;
+    // Unable to read/decode an instruction. If the memory system threw an
+    // exception, pass this on, otherwise return invalid instruction.
+    if (State.getStatus() != SimStatus::SIM_OK)
+      return SimStatus::SIM_INVALID_INSN;
+    return State.getStatus();
   }
 }

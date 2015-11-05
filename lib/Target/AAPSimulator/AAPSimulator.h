@@ -24,14 +24,6 @@
 
 namespace AAPSim {
 
-enum SimStatus {
-  SIM_OK,           // Instruction executed
-  SIM_INVALID_INSN, // Invalid instruction
-  SIM_BREAKPOINT,   // Simulator hit a breakpoint
-  SIM_QUIT,         // Signal to exit linear simulator
-  SIM_TRAP          // General trap signal
-};
-
 /// AAPSimulator - AAP Simulator
 class AAPSimulator {
   AAPSimState State;

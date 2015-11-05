@@ -19,6 +19,16 @@
 
 namespace AAPSim {
 
+enum SimStatus {
+  SIM_OK,           // Instruction executed
+  SIM_INVALID_INSN, // Invalid instruction
+  SIM_BREAKPOINT,   // Simulator hit a breakpoint
+  SIM_QUIT,         // Signal to exit linear simulator
+  SIM_TRAP,         // General trap signal
+  SIM_EXCEPT_MEM,   // Invalid memory exception
+  SIM_EXCEPT_REG    // Invalid register exception
+};
+
 /// AAPSimState - class representing processor state
 class AAPSimState {
   // Registers
@@ -28,6 +38,7 @@ class AAPSimState {
   // Special registers
   uint16_t exitcode;      // Exit code register
   uint16_t overflow : 1;  // Overflow bit register
+  SimStatus status;       // Simulator status
 
   // One namespace code memory and data memory
   uint8_t *code_memory;
@@ -36,25 +47,26 @@ class AAPSimState {
 
   AAPSimState(const AAPSimState&) = delete;
 
+
 public:
   AAPSimState();
   ~AAPSimState();
 
   // Read and write the registers
-  uint16_t getReg(int reg) const;
+  uint16_t getReg(int reg);
   void setReg(int reg, uint16_t val);
-  uint32_t getPC() const;
+  uint32_t getPC();
   void setPC(uint32_t val_w);
   unsigned int getNumRegs() { return 64; }
 
   // Accesses to code memory is done 8 bits at a time to be consistent with
   // the disassembler, which takes an array of 8 bits.
-  uint8_t getCodeMem(uint32_t address) const;
+  uint8_t getCodeMem(uint32_t address);
   void setCodeMem(uint32_t address, uint8_t val);
   llvm::ArrayRef<uint8_t> *getCodeArray() { return code_array; }
 
   // Read and write data memory
-  uint8_t getDataMem(uint32_t address) const;
+  uint8_t getDataMem(uint32_t address);
   void setDataMem(uint32_t address, uint8_t val);
 
   // Special register accesses
@@ -62,6 +74,10 @@ public:
   void setExitCode(uint16_t code) { exitcode = code; }
   uint16_t getOverflow() const { return overflow; }
   void setOverflow(uint16_t o) { overflow = o ? 1 : 0; }
+
+  // Get and reset exception state
+  SimStatus getStatus() { return status; }
+  void resetStatus() { status = SimStatus::SIM_OK; }
 };
 
 } // End AAPSim namespace
