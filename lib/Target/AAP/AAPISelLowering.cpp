@@ -52,10 +52,6 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setBooleanContents(ZeroOrOneBooleanContent);
   setBooleanVectorContents(ZeroOrOneBooleanContent);
 
-  // We have post-incremented loads / stores.
-  // setIndexedLoadAction(ISD::POST_INC, MVT::i8, Legal);
-  // setIndexedLoadAction(ISD::POST_INC, MVT::i16, Legal);
-
   // Only basic load with zero extension i8 -> i16 is supported
   // Note: EXTLOAD promotion will trigger an assertion
   setLoadExtAction(ISD::EXTLOAD,  MVT::i8,  MVT::i1,  Promote);
@@ -90,6 +86,12 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::SELECT_CC, MVT::i16,  Custom);
   setOperationAction(ISD::BR_CC,     MVT::i8,   Promote);
   setOperationAction(ISD::BR_CC,     MVT::i16,  Custom);
+
+  // Expand some condition codes which are not natively supported
+  setCondCodeAction(ISD::SETGT,  MVT::i16, Expand);
+  setCondCodeAction(ISD::SETGE,  MVT::i16, Expand);
+  setCondCodeAction(ISD::SETUGT, MVT::i16, Expand);
+  setCondCodeAction(ISD::SETUGE, MVT::i16, Expand);
 
   // Currently no support for indirect branches
   setOperationAction(ISD::BRIND,     MVT::Other,  Expand);
@@ -250,111 +252,51 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
 }
 
 // Get the AAP specific condition code for a given CondCode DAG node.
-// The first element of the pair is a bool dictating whether the returned
-// condition code requires the operands to be swapped.
-// The second element of the pair is the equivalent AAP condition code
-static std::pair<bool, AAPCC::CondCode> getAAPCondCode(ISD::CondCode CC) {
-  AAPCC::CondCode TargetCC;
-  bool shouldSwapOps;
-
+static AAPCC::CondCode getAAPCondCode(ISD::CondCode CC) {
   switch (CC) {
   // These have a direct equivalent
-  case ISD::SETEQ:
-    TargetCC = AAPCC::COND_EQ;
-    break;
-  case ISD::SETNE:
-    TargetCC = AAPCC::COND_NE;
-    break;
-  case ISD::SETLT:
-    TargetCC = AAPCC::COND_LTS;
-    break;
-  case ISD::SETGT:
-    TargetCC = AAPCC::COND_GTS;
-    break;
-  case ISD::SETULT:
-    TargetCC = AAPCC::COND_LTU;
-    break;
-  case ISD::SETUGT:
-    TargetCC = AAPCC::COND_GTU;
-    break;
-
-  // These require lhs/rhs to be swapped, therefore the condition returned
-  // is inverted
-  case ISD::SETLE:
-    TargetCC = AAPCC::COND_GTS;
-    break;
-  case ISD::SETGE:
-    TargetCC = AAPCC::COND_LTS;
-    break;
-  case ISD::SETULE:
-    TargetCC = AAPCC::COND_GTU;
-    break;
-  case ISD::SETUGE:
-    TargetCC = AAPCC::COND_LTU;
-    break;
+  case ISD::SETEQ:  return AAPCC::COND_EQ;
+  case ISD::SETNE:  return AAPCC::COND_NE;
+  case ISD::SETLT:  return AAPCC::COND_LTS;
+  case ISD::SETLE:  return AAPCC::COND_LES;
+  case ISD::SETULT: return AAPCC::COND_LTU;
+  case ISD::SETULE: return AAPCC::COND_LEU;
+  // Other condition codes are unhandled
   default:
     llvm_unreachable("Unknown condition for brcc lowering");
+    return AAPCC::COND_INVALID;
   }
-
-  shouldSwapOps = (CC == ISD::SETLE) || (CC == ISD::SETGE) ||
-                  (CC == ISD::SETULE) || (CC == ISD::SETUGE);
-
-  return std::make_pair(shouldSwapOps, TargetCC);
 }
 
-// Map the generic BR_CC instruction to a specific branch instruction based
-// on the provided AAP condition code
+// Map the generic BR_CC instruction to a specific branch instruction based on
+// the provided AAP condition code.
 static unsigned getBranchOpForCondition(int branchOp, AAPCC::CondCode CC) {
-  assert(branchOp == AAP::BR_CC || branchOp == AAP::BR_CC);
+  assert(branchOp == AAP::BR_CC || branchOp == AAP::BR_CC_short);
 
   if (branchOp == AAP::BR_CC) {
     switch (CC) {
-    case AAPCC::COND_EQ:
-      branchOp = AAP::BEQ_;
-      break;
-    case AAPCC::COND_NE:
-      branchOp = AAP::BNE_;
-      break;
-    case AAPCC::COND_LTS:
-      branchOp = AAP::BLTS_;
-      break;
-    case AAPCC::COND_GTS:
-      branchOp = AAP::BGTS_;
-      break;
-    case AAPCC::COND_LTU:
-      branchOp = AAP::BLTU_;
-      break;
-    case AAPCC::COND_GTU:
-      branchOp = AAP::BGTU_;
-      break;
+    case AAPCC::COND_EQ:  return AAP::BEQ_;
+    case AAPCC::COND_NE:  return AAP::BNE_;
+    case AAPCC::COND_LTS: return AAP::BLTS_;
+    case AAPCC::COND_LES: return AAP::BLES_;
+    case AAPCC::COND_LTU: return AAP::BLTU_;
+    case AAPCC::COND_LEU: return AAP::BLEU_;
     default:
       llvm_unreachable("Unknown condition code!");
     }
   } else {
     switch (CC) {
-    case AAPCC::COND_EQ:
-      branchOp = AAP::BEQ_;
-      break;
-    case AAPCC::COND_NE:
-      branchOp = AAP::BNE_;
-      break;
-    case AAPCC::COND_LTS:
-      branchOp = AAP::BLTS_;
-      break;
-    case AAPCC::COND_GTS:
-      branchOp = AAP::BGTS_;
-      break;
-    case AAPCC::COND_LTU:
-      branchOp = AAP::BLTU_;
-      break;
-    case AAPCC::COND_GTU:
-      branchOp = AAP::BGTU_;
-      break;
+    case AAPCC::COND_EQ:  return AAP::BEQ_short;
+    case AAPCC::COND_NE:  return AAP::BNE_short;
+    case AAPCC::COND_LTS: return AAP::BLTS_short;
+    case AAPCC::COND_LES: return AAP::BLES_short;
+    case AAPCC::COND_LTU: return AAP::BLTU_short;
+    case AAPCC::COND_LEU: return AAP::BLEU_short;
     default:
       llvm_unreachable("Unknown condition code!");
     }
   }
-  return branchOp;
+  return 0;
 }
 
 SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
@@ -365,21 +307,14 @@ SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
   SDValue RHS = Op.getOperand(3);
   SDValue BranchTarget = Op.getOperand(4);
 
-  // get equivalent AAP condition code, swap operands if necessary
-  std::pair<bool, AAPCC::CondCode> CCPair = getAAPCondCode(CC);
-  bool SwapOperands = CCPair.first;
-  AAPCC::CondCode TargetCC = CCPair.second;
+  // get equivalent AAP condition code
+  AAPCC::CondCode TargetCC = getAAPCondCode(CC);
 
   SmallVector<SDValue, 5> Ops;
   Ops.push_back(Chain);
   Ops.push_back(DAG.getConstant(TargetCC, dl, MVT::i16));
-  if (!SwapOperands) {
-    Ops.push_back(LHS);
-    Ops.push_back(RHS);
-  } else {
-    Ops.push_back(RHS);
-    Ops.push_back(LHS);
-  }
+  Ops.push_back(LHS);
+  Ops.push_back(RHS);
   Ops.push_back(BranchTarget);
   return DAG.getNode(AAPISD::BR_CC, dl, Op.getValueType(), Ops);
 }
@@ -393,19 +328,12 @@ SDValue AAPTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
   SDValue FalseValue = Op.getOperand(3);
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(4))->get();
 
-  // get equivalent AAP condition code, swap operands if necessary
-  std::pair<bool, AAPCC::CondCode> CCPair = getAAPCondCode(CC);
-  bool SwapOperands = CCPair.first;
-  AAPCC::CondCode TargetCC = CCPair.second;
+  // get equivalent AAP condition code
+  AAPCC::CondCode TargetCC = getAAPCondCode(CC);
 
   SmallVector<SDValue, 5> Ops;
-  if (!SwapOperands) {
-    Ops.push_back(LHS);
-    Ops.push_back(RHS);
-  } else {
-    Ops.push_back(RHS);
-    Ops.push_back(LHS);
-  }
+  Ops.push_back(LHS);
+  Ops.push_back(RHS);
   Ops.push_back(TrueValue);
   Ops.push_back(FalseValue);
   Ops.push_back(DAG.getConstant(TargetCC, dl, MVT::i16));
@@ -899,14 +827,14 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
   case AAPCC::COND_LTS:
     branchOp = AAP::BLTS_;
     break;
-  case AAPCC::COND_GTS:
-    branchOp = AAP::BGTS_;
+  case AAPCC::COND_LES:
+    branchOp = AAP::BLES_;
     break;
   case AAPCC::COND_LTU:
     branchOp = AAP::BLTU_;
     break;
-  case AAPCC::COND_GTU:
-    branchOp = AAP::BGTU_;
+  case AAPCC::COND_LEU:
+    branchOp = AAP::BLEU_;
     break;
   default:
     llvm_unreachable("Unknown condition code!");

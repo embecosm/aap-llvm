@@ -99,10 +99,10 @@ MCCodeEmitter *llvm::createAAPMCCodeEmitter(MCInstrInfo const &MII,
 // TODO: Better way than using LUTs?
 static const unsigned BRCCOpcodes[] = {
     AAP::BEQ_,       AAP::BNE_,       AAP::BLTS_,
-    AAP::BGTS_,      AAP::BLTU_,      AAP::BGTU_,
+    AAP::BLES_,      AAP::BLTU_,      AAP::BLEU_,
 
     AAP::BEQ_short,  AAP::BNE_short,  AAP::BLTS_short,
-    AAP::BGTS_short, AAP::BLTU_short, AAP::BGTU_short
+    AAP::BLES_short, AAP::BLTU_short, AAP::BLEU_short
 };
 
 static bool findOpcode(unsigned Op, ArrayRef<unsigned> Opcodes) {

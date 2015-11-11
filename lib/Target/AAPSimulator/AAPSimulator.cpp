@@ -592,12 +592,12 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     case AAP::BNE_short:
     case AAP::BLTS_:
     case AAP::BLTS_short:
-    case AAP::BGTS_:
-    case AAP::BGTS_short:
+    case AAP::BLES_:
+    case AAP::BLES_short:
     case AAP::BLTU_:
     case AAP::BLTU_short:
-    case AAP::BGTU_:
-    case AAP::BGTU_short: {
+    case AAP::BLEU_:
+    case AAP::BLEU_short: {
       uint16_t Imm = Inst.getOperand(0).getImm();
       EXCEPT(uint16_t ValA = State.getReg(getLLVMReg(Inst.getOperand(1).getReg())));
       int16_t SValA = static_cast<int16_t>(ValA);
@@ -606,9 +606,9 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
       bool longbr = (Inst.getOpcode() == AAP::BEQ_ ||
                      Inst.getOpcode() == AAP::BNE_ ||
                      Inst.getOpcode() == AAP::BLTS_ ||
-                     Inst.getOpcode() == AAP::BGTS_ ||
+                     Inst.getOpcode() == AAP::BLES_ ||
                      Inst.getOpcode() == AAP::BLTU_ ||
-                     Inst.getOpcode() == AAP::BGTU_) ? true : false;
+                     Inst.getOpcode() == AAP::BLEU_) ? true : false;
       int16_t SImm = longbr ? signExtendBranchCC(Imm)
                             : signExtendBranchCCS(Imm);
       bool branch = false;
@@ -619,12 +619,12 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
         branch = (ValA != ValB) ? true : false;
       if (Inst.getOpcode() == AAP::BLTS_ || Inst.getOpcode() == AAP::BLTS_short)
         branch = (SValA < SValB) ? true : false;
-      if (Inst.getOpcode() == AAP::BGTS_ || Inst.getOpcode() == AAP::BGTS_short)
-        branch = (SValA > SValB) ? true : false;
+      if (Inst.getOpcode() == AAP::BLES_ || Inst.getOpcode() == AAP::BLES_short)
+        branch = (SValA <= SValB) ? true : false;
       if (Inst.getOpcode() == AAP::BLTU_ || Inst.getOpcode() == AAP::BLTU_short)
         branch = (ValA < ValB) ? true : false;
-      if (Inst.getOpcode() == AAP::BGTU_ || Inst.getOpcode() == AAP::BGTU_short)
-        branch = (ValA > ValB) ? true : false;
+      if (Inst.getOpcode() == AAP::BLEU_ || Inst.getOpcode() == AAP::BLEU_short)
+        branch = (ValA <= ValB) ? true : false;
       // Branch if needed
       if (branch)
         newpc_w = pc_w + SImm;

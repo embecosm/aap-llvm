@@ -24,9 +24,9 @@ enum CondCode {
   COND_EQ = 0,
   COND_NE = 1,
   COND_LTS = 2,
-  COND_GTS = 3,
+  COND_LES = 3,
   COND_LTU = 4,
-  COND_GTU = 5,
+  COND_LEU = 5,
   COND_INVALID = -1
 };
 } // end namespace AAP
