@@ -529,7 +529,7 @@ let AddedComplexity = 1 in {
   def : Pat<(truncstorei8 GR8:$src, addr_MO3:$dst), (STB_short addr_MO3:$dst, GR8:$src)>;
 
   def : Pat<(store GR8:$src, GR8:$dst), (STW_short GR8:$dst, (i16 0), GR8:$src)>;
-  def : Pat<(store GR8:$src, addr_MO10:$dst), (STW_short addr_MO3:$dst, GR8:$src)>;
+  def : Pat<(store GR8:$src, addr_MO3:$dst), (STW_short addr_MO3:$dst, GR8:$src)>;
 }
 
 
