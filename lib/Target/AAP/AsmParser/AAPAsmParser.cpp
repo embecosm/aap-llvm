@@ -189,38 +189,90 @@ public:
     return Mem.Offset;
   }
 
-  // If an MCExpr is a constant immediate, check whether it is in the provided
-  // inclusive range. If we are checking for an immediate, then arbitrary
-  // expressions are also allowed.
-  static bool isImmInRange(const MCExpr *Imm, int64_t Min, int64_t Max) {
-    if (Imm->getKind() != MCExpr::Constant) {
-      return true; // allow arbitrary expressions
-    }
-    int64_t Res;
-    Imm->evaluateAsAbsolute(Res);
-    return (Res >= Min) && (Res <= Max);
+  static bool isConst(const MCExpr *Imm) {
+    return Imm->getKind() == MCExpr::Constant;
   }
 
-  static bool isConstInRange(const MCExpr *Imm, int64_t Min, int64_t Max) {
-    if (Imm->getKind() != MCExpr::Constant) {
-      return false; // only allow constants
-    }
+  static bool isConst3(const MCExpr *I) {
+    if (!isConst(I))
+      return false;
     int64_t Res;
-    Imm->evaluateAsAbsolute(Res);
-    return (Res >= Min) && (Res <= Max);
+    I->evaluateAsAbsolute(Res);
+    return AAP::isImm3(Res);
+  }
+  static bool isConst6(const MCExpr *I) {
+    if (!isConst(I))
+      return false;
+    int64_t Res;
+    I->evaluateAsAbsolute(Res);
+    return AAP::isImm6(Res);
   }
 
-  static bool isConst3(const MCExpr *I) { return isConstInRange(I, 0, 7); }
-  static bool isConst6(const MCExpr *I) { return isConstInRange(I, 0, 63); }
-  static bool isImm6(const MCExpr *I)  { return isImmInRange(I, 0, 63); }
-  static bool isImm9(const MCExpr *I)  { return isImmInRange(I, 0, 511); }
-  static bool isImm10(const MCExpr *I) { return isImmInRange(I, 0, 1023); }
-  static bool isImm12(const MCExpr *I) { return isImmInRange(I, 0, 4095); }
-  static bool isImm16(const MCExpr *I) { return isImmInRange(I, -32768, 65535); }
-  static bool isOff3(const MCExpr *I)  { return isConstInRange(I, -4, 3); }
-  static bool isOff10(const MCExpr *I) { return isImmInRange(I, -512, 511); }
-  static bool isShiftConst3(const MCExpr *I) { return isConstInRange(I, 1, 8); }
-  static bool isShiftImm6(const MCExpr *I)   { return isImmInRange(I, 1, 64); }
+  static bool isImm6(const MCExpr *I) {
+    if (isConst(I))
+      return true;
+    int64_t Res;
+    I->evaluateAsAbsolute(Res);
+    return AAP::isImm6(Res);
+  }
+  static bool isImm9(const MCExpr *I) {
+    if (isConst(I))
+      return true;
+    int64_t Res;
+    I->evaluateAsAbsolute(Res);
+    return AAP::isImm9(Res);
+  }
+  static bool isImm10(const MCExpr *I) {
+    if (isConst(I))
+      return true;
+    int64_t Res;
+    I->evaluateAsAbsolute(Res);
+    return AAP::isImm10(Res);
+  }
+  static bool isImm12(const MCExpr *I) {
+    if (isConst(I))
+      return true;
+    int64_t Res;
+    I->evaluateAsAbsolute(Res);
+    return AAP::isImm12(Res);
+  }
+  static bool isImm16(const MCExpr *I) {
+    if (isConst(I))
+      return true;
+    int64_t Res;
+    I->evaluateAsAbsolute(Res);
+    return AAP::isImm16(Res);
+  }
+
+  static bool isOff3(const MCExpr *I) {
+    if (!isConst(I))
+      return false;
+    int64_t Res;
+    I->evaluateAsAbsolute(Res);
+    return AAP::isOff3(Res);
+  }
+  static bool isOff10(const MCExpr *I) {
+    if (isConst(I))
+      return true;
+    int64_t Res;
+    I->evaluateAsAbsolute(Res);
+    return AAP::isOff10(Res);
+  }
+
+  static bool isShiftConst3(const MCExpr *I) {
+    if (!isConst(I))
+      return false;
+    int64_t Res;
+    I->evaluateAsAbsolute(Res);
+    return AAP::isShiftImm3(Res);
+  }
+  static bool isShiftImm6(const MCExpr *I) {
+    if (isConst(I))
+      return true;
+    int64_t Res;
+    I->evaluateAsAbsolute(Res);
+    return AAP::isShiftImm6(Res);
+  }
 
   // Functions for testing operand type
   bool isReg() const { return Kind == Register; }
@@ -228,15 +280,18 @@ public:
 
   bool isConst3() const { return isImm() && isConst3(getImm()); }
   bool isConst6() const { return isImm() && isConst6(getImm()); }
-  bool isImm6() const  { return isImm() && isImm6(getImm());  }
-  bool isImm9() const  { return isImm() && isImm9(getImm());  }
+
+  bool  isImm6() const { return isImm() &&  isImm6(getImm()); }
+  bool  isImm9() const { return isImm() &&  isImm9(getImm()); }
   bool isImm10() const { return isImm() && isImm10(getImm()); }
   bool isImm12() const { return isImm() && isImm12(getImm()); }
   bool isImm16() const { return isImm() && isImm16(getImm()); }
-  bool isOff3() const  { return isImm() && isOff3(getImm());  }
+
+  bool  isOff3() const { return isImm() &&  isOff3(getImm()); }
   bool isOff10() const { return isImm() && isOff10(getImm()); }
+
   bool isShiftConst3() const { return isImm() && isShiftConst3(getImm()); }
-  bool isShiftImm6()   const { return isImm() && isShiftImm6(getImm()); }
+  bool isShiftImm6() const { return isImm() && isShiftImm6(getImm()); }
 
   bool isToken() const { return Kind == Token; }
   bool isMem() const { return false; }

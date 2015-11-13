@@ -23,6 +23,7 @@ add_llvm_target(AAPCodeGen
   AAPTargetMachine.cpp
   AAPAsmPrinter.cpp
   AAPMCInstLower.cpp
+  AAPShortInstrPeephole.cpp
   )
 
 add_subdirectory(Disassembler)

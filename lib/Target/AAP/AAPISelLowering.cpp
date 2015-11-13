@@ -271,32 +271,19 @@ static AAPCC::CondCode getAAPCondCode(ISD::CondCode CC) {
 // Map the generic BR_CC instruction to a specific branch instruction based on
 // the provided AAP condition code.
 static unsigned getBranchOpForCondition(int branchOp, AAPCC::CondCode CC) {
-  assert(branchOp == AAP::BR_CC || branchOp == AAP::BR_CC_short);
+  assert(branchOp == AAP::BR_CC);
 
-  if (branchOp == AAP::BR_CC) {
-    switch (CC) {
-    case AAPCC::COND_EQ:  return AAP::BEQ_;
-    case AAPCC::COND_NE:  return AAP::BNE_;
-    case AAPCC::COND_LTS: return AAP::BLTS_;
-    case AAPCC::COND_LES: return AAP::BLES_;
-    case AAPCC::COND_LTU: return AAP::BLTU_;
-    case AAPCC::COND_LEU: return AAP::BLEU_;
-    default:
-      llvm_unreachable("Unknown condition code!");
-    }
-  } else {
-    switch (CC) {
-    case AAPCC::COND_EQ:  return AAP::BEQ_short;
-    case AAPCC::COND_NE:  return AAP::BNE_short;
-    case AAPCC::COND_LTS: return AAP::BLTS_short;
-    case AAPCC::COND_LES: return AAP::BLES_short;
-    case AAPCC::COND_LTU: return AAP::BLTU_short;
-    case AAPCC::COND_LEU: return AAP::BLEU_short;
-    default:
-      llvm_unreachable("Unknown condition code!");
-    }
+  switch (CC) {
+  case AAPCC::COND_EQ:  return AAP::BEQ_;
+  case AAPCC::COND_NE:  return AAP::BNE_;
+  case AAPCC::COND_LTS: return AAP::BLTS_;
+  case AAPCC::COND_LES: return AAP::BLES_;
+  case AAPCC::COND_LTU: return AAP::BLTU_;
+  case AAPCC::COND_LEU: return AAP::BLEU_;
+  default:
+    llvm_unreachable("Unknown condition code!");
+    return 0;
   }
-  return 0;
 }
 
 SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
@@ -757,7 +744,6 @@ AAPTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                MachineBasicBlock *MBB) const {
   switch (MI->getOpcode()) {
   case AAP::BR_CC:
-  case AAP::BR_CC_short:
     return emitBrCC(MI, MBB);
   case AAP::SELECT_CC:
     return emitSelectCC(MI, MBB);
@@ -768,7 +754,7 @@ AAPTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
 
 MachineBasicBlock *AAPTargetLowering::emitBrCC(MachineInstr *MI,
                                                MachineBasicBlock *MBB) const {
-  const TargetInstrInfo *TII = MBB->getParent()->getSubtarget().getInstrInfo();
+  const auto &TII = *MBB->getParent()->getSubtarget().getInstrInfo();
   DebugLoc dl = MI->getDebugLoc();
   AAPCC::CondCode CC = (AAPCC::CondCode)MI->getOperand(0).getImm();
 
@@ -777,7 +763,7 @@ MachineBasicBlock *AAPTargetLowering::emitBrCC(MachineInstr *MI,
   MachineBasicBlock *targetMBB = MI->getOperand(3).getMBB();
 
   unsigned branchOp = getBranchOpForCondition(MI->getOpcode(), CC);
-  BuildMI(*MBB, MI, dl, TII->get(branchOp))
+  BuildMI(*MBB, MI, dl, TII.get(branchOp))
       .addMBB(targetMBB)
       .addReg(lhsReg)
       .addReg(rhsReg);
@@ -789,7 +775,7 @@ MachineBasicBlock *AAPTargetLowering::emitBrCC(MachineInstr *MI,
 MachineBasicBlock *
 AAPTargetLowering::emitSelectCC(MachineInstr *MI,
                                 MachineBasicBlock *MBB) const {
-  const TargetInstrInfo *TII = MBB->getParent()->getSubtarget().getInstrInfo();
+  const auto &TII = *MBB->getParent()->getSubtarget().getInstrInfo();
   DebugLoc dl = MI->getDebugLoc();
 
   // insert a diamond control flow pattern to handle the select
@@ -843,7 +829,7 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
   unsigned inReg = MI->getOperand(0).getReg();
   unsigned lhsReg = MI->getOperand(1).getReg();
   unsigned rhsReg = MI->getOperand(2).getReg();
-  BuildMI(entryMBB, dl, TII->get(branchOp))
+  BuildMI(entryMBB, dl, TII.get(branchOp))
       .addMBB(trueValueMBB)
       .addReg(lhsReg)
       .addReg(rhsReg);
@@ -852,7 +838,7 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
 
   unsigned trueValueReg = MI->getOperand(3).getReg();
   unsigned falseValueReg = MI->getOperand(4).getReg();
-  BuildMI(*sinkMBB, sinkMBB->begin(), dl, TII->get(AAP::PHI), inReg)
+  BuildMI(*sinkMBB, sinkMBB->begin(), dl, TII.get(AAP::PHI), inReg)
       .addReg(trueValueReg)
       .addMBB(trueValueMBB)
       .addReg(falseValueReg)

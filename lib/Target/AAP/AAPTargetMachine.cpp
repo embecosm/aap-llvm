@@ -49,7 +49,8 @@ public:
     return getTM<AAPTargetMachine>();
   }
 
-  virtual bool addInstSelector();
+  bool addInstSelector() override;
+  void addPreEmitPass() override;
 };
 } // namespace
 
@@ -60,4 +61,8 @@ TargetPassConfig *AAPTargetMachine::createPassConfig(PassManagerBase &PM) {
 bool AAPPassConfig::addInstSelector() {
   addPass(createAAPISelDag(getAAPTargetMachine(), getOptLevel()));
   return false;
+}
+
+void AAPPassConfig::addPreEmitPass() {
+  addPass(createAAPShortInstrPeepholePass(getAAPTargetMachine()), false);
 }
