@@ -785,9 +785,9 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
 
   MachineBasicBlock *entryMBB = MBB;
   MachineFunction *MF = MBB->getParent();
-  MachineBasicBlock *trueValueMBB = MF->CreateMachineBasicBlock(llvmBB);
+  MachineBasicBlock *falseValueMBB = MF->CreateMachineBasicBlock(llvmBB);
   MachineBasicBlock *sinkMBB = MF->CreateMachineBasicBlock(llvmBB);
-  MF->insert(It, trueValueMBB);
+  MF->insert(It, falseValueMBB);
   MF->insert(It, sinkMBB);
 
   // Transfer remainder of entryBB to sinkMBB
@@ -795,8 +795,8 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
                   std::next(MachineBasicBlock::iterator(MI)), entryMBB->end());
   sinkMBB->transferSuccessorsAndUpdatePHIs(entryMBB);
 
-  // Add true value and fallthrough blocks as successors
-  entryMBB->addSuccessor(trueValueMBB);
+  // Add false value and fallthrough blocks as successors
+  entryMBB->addSuccessor(falseValueMBB);
   entryMBB->addSuccessor(sinkMBB);
 
   // Choose the branch instruction to use based on the condition code
@@ -830,19 +830,19 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
   unsigned lhsReg = MI->getOperand(1).getReg();
   unsigned rhsReg = MI->getOperand(2).getReg();
   BuildMI(entryMBB, dl, TII.get(branchOp))
-      .addMBB(trueValueMBB)
+      .addMBB(sinkMBB)
       .addReg(lhsReg)
       .addReg(rhsReg);
 
-  trueValueMBB->addSuccessor(sinkMBB);
+  falseValueMBB->addSuccessor(sinkMBB);
 
   unsigned trueValueReg = MI->getOperand(3).getReg();
   unsigned falseValueReg = MI->getOperand(4).getReg();
   BuildMI(*sinkMBB, sinkMBB->begin(), dl, TII.get(AAP::PHI), inReg)
       .addReg(trueValueReg)
-      .addMBB(trueValueMBB)
+      .addMBB(entryMBB)
       .addReg(falseValueReg)
-      .addMBB(entryMBB);
+      .addMBB(falseValueMBB);
 
   MI->eraseFromParent();
   return sinkMBB;
