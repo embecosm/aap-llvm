@@ -26,7 +26,8 @@ enum SimStatus {
   SIM_QUIT,         // Signal to exit linear simulator
   SIM_TRAP,         // General trap signal
   SIM_EXCEPT_MEM,   // Invalid memory exception
-  SIM_EXCEPT_REG    // Invalid register exception
+  SIM_EXCEPT_REG,   // Invalid register exception
+  SIM_TIMEOUT       // Simulator timeout
 };
 
 /// AAPSimState - class representing processor state
