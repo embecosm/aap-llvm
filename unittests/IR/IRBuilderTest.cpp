@@ -131,7 +131,7 @@ TEST_F(IRBuilderTest, GetIntTy) {
 TEST_F(IRBuilderTest, FastMathFlags) {
   IRBuilder<> Builder(BB);
   Value *F, *FC;
-  Instruction *FDiv, *FAdd, *FCmp;
+  Instruction *FDiv, *FAdd, *FCmp, *FCall;
 
   F = Builder.CreateLoad(GV);
   F = Builder.CreateFAdd(F, F);
@@ -205,6 +205,36 @@ TEST_F(IRBuilderTest, FastMathFlags) {
   ASSERT_TRUE(isa<Instruction>(FC));
   FCmp = cast<Instruction>(FC);
   EXPECT_TRUE(FCmp->hasAllowReciprocal());
+
+  Builder.clearFastMathFlags();
+ 
+  // Test a call with FMF.
+  auto CalleeTy = FunctionType::get(Type::getFloatTy(Ctx),
+                                    /*isVarArg=*/false);
+  auto Callee =
+      Function::Create(CalleeTy, Function::ExternalLinkage, "", M.get());
+
+  FCall = Builder.CreateCall(Callee, None);
+  EXPECT_FALSE(FCall->hasNoNaNs());
+
+  Value *V = 
+      Function::Create(CalleeTy, Function::ExternalLinkage, "", M.get());
+  FCall = Builder.CreateCall(V, None);
+  EXPECT_FALSE(FCall->hasNoNaNs());
+
+  FMF.clear();
+  FMF.setNoNaNs();
+  Builder.SetFastMathFlags(FMF);
+
+  FCall = Builder.CreateCall(Callee, None);
+  EXPECT_TRUE(Builder.getFastMathFlags().any());
+  EXPECT_TRUE(Builder.getFastMathFlags().NoNaNs);
+  EXPECT_TRUE(FCall->hasNoNaNs());
+
+  FCall = Builder.CreateCall(V, None);
+  EXPECT_TRUE(Builder.getFastMathFlags().any());
+  EXPECT_TRUE(Builder.getFastMathFlags().NoNaNs);
+  EXPECT_TRUE(FCall->hasNoNaNs());
 
   Builder.clearFastMathFlags();
 
@@ -313,10 +343,12 @@ TEST_F(IRBuilderTest, DIBuilder) {
   auto CU = DIB.createCompileUnit(dwarf::DW_LANG_Cobol74, "F.CBL", "/",
                                   "llvm-cobol74", true, "", 0);
   auto Type = DIB.createSubroutineType(DIB.getOrCreateTypeArray(None));
-  DIB.createFunction(CU, "foo", "", File, 1, Type, false, true, 1, 0, true, F);
+  auto SP =
+      DIB.createFunction(CU, "foo", "", File, 1, Type, false, true, 1, 0, true);
+  F->setSubprogram(SP);
   AllocaInst *I = Builder.CreateAlloca(Builder.getInt8Ty());
-  auto BarSP = DIB.createFunction(CU, "bar", "", File, 1, Type, false, true, 1,
-                                  0, true, nullptr);
+  auto BarSP =
+      DIB.createFunction(CU, "bar", "", File, 1, Type, false, true, 1, 0, true);
   auto BadScope = DIB.createLexicalBlockFile(BarSP, File, 0);
   I->setDebugLoc(DebugLoc::get(2, 0, BadScope));
   DIB.finalize();

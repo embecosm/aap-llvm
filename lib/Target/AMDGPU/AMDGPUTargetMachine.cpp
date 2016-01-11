@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AMDGPUTargetMachine.h"
-#include "AMDGPUHSATargetObjectFile.h"
+#include "AMDGPUTargetObjectFile.h"
 #include "AMDGPU.h"
 #include "AMDGPUTargetTransformInfo.h"
 #include "R600ISelLowering.h"
@@ -45,17 +45,20 @@ extern "C" void LLVMInitializeAMDGPUTarget() {
 
   PassRegistry *PR = PassRegistry::getPassRegistry();
   initializeSILowerI1CopiesPass(*PR);
+  initializeSIFixSGPRCopiesPass(*PR);
   initializeSIFoldOperandsPass(*PR);
   initializeSIFixSGPRLiveRangesPass(*PR);
   initializeSIFixControlFlowLiveIntervalsPass(*PR);
   initializeSILoadStoreOptimizerPass(*PR);
+  initializeAMDGPUAnnotateKernelFeaturesPass(*PR);
+  initializeAMDGPUAnnotateUniformValuesPass(*PR);
 }
 
 static std::unique_ptr<TargetLoweringObjectFile> createTLOF(const Triple &TT) {
   if (TT.getOS() == Triple::AMDHSA)
     return make_unique<AMDGPUHSATargetObjectFile>();
 
-  return make_unique<TargetLoweringObjectFileELF>();
+  return make_unique<AMDGPUTargetObjectFile>();
 }
 
 static ScheduleDAGInstrs *createR600MachineScheduler(MachineSchedContext *C) {
@@ -194,8 +197,10 @@ void AMDGPUPassConfig::addIRPasses() {
   // functions, then we will generate code for the first function
   // without ever running any passes on the second.
   addPass(createBarrierNoopPass());
+
   // Handle uses of OpenCL image2d_t, image3d_t and sampler_t arguments.
   addPass(createAMDGPUOpenCLImageTypeLoweringPass());
+
   TargetPassConfig::addIRPasses();
 }
 
@@ -267,16 +272,23 @@ TargetPassConfig *R600TargetMachine::createPassConfig(PassManagerBase &PM) {
 
 bool GCNPassConfig::addPreISel() {
   AMDGPUPassConfig::addPreISel();
+
+  // FIXME: We need to run a pass to propagate the attributes when calls are
+  // supported.
+  addPass(&AMDGPUAnnotateKernelFeaturesID);
+
   addPass(createSinkingPass());
   addPass(createSITypeRewriter());
   addPass(createSIAnnotateControlFlowPass());
+  addPass(createAMDGPUAnnotateUniformValues());
+
   return false;
 }
 
 bool GCNPassConfig::addInstSelector() {
   AMDGPUPassConfig::addInstSelector();
   addPass(createSILowerI1CopiesPass());
-  addPass(createSIFixSGPRCopiesPass(*TM));
+  addPass(&SIFixSGPRCopiesID);
   addPass(createSIFoldOperandsPass());
   return false;
 }
@@ -318,7 +330,6 @@ void GCNPassConfig::addOptimizedRegAlloc(FunctionPass *RegAllocPass) {
 }
 
 void GCNPassConfig::addPostRegAlloc() {
-  addPass(createSIPrepareScratchRegs(), false);
   addPass(createSIShrinkInstructionsPass(), false);
 }
 

@@ -780,7 +780,7 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
 
   // insert a diamond control flow pattern to handle the select
   const BasicBlock *llvmBB = MBB->getBasicBlock();
-  MachineFunction::iterator It = MBB;
+  MachineFunction::iterator It = MBB->getIterator();
   ++It;
 
   MachineBasicBlock *entryMBB = MBB;

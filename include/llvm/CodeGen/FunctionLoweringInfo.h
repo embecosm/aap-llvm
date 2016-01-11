@@ -62,6 +62,9 @@ public:
   /// registers.
   bool CanLowerReturn;
 
+  /// True if part of the CSRs will be handled via explicit copies.
+  bool SplitCSR;
+
   /// DemoteRegister - if CanLowerReturn is false, DemoteRegister is a vreg
   /// allocated to hold a pointer to the hidden sret parameter.
   unsigned DemoteRegister;
@@ -113,11 +116,6 @@ public:
 
   /// MBB - The current insert position inside the current block.
   MachineBasicBlock::iterator InsertPt;
-
-#ifndef NDEBUG
-  SmallPtrSet<const Instruction *, 8> CatchInfoLost;
-  SmallPtrSet<const Instruction *, 8> CatchInfoFound;
-#endif
 
   struct LiveOutInfo {
     unsigned NumSignBits : 31;

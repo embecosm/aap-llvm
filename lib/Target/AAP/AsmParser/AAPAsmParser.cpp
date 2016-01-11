@@ -33,7 +33,6 @@ class AAPAsmParser : public MCTargetAsmParser {
 
   MCAsmParser &getParser() const { return Parser; }
   MCAsmLexer &getLexer() const { return Parser.getLexer(); }
-  MCSubtargetInfo &STI;
 
   bool MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                OperandVector &Operands, MCStreamer &Out,
@@ -58,10 +57,10 @@ class AAPAsmParser : public MCTargetAsmParser {
 #include "AAPGenAsmMatcher.inc"
 
 public:
-  AAPAsmParser(MCSubtargetInfo &sti, MCAsmParser &_Parser,
+  AAPAsmParser(const MCSubtargetInfo &sti, MCAsmParser &_Parser,
                const MCInstrInfo &MII, const MCTargetOptions &Options)
-      : MCTargetAsmParser(Options), Parser(_Parser), STI(sti) {
-    setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
+      : MCTargetAsmParser(Options, sti), Parser(_Parser) {
+    setAvailableFeatures(ComputeAvailableFeatures(sti.getFeatureBits()));
 
     // Cache the machine register info for later
     MRI = Parser.getContext().getRegisterInfo();
@@ -477,7 +476,7 @@ bool AAPAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   default:
     break;
   case Match_Success:
-    Out.EmitInstruction(Inst, STI);
+    Out.EmitInstruction(Inst, getSTI());
     return false;
   case Match_MissingFeature: {
     assert(ErrorInfo && "Unknown missing feature!");

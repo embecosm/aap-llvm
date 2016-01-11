@@ -24,6 +24,7 @@ subdirectories =
  AMDGPU
  ARM
  AArch64
+ AVR
  BPF
  CppBackend
  Hexagon

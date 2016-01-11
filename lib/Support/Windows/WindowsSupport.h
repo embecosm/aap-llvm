@@ -30,8 +30,12 @@
 #define _WIN32_WINNT 0x0601
 #define _WIN32_IE    0x0800 // MinGW at it again. FIXME: verify if still needed.
 #define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Config/config.h" // Get build system configuration settings
@@ -43,17 +47,35 @@
 #include <string>
 #include <vector>
 
+#if !defined(__CYGWIN__) && !defined(__MINGW32__)
+#include <VersionHelpers.h>
+#else
+// Cygwin does not have the IsWindows8OrGreater() API.
+// Some version of mingw does not have the API either.
+inline bool IsWindows8OrGreater() {
+  OSVERSIONINFO osvi = {};
+  osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+  if (!::GetVersionEx(&osvi))
+    return false;
+  return (osvi.dwMajorVersion > 6 ||
+          (osvi.dwMajorVersion == 6 && osvi.dwMinorVersion >= 2));
+}
+#endif // __CYGWIN__
+
 inline bool MakeErrMsg(std::string* ErrMsg, const std::string& prefix) {
   if (!ErrMsg)
     return true;
   char *buffer = NULL;
+  DWORD LastError = GetLastError();
   DWORD R = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-                          FORMAT_MESSAGE_FROM_SYSTEM,
-                          NULL, GetLastError(), 0, (LPSTR)&buffer, 1, NULL);
+                          FORMAT_MESSAGE_FROM_SYSTEM |
+                          FORMAT_MESSAGE_MAX_WIDTH_MASK,
+                          NULL, LastError, 0, (LPSTR)&buffer, 1, NULL);
   if (R)
-    *ErrMsg = prefix + buffer;
+    *ErrMsg = prefix + ": " + buffer;
   else
-    *ErrMsg = prefix + "Unknown error";
+    *ErrMsg = prefix + ": Unknown error";
+  *ErrMsg += " (0x" + llvm::utohexstr(LastError) + ")";
 
   LocalFree(buffer);
   return R != 0;
