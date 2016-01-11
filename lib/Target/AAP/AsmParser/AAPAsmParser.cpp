@@ -208,39 +208,34 @@ public:
   }
 
   static bool isImm6(const MCExpr *I) {
-    if (isConst(I))
-      return true;
     int64_t Res;
-    I->evaluateAsAbsolute(Res);
-    return AAP::isImm6(Res);
+    if (I->evaluateAsAbsolute(Res))
+      return AAP::isImm6(Res);
+    return true;
   }
   static bool isImm9(const MCExpr *I) {
-    if (isConst(I))
-      return true;
     int64_t Res;
-    I->evaluateAsAbsolute(Res);
-    return AAP::isImm9(Res);
+    if (I->evaluateAsAbsolute(Res))
+      return AAP::isImm9(Res);
+    return true;
   }
   static bool isImm10(const MCExpr *I) {
-    if (isConst(I))
-      return true;
     int64_t Res;
-    I->evaluateAsAbsolute(Res);
-    return AAP::isImm10(Res);
+    if (I->evaluateAsAbsolute(Res))
+      return AAP::isImm10(Res);
+    return true;
   }
   static bool isImm12(const MCExpr *I) {
-    if (isConst(I))
-      return true;
     int64_t Res;
-    I->evaluateAsAbsolute(Res);
-    return AAP::isImm12(Res);
+    if (I->evaluateAsAbsolute(Res))
+      return AAP::isImm12(Res);
+    return true;
   }
   static bool isImm16(const MCExpr *I) {
-    if (isConst(I))
-      return true;
     int64_t Res;
-    I->evaluateAsAbsolute(Res);
-    return AAP::isImm16(Res);
+    if (I->evaluateAsAbsolute(Res))
+      return AAP::isImm16(Res);
+    return true;
   }
 
   static bool isOff3(const MCExpr *I) {
@@ -251,11 +246,10 @@ public:
     return AAP::isOff3(Res);
   }
   static bool isOff10(const MCExpr *I) {
-    if (isConst(I))
-      return true;
     int64_t Res;
-    I->evaluateAsAbsolute(Res);
-    return AAP::isOff10(Res);
+    if (I->evaluateAsAbsolute(Res))
+      return AAP::isOff10(Res);
+    return true;
   }
 
   static bool isShiftConst3(const MCExpr *I) {
@@ -266,11 +260,10 @@ public:
     return AAP::isShiftImm3(Res);
   }
   static bool isShiftImm6(const MCExpr *I) {
-    if (isConst(I))
-      return true;
     int64_t Res;
-    I->evaluateAsAbsolute(Res);
-    return AAP::isShiftImm6(Res);
+    if (I->evaluateAsAbsolute(Res))
+      return AAP::isShiftImm6(Res);
+    return true;
   }
 
   // Functions for testing operand type
