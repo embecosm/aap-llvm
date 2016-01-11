@@ -7,9 +7,9 @@
 beq    511, $r0,  $r1   ;CHECK: {{BEQ_$}}
 bne   -512, $r7,  $r0   ;CHECK: {{BNE_$}}
 blts    15, $r13, $r61  ;CHECK: {{BLTS_$}}
-bgts    32, $r9,  $r8   ;CHECK: {{BGTS_$}}
+bles    32, $r9,  $r8   ;CHECK: {{BLES_$}}
 bltu   186, $r11, $r12  ;CHECK: {{BLTU_$}}
-bgtu    -1, $r17, $r19  ;CHECK: {{BGTU_$}}
+bleu    -1, $r17, $r19  ;CHECK: {{BLEU_$}}
 
 bra      123    ;CHECK: {{BRA$}}
 bra    -6810    ;CHECK: {{BRA$}}

@@ -94,9 +94,9 @@ define void @stw_reg_big_neg_imm_offset_imm(i16* %x) {
 entry:
 ;CHECK: stw_reg_big_neg_imm_offset_imm:
 ;CHECK-DAG: movi $[[REG1:r[0-9]+]], 17291    {{.*MOVI_i16}}
-;CHECK-DAG: movi ${{r[0-9]+}}, 9280          {{.*MOVI_i16}}
-;CHECK-DAG: sub $[[REG2:r[0-9]+]], ${{r[0-9]+}}, ${{r[0-9]}}  {{.*SUB_r(_short)?}}
-;CHECK-DAG: stw [$[[REG2]], 0], $[[REG1]]   {{.*STW(_short)?}}
+;CHECK-DAG: movi $[[REG2:r[0-9]+]], 9280     {{.*MOVI_i16}}
+;CHECK-DAG: sub $[[REG3:r[0-9]+]], ${{r[0-9]+}}, $[[REG2]]  {{.*SUB_r(_short)?}}
+;CHECK-DAG: stw [$[[REG3]], 0], $[[REG1]]   {{.*STW(_short)?}}
   %0 = ptrtoint i16* %x to i16
   %1 = sub i16 %0, 9280
   %2 = inttoptr i16 %1 to i16*
