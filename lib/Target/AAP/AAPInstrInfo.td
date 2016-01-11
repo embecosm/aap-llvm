@@ -532,7 +532,7 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1 in {
   defm BLEU  : BRCC<0x7, "bleu">;
 
   // BRA may expand to short equivalent in the peephole
-  def BRA : Inst_i18
+  def BRA : Inst_i22
     <0x2, 0x0, (outs), (ins brtarget:$imm), "bra\t$imm", [(br bb:$imm)]>;
   // Don't assemble short branch instructions
   let isCodeGenOnly = 1 in {

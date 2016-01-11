@@ -203,12 +203,12 @@ class Inst_r_i16<bits<4> opclass, bits<4> opcode, dag outs, dag ins,
 }
 
 
-class Inst_i18<bits<4> opclass, bits<8> opcode, dag outs, dag ins,
+class Inst_i22<bits<4> opclass, bits<8> opcode, dag outs, dag ins,
                  string asmstr, list<dag> pattern>
     : InstAAP<opclass, opcode, outs, ins, asmstr, pattern> {
-  bits<18> imm;
+  bits<22> imm;
   let Inst{8-0} = imm{8-0};
-  let Inst{24-16} = imm{17-9};
+  let Inst{28-16} = imm{21-9};
 }
 class Inst_i9_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
                       string asmstr, list<dag> pattern>
