@@ -48,7 +48,7 @@ public:
       {"fixup_AAP_ABS10",       0,    3,      0},
       {"fixup_AAP_ABS12",       0,    6,      0},
       {"fixup_AAP_ABS16",       0,    6,      0},
-      {"fixup_AAP_SHIFT6",      0,    6,      0},
+      {"fixup_AAP_SHIFT6",      0,    3,      0},
       {"fixup_AAP_OFF10",       0,    3,      0}
     };
 
