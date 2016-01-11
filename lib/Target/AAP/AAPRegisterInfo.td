@@ -12,15 +12,15 @@
 //===----------------------------------------------------------------------===//
 
 class AAPReg<string n> : Register<n> {
-  field bits<5> Num;
+  field bits<6> Num;
   let Namespace = "AAP";
 }
 
 // Registers are identified with 5-bit ID numbers.
 // Ri - 16-bit integer registers
-class Ri<bits<5> num, string n> : AAPReg<n> {
+class Ri<bits<6> num, string n> : AAPReg<n> {
   let Num = num;
-  let HWEncoding{4-0} = num;
+  let HWEncoding{5-0} = num;
 }
 
 foreach I = 0-63 in
