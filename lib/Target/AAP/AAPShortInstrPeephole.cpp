@@ -25,48 +25,45 @@
 using namespace llvm;
 
 namespace {
-  struct ShortInstrPeephole : public MachineFunctionPass {
-    /// Target machine description used to query for register names, data
-    /// layout and similar.
-    TargetMachine &TM;
-    const MCInstrInfo &MII;
-    
-    static char ID;
-    ShortInstrPeephole(TargetMachine &TM)
-        : MachineFunctionPass(ID), TM(TM), MII(*TM.getMCInstrInfo())
-    {}
+struct ShortInstrPeephole : public MachineFunctionPass {
+  /// Target machine description used to query for register names, data
+  /// layout and similar.
+  TargetMachine &TM;
+  const MCInstrInfo &MII;
 
-    const char *getPassName() const override {
-      return "AAP Short Instruction Peephole";
-    }
+  static char ID;
+  ShortInstrPeephole(TargetMachine &TM)
+      : MachineFunctionPass(ID), TM(TM), MII(*TM.getMCInstrInfo()) {}
 
-    bool runOnMachineFunction(MachineFunction &MF) override;
-    bool runOnInstruction(MachineInstr &MI) const;
+  const char *getPassName() const override {
+    return "AAP Short Instruction Peephole";
+  }
 
-    bool updateMOV_r(MachineInstr &MI) const;
-    bool updateMOVI_i16(MachineInstr &MI) const;
-    bool updateNOP(MachineInstr &MI) const;
-    bool updateALU_r(MachineInstr &MI) const;
-    bool updateARITH_i10(MachineInstr &MI) const;
-    bool updateSHIFT_i6(MachineInstr &MI) const;
-    bool updateLD(MachineInstr &MI) const;
-    bool updateST(MachineInstr &MI) const;
-    bool updateBRA(MachineInstr &MI) const;
-    bool updateBAL(MachineInstr &MI) const;
-    bool updateJMP(MachineInstr &MI) const;
-    bool updateJAL(MachineInstr &MI) const;
-  };
+  bool runOnMachineFunction(MachineFunction &MF) override;
+  bool runOnInstruction(MachineInstr &MI) const;
 
-  char ShortInstrPeephole::ID = 0;
+  bool updateMOV_r(MachineInstr &MI) const;
+  bool updateMOVI_i16(MachineInstr &MI) const;
+  bool updateNOP(MachineInstr &MI) const;
+  bool updateALU_r(MachineInstr &MI) const;
+  bool updateARITH_i10(MachineInstr &MI) const;
+  bool updateSHIFT_i6(MachineInstr &MI) const;
+  bool updateLD(MachineInstr &MI) const;
+  bool updateST(MachineInstr &MI) const;
+  bool updateBRA(MachineInstr &MI) const;
+  bool updateBAL(MachineInstr &MI) const;
+  bool updateJMP(MachineInstr &MI) const;
+  bool updateJAL(MachineInstr &MI) const;
+};
+
+char ShortInstrPeephole::ID = 0;
 } // end of anonymous namespace
 
 FunctionPass *llvm::createAAPShortInstrPeepholePass(AAPTargetMachine &TM) {
   return new ShortInstrPeephole(TM);
 }
 
-
-bool ShortInstrPeephole::runOnMachineFunction(MachineFunction &MF)
-{
+bool ShortInstrPeephole::runOnMachineFunction(MachineFunction &MF) {
   bool Changed = false;
   for (MachineBasicBlock &MBB : MF) {
     for (MachineInstr &MI : MBB) {
@@ -76,13 +73,14 @@ bool ShortInstrPeephole::runOnMachineFunction(MachineFunction &MF)
   return Changed;
 }
 
-
-bool ShortInstrPeephole::runOnInstruction(MachineInstr &MI) const
-{
+bool ShortInstrPeephole::runOnInstruction(MachineInstr &MI) const {
   switch (MI.getOpcode()) {
-  case AAP::MOV_r:      return updateMOV_r(MI);
-  case AAP::MOVI_i16:   return updateMOVI_i16(MI);
-  case AAP::NOP:        return updateNOP(MI);
+  case AAP::MOV_r:
+    return updateMOV_r(MI);
+  case AAP::MOVI_i16:
+    return updateMOVI_i16(MI);
+  case AAP::NOP:
+    return updateNOP(MI);
 
   case AAP::ADD_r:
   case AAP::AND_r:
@@ -119,16 +117,19 @@ bool ShortInstrPeephole::runOnInstruction(MachineInstr &MI) const
   case AAP::STW_predec:
     return updateST(MI);
 
-  case AAP::BRA:    return updateBRA(MI);
-  case AAP::BAL:    return updateBAL(MI);
-  case AAP::JAL:    return updateJAL(MI);
-  case AAP::JMP:    return updateJMP(MI);
+  case AAP::BRA:
+    return updateBRA(MI);
+  case AAP::BAL:
+    return updateBAL(MI);
+  case AAP::JAL:
+    return updateJAL(MI);
+  case AAP::JMP:
+    return updateJMP(MI);
 
   default:
     return false;
   }
 }
-
 
 bool ShortInstrPeephole::updateMOV_r(MachineInstr &MI) const {
   const auto &DstReg = MI.getOperand(0).getReg();
@@ -145,8 +146,8 @@ bool ShortInstrPeephole::updateMOVI_i16(MachineInstr &MI) const {
   unsigned DstReg = MI.getOperand(0).getReg();
   const auto &Imm = MI.getOperand(1);
 
-  if (AAP::GR8RegClass.contains(DstReg) &&
-      Imm.isImm() && AAP::isImm6(Imm.getImm())) {
+  if (AAP::GR8RegClass.contains(DstReg) && Imm.isImm() &&
+      AAP::isImm6(Imm.getImm())) {
     MI.setDesc(MII.get(AAP::MOVI_i6_short));
     return true;
   }
@@ -157,8 +158,8 @@ bool ShortInstrPeephole::updateNOP(MachineInstr &MI) const {
   unsigned SrcReg = MI.getOperand(0).getReg();
   const auto &Imm = MI.getOperand(1);
 
-  if (AAP::GR8RegClass.contains(SrcReg) &&
-      Imm.isImm() && AAP::isImm6(Imm.getImm())) {
+  if (AAP::GR8RegClass.contains(SrcReg) && Imm.isImm() &&
+      AAP::isImm6(Imm.getImm())) {
     MI.setDesc(MII.get(AAP::NOP_short));
     return true;
   }
@@ -170,19 +171,34 @@ bool ShortInstrPeephole::updateALU_r(MachineInstr &MI) const {
   unsigned Op1Reg = MI.getOperand(1).getReg();
   unsigned Op2Reg = MI.getOperand(2).getReg();
 
-  if (AAP::GR8RegClass.contains(DstReg) &&
-      AAP::GR8RegClass.contains(Op1Reg) &&
+  if (AAP::GR8RegClass.contains(DstReg) && AAP::GR8RegClass.contains(Op1Reg) &&
       AAP::GR8RegClass.contains(Op2Reg)) {
     unsigned Opcode = MI.getOpcode();
     switch (Opcode) {
-    case AAP::ADD_r:  Opcode = AAP::ADD_r_short;  break;
-    case AAP::AND_r:  Opcode = AAP::AND_r_short;  break;
-    case AAP::OR_r:   Opcode = AAP::OR_r_short;   break;
-    case AAP::XOR_r:  Opcode = AAP::XOR_r_short;  break;
-    case AAP::SUB_r:  Opcode = AAP::SUB_r_short;  break;
-    case AAP::ASR_r:  Opcode = AAP::ASR_r_short;  break;
-    case AAP::LSL_r:  Opcode = AAP::LSL_r_short;  break;
-    case AAP::LSR_r:  Opcode = AAP::LSR_r_short;  break;
+    case AAP::ADD_r:
+      Opcode = AAP::ADD_r_short;
+      break;
+    case AAP::AND_r:
+      Opcode = AAP::AND_r_short;
+      break;
+    case AAP::OR_r:
+      Opcode = AAP::OR_r_short;
+      break;
+    case AAP::XOR_r:
+      Opcode = AAP::XOR_r_short;
+      break;
+    case AAP::SUB_r:
+      Opcode = AAP::SUB_r_short;
+      break;
+    case AAP::ASR_r:
+      Opcode = AAP::ASR_r_short;
+      break;
+    case AAP::LSL_r:
+      Opcode = AAP::LSL_r_short;
+      break;
+    case AAP::LSR_r:
+      Opcode = AAP::LSR_r_short;
+      break;
     default:
       llvm_unreachable("Unknown opcode");
     }
@@ -197,12 +213,16 @@ bool ShortInstrPeephole::updateARITH_i10(MachineInstr &MI) const {
   unsigned SrcReg = MI.getOperand(1).getReg();
   const auto &Imm = MI.getOperand(2);
 
-  if (AAP::GR8RegClass.contains(DstReg, SrcReg) &&
-      Imm.isImm() && AAP::isImm3(Imm.getImm())) {
+  if (AAP::GR8RegClass.contains(DstReg, SrcReg) && Imm.isImm() &&
+      AAP::isImm3(Imm.getImm())) {
     unsigned Opcode = MI.getOpcode();
     switch (Opcode) {
-    case AAP::ADDI_i10:   Opcode = AAP::ADDI_i3_short;  break;
-    case AAP::SUBI_i10:   Opcode = AAP::SUBI_i3_short;  break;
+    case AAP::ADDI_i10:
+      Opcode = AAP::ADDI_i3_short;
+      break;
+    case AAP::SUBI_i10:
+      Opcode = AAP::SUBI_i3_short;
+      break;
     }
     MI.setDesc(MII.get(Opcode));
     return true;
@@ -215,13 +235,19 @@ bool ShortInstrPeephole::updateSHIFT_i6(MachineInstr &MI) const {
   unsigned SrcReg = MI.getOperand(1).getReg();
   const auto &Imm = MI.getOperand(2);
 
-  if (AAP::GR8RegClass.contains(DstReg, SrcReg) &&
-      Imm.isImm() && AAP::isShiftImm3(Imm.getImm())) {
+  if (AAP::GR8RegClass.contains(DstReg, SrcReg) && Imm.isImm() &&
+      AAP::isShiftImm3(Imm.getImm())) {
     unsigned Opcode = MI.getOpcode();
     switch (Opcode) {
-    case AAP::ASRI_i6:  Opcode = AAP::ASRI_i3_short;  break;
-    case AAP::LSLI_i6:  Opcode = AAP::LSLI_i3_short;  break;
-    case AAP::LSRI_i6:  Opcode = AAP::LSRI_i3_short;  break;
+    case AAP::ASRI_i6:
+      Opcode = AAP::ASRI_i3_short;
+      break;
+    case AAP::LSLI_i6:
+      Opcode = AAP::LSLI_i3_short;
+      break;
+    case AAP::LSRI_i6:
+      Opcode = AAP::LSRI_i3_short;
+      break;
     }
     MI.setDesc(MII.get(Opcode));
     return true;
@@ -234,17 +260,29 @@ bool ShortInstrPeephole::updateLD(MachineInstr &MI) const {
   const auto &Base = MI.getOperand(1);
   const auto &Off = MI.getOperand(2);
 
-  if (AAP::GR8RegClass.contains(DstReg) &&
-      Base.isReg() && AAP::GR8RegClass.contains(Base.getReg()) &&
-      Off.isImm() && AAP::isOff3(Off.getImm())) {
+  if (AAP::GR8RegClass.contains(DstReg) && Base.isReg() &&
+      AAP::GR8RegClass.contains(Base.getReg()) && Off.isImm() &&
+      AAP::isOff3(Off.getImm())) {
     unsigned Opcode = MI.getOpcode();
     switch (Opcode) {
-    case AAP::LDB:          Opcode = AAP::LDB_short;          break;
-    case AAP::LDW:          Opcode = AAP::LDW_short;          break;
-    case AAP::LDB_postinc:  Opcode = AAP::LDB_postinc_short;  break;
-    case AAP::LDW_postinc:  Opcode = AAP::LDW_postinc_short;  break;
-    case AAP::LDB_predec:   Opcode = AAP::LDB_predec_short;   break;
-    case AAP::LDW_predec:   Opcode = AAP::LDW_predec_short;   break;
+    case AAP::LDB:
+      Opcode = AAP::LDB_short;
+      break;
+    case AAP::LDW:
+      Opcode = AAP::LDW_short;
+      break;
+    case AAP::LDB_postinc:
+      Opcode = AAP::LDB_postinc_short;
+      break;
+    case AAP::LDW_postinc:
+      Opcode = AAP::LDW_postinc_short;
+      break;
+    case AAP::LDB_predec:
+      Opcode = AAP::LDB_predec_short;
+      break;
+    case AAP::LDW_predec:
+      Opcode = AAP::LDW_predec_short;
+      break;
     }
     MI.setDesc(MII.get(Opcode));
     return true;
@@ -254,20 +292,31 @@ bool ShortInstrPeephole::updateLD(MachineInstr &MI) const {
 
 bool ShortInstrPeephole::updateST(MachineInstr &MI) const {
   const auto &Base = MI.getOperand(0);
-  const auto &Off  = MI.getOperand(1);
-  unsigned SrcReg  = MI.getOperand(2).getReg();
+  const auto &Off = MI.getOperand(1);
+  unsigned SrcReg = MI.getOperand(2).getReg();
 
-  if (Base.isReg() && AAP::GR8RegClass.contains(Base.getReg()) &&
-      Off.isImm() && AAP::isOff3(Off.getImm()) &&
-      AAP::GR8RegClass.contains(SrcReg)) {
+  if (Base.isReg() && AAP::GR8RegClass.contains(Base.getReg()) && Off.isImm() &&
+      AAP::isOff3(Off.getImm()) && AAP::GR8RegClass.contains(SrcReg)) {
     unsigned Opcode = MI.getOpcode();
     switch (Opcode) {
-    case AAP::STB:          Opcode = AAP::STB_short;          break;
-    case AAP::STW:          Opcode = AAP::STW_short;          break;
-    case AAP::STB_postinc:  Opcode = AAP::STB_postinc_short;  break;
-    case AAP::STW_postinc:  Opcode = AAP::STW_postinc_short;  break;
-    case AAP::STB_predec:   Opcode = AAP::STB_predec_short;   break;
-    case AAP::STW_predec:   Opcode = AAP::STW_predec_short;   break;
+    case AAP::STB:
+      Opcode = AAP::STB_short;
+      break;
+    case AAP::STW:
+      Opcode = AAP::STW_short;
+      break;
+    case AAP::STB_postinc:
+      Opcode = AAP::STB_postinc_short;
+      break;
+    case AAP::STW_postinc:
+      Opcode = AAP::STW_postinc_short;
+      break;
+    case AAP::STB_predec:
+      Opcode = AAP::STB_predec_short;
+      break;
+    case AAP::STW_predec:
+      Opcode = AAP::STW_predec_short;
+      break;
     }
     MI.setDesc(MII.get(Opcode));
     return true;

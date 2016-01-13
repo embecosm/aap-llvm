@@ -30,9 +30,8 @@ public:
   const MCPhysReg *
   getCalleeSavedRegs(const MachineFunction *MF = nullptr) const override;
 
-  const uint32_t *
-  getCallPreservedMask(const MachineFunction &MF,
-                       CallingConv::ID ID) const override;
+  const uint32_t *getCallPreservedMask(const MachineFunction &MF,
+                                       CallingConv::ID ID) const override;
 
   BitVector getReservedRegs(const MachineFunction &MF) const override;
 

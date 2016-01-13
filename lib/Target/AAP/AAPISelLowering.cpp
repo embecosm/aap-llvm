@@ -97,32 +97,32 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::BRIND,     MVT::Other,  Expand);
 
   // No support for jump tables
-  setOperationAction(ISD::JumpTable, MVT::i8,     Expand);
-  setOperationAction(ISD::JumpTable, MVT::i16,    Expand);
-  setOperationAction(ISD::BR_JT,     MVT::Other,  Expand);
+  setOperationAction(ISD::JumpTable, MVT::i8,  Expand);
+  setOperationAction(ISD::JumpTable, MVT::i16, Expand);
+  setOperationAction(ISD::BR_JT, MVT::Other,   Expand);
 
   // vaarg
-  setOperationAction(ISD::VASTART,  MVT::Other, Custom);
-  setOperationAction(ISD::VAARG,    MVT::Other, Expand);
-  setOperationAction(ISD::VAEND,    MVT::Other, Expand);
-  setOperationAction(ISD::VACOPY,   MVT::Other, Expand);
+  setOperationAction(ISD::VASTART, MVT::Other, Custom);
+  setOperationAction(ISD::VAARG,   MVT::Other, Expand);
+  setOperationAction(ISD::VAEND,   MVT::Other, Expand);
+  setOperationAction(ISD::VACOPY,  MVT::Other, Expand);
 
   // ALU operations unsupported by the architecture
-  setOperationAction(ISD::SDIV,     MVT::i8,  Expand);
-  setOperationAction(ISD::SDIV,     MVT::i16, Expand);
-  setOperationAction(ISD::UDIV,     MVT::i8,  Expand);
-  setOperationAction(ISD::UDIV,     MVT::i16, Expand);
-  setOperationAction(ISD::UREM,     MVT::i8,  Expand);
-  setOperationAction(ISD::UREM,     MVT::i16, Expand);
-  setOperationAction(ISD::SREM,     MVT::i8,  Expand);
-  setOperationAction(ISD::SREM,     MVT::i16, Expand);
-  setOperationAction(ISD::SDIVREM,  MVT::i8,  Expand);
-  setOperationAction(ISD::SDIVREM,  MVT::i16, Expand);
-  setOperationAction(ISD::UDIVREM,  MVT::i8,  Expand);
-  setOperationAction(ISD::UDIVREM,  MVT::i16, Expand);
+  setOperationAction(ISD::SDIV,    MVT::i8,  Expand);
+  setOperationAction(ISD::SDIV,    MVT::i16, Expand);
+  setOperationAction(ISD::UDIV,    MVT::i8,  Expand);
+  setOperationAction(ISD::UDIV,    MVT::i16, Expand);
+  setOperationAction(ISD::UREM,    MVT::i8,  Expand);
+  setOperationAction(ISD::UREM,    MVT::i16, Expand);
+  setOperationAction(ISD::SREM,    MVT::i8,  Expand);
+  setOperationAction(ISD::SREM,    MVT::i16, Expand);
+  setOperationAction(ISD::SDIVREM, MVT::i8,  Expand);
+  setOperationAction(ISD::SDIVREM, MVT::i16, Expand);
+  setOperationAction(ISD::UDIVREM, MVT::i8,  Expand);
+  setOperationAction(ISD::UDIVREM, MVT::i16, Expand);
 
-  setOperationAction(ISD::MUL, MVT::i8,  Expand);
-  setOperationAction(ISD::MUL, MVT::i16, Expand);
+  setOperationAction(ISD::MUL, MVT::i8,    Expand);
+  setOperationAction(ISD::MUL, MVT::i16,   Expand);
   setOperationAction(ISD::MULHS, MVT::i8,  Expand);
   setOperationAction(ISD::MULHS, MVT::i16, Expand);
   setOperationAction(ISD::MULHU, MVT::i8,  Expand);
@@ -151,14 +151,14 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::BSWAP, MVT::i8,  Expand);
   setOperationAction(ISD::BSWAP, MVT::i16, Expand);
 
-  setOperationAction(ISD::CTTZ,  MVT::i8,  Expand);
-  setOperationAction(ISD::CTTZ,  MVT::i16, Expand);
-  setOperationAction(ISD::CTTZ_ZERO_UNDEF,  MVT::i8,  Expand);
-  setOperationAction(ISD::CTTZ_ZERO_UNDEF,  MVT::i16, Expand);
-  setOperationAction(ISD::CTLZ,  MVT::i8,  Expand);
-  setOperationAction(ISD::CTLZ,  MVT::i16, Expand);
-  setOperationAction(ISD::CTLZ_ZERO_UNDEF,  MVT::i8,  Expand);
-  setOperationAction(ISD::CTLZ_ZERO_UNDEF,  MVT::i16, Expand);
+  setOperationAction(ISD::CTTZ, MVT::i8,  Expand);
+  setOperationAction(ISD::CTTZ, MVT::i16, Expand);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i8,  Expand);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i16, Expand);
+  setOperationAction(ISD::CTLZ, MVT::i8,  Expand);
+  setOperationAction(ISD::CTLZ, MVT::i16, Expand);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i8,  Expand);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i16, Expand);
   setOperationAction(ISD::CTPOP, MVT::i8,  Expand);
   setOperationAction(ISD::CTPOP, MVT::i16, Expand);
 
@@ -185,8 +185,7 @@ const char *AAPTargetLowering::getTargetNodeName(unsigned Opcode) const {
 }
 
 EVT AAPTargetLowering::getSetCCResultType(const DataLayout &DL,
-                                          LLVMContext &Context,
-                                          EVT VT) const {
+                                          LLVMContext &Context, EVT VT) const {
   if (!VT.isVector()) {
     return MVT::i16;
   }
@@ -255,12 +254,18 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
 static AAPCC::CondCode getAAPCondCode(ISD::CondCode CC) {
   switch (CC) {
   // These have a direct equivalent
-  case ISD::SETEQ:  return AAPCC::COND_EQ;
-  case ISD::SETNE:  return AAPCC::COND_NE;
-  case ISD::SETLT:  return AAPCC::COND_LTS;
-  case ISD::SETLE:  return AAPCC::COND_LES;
-  case ISD::SETULT: return AAPCC::COND_LTU;
-  case ISD::SETULE: return AAPCC::COND_LEU;
+  case ISD::SETEQ:
+    return AAPCC::COND_EQ;
+  case ISD::SETNE:
+    return AAPCC::COND_NE;
+  case ISD::SETLT:
+    return AAPCC::COND_LTS;
+  case ISD::SETLE:
+    return AAPCC::COND_LES;
+  case ISD::SETULT:
+    return AAPCC::COND_LTU;
+  case ISD::SETULE:
+    return AAPCC::COND_LEU;
   // Other condition codes are unhandled
   default:
     llvm_unreachable("Unknown condition for brcc lowering");
@@ -274,12 +279,18 @@ static unsigned getBranchOpForCondition(int branchOp, AAPCC::CondCode CC) {
   assert(branchOp == AAP::BR_CC);
 
   switch (CC) {
-  case AAPCC::COND_EQ:  return AAP::BEQ_;
-  case AAPCC::COND_NE:  return AAP::BNE_;
-  case AAPCC::COND_LTS: return AAP::BLTS_;
-  case AAPCC::COND_LES: return AAP::BLES_;
-  case AAPCC::COND_LTU: return AAP::BLTU_;
-  case AAPCC::COND_LEU: return AAP::BLEU_;
+  case AAPCC::COND_EQ:
+    return AAP::BEQ_;
+  case AAPCC::COND_NE:
+    return AAP::BNE_;
+  case AAPCC::COND_LTS:
+    return AAP::BLTS_;
+  case AAPCC::COND_LES:
+    return AAP::BLES_;
+  case AAPCC::COND_LTU:
+    return AAP::BLTU_;
+  case AAPCC::COND_LEU:
+    return AAP::BLEU_;
   default:
     llvm_unreachable("Unknown condition code!");
     return 0;
@@ -338,9 +349,8 @@ SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
   const Value *Src = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
 
   // Create a store of the frame index to the location operand
-  return DAG.getStore(Op.getOperand(0), SDLoc(Op), FrameIndex,
-                      Op.getOperand(1), MachinePointerInfo(Src),
-                      false, false, 0);
+  return DAG.getStore(Op.getOperand(0), SDLoc(Op), FrameIndex, Op.getOperand(1),
+                      MachinePointerInfo(Src), false, false, 0);
 }
 
 SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
@@ -534,7 +544,7 @@ AAPTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
       DAG.getRegister(AAPRegisterInfo::getLinkRegister(), MVT::i16));
 
   // Mark return registers as live-out in MachineRegisterInfo
-  MachineRegisterInfo& MRI = DAG.getMachineFunction().getRegInfo();
+  MachineRegisterInfo &MRI = DAG.getMachineFunction().getRegInfo();
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
     MRI.addLiveOut(RVLocs[i].getLocReg());
   }
@@ -687,7 +697,7 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   // Add the caller saved registers as a register mask operand to the call
   const TargetRegisterInfo *TRI = Subtarget.getRegisterInfo();
   const uint32_t *Mask =
-    TRI->getCallPreservedMask(DAG.getMachineFunction(), CallConv);
+      TRI->getCallPreservedMask(DAG.getMachineFunction(), CallConv);
   assert(Mask && "No call preserved mask for the calling convention");
   Ops.push_back(DAG.getRegisterMask(Mask));
 

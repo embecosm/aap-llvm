@@ -31,9 +31,8 @@ AAPRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   return CSR_SaveList;
 }
 
-const uint32_t *
-AAPRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
-                                      CallingConv::ID) const {
+const uint32_t *AAPRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
+                                                      CallingConv::ID) const {
   return CSR_RegMask;
 }
 
