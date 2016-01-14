@@ -27,8 +27,8 @@ private:
 public:
   AAPELFObjectWriter(uint8_t OSABI, StringRef C);
 
-  virtual unsigned GetRelocType(MCValue const &Target, MCFixup const &Fixup,
-                                bool IsPCRel) const override;
+  unsigned getRelocType(MCContext &Ctx, MCValue const &Target,
+                        MCFixup const &Fixup, bool IsPCRel) const override;
 };
 }
 
@@ -37,7 +37,8 @@ AAPELFObjectWriter::AAPELFObjectWriter(uint8_t OSABI, StringRef C)
                               /*HasRelocationAddend*/ true),
       CPU(C) {}
 
-unsigned AAPELFObjectWriter::GetRelocType(MCValue const & /*Target*/,
+unsigned AAPELFObjectWriter::getRelocType(MCContext & /*Ctx*/,
+                                          MCValue const & /*Target*/,
                                           MCFixup const &Fixup,
                                           bool IsPCRel) const {
   llvm::MCFixupKind Kind = Fixup.getKind();

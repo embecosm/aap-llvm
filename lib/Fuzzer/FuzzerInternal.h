@@ -37,7 +37,10 @@ std::string DirPlusFile(const std::string &DirPath,
                         const std::string &FileName);
 
 void Printf(const char *Fmt, ...);
-void Print(const Unit &U, const char *PrintAfter = "");
+void PrintHexArray(const Unit &U, const char *PrintAfter = "");
+void PrintHexArray(const uint8_t *Data, size_t Size,
+                   const char *PrintAfter = "");
+void PrintASCII(const uint8_t *Data, size_t Size, const char *PrintAfter = "");
 void PrintASCII(const Unit &U, const char *PrintAfter = "");
 std::string Hash(const Unit &U);
 void SetTimer(int Seconds);
@@ -105,6 +108,7 @@ class Fuzzer {
   void Drill();
   void ShuffleAndMinimize();
   void InitializeTraceState();
+  void AssignTaintLabels(uint8_t *Data, size_t Size);
   size_t CorpusSize() const { return Corpus.size(); }
   void ReadDir(const std::string &Path, long *Epoch) {
     Printf("Loading corpus: %s\n", Path.c_str());
@@ -138,7 +142,6 @@ class Fuzzer {
   void WriteUnitToFileWithPrefix(const Unit &U, const char *Prefix);
   void PrintStats(const char *Where, const char *End = "\n");
   void PrintStatusForNewUnit(const Unit &U);
-  void PrintUnitInASCII(const Unit &U, const char *PrintAfter = "");
 
   void SyncCorpus();
 
@@ -160,7 +163,9 @@ class Fuzzer {
   void SetDeathCallback();
   static void StaticDeathCallback();
   void DeathCallback();
-  Unit CurrentUnit;
+
+  uint8_t *CurrentUnitData;
+  size_t CurrentUnitSize;
 
   size_t TotalNumberOfRuns = 0;
   size_t TotalNumberOfExecutedTraceBasedMutations = 0;

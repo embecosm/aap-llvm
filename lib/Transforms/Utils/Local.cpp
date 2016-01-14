@@ -944,37 +944,31 @@ bool llvm::EliminateDuplicatePHINodes(BasicBlock *BB) {
 static unsigned enforceKnownAlignment(Value *V, unsigned Align,
                                       unsigned PrefAlign,
                                       const DataLayout &DL) {
+  assert(PrefAlign > Align);
+
   V = V->stripPointerCasts();
 
   if (AllocaInst *AI = dyn_cast<AllocaInst>(V)) {
+    assert(AI->getAlignment() <= Align);
     // If the preferred alignment is greater than the natural stack alignment
     // then don't round up. This avoids dynamic stack realignment.
     if (DL.exceedsNaturalStackAlignment(PrefAlign))
       return Align;
-    // If there is a requested alignment and if this is an alloca, round up.
-    if (AI->getAlignment() >= PrefAlign)
-      return AI->getAlignment();
     AI->setAlignment(PrefAlign);
     return PrefAlign;
   }
 
   if (auto *GO = dyn_cast<GlobalObject>(V)) {
+    assert(GO->getAlignment() <= Align);
     // If there is a large requested alignment and we can, bump up the alignment
     // of the global.  If the memory we set aside for the global may not be the
     // memory used by the final program then it is impossible for us to reliably
     // enforce the preferred alignment.
-    if (!GO->isStrongDefinitionForLinker())
+    if (!GO->canIncreaseAlignment())
       return Align;
 
-    if (GO->getAlignment() >= PrefAlign)
-      return GO->getAlignment();
-    // We can only increase the alignment of the global if it has no alignment
-    // specified or if it is not assigned a section.  If it is assigned a
-    // section, the global could be densely packed with other objects in the
-    // section, increasing the alignment could cause padding issues.
-    if (!GO->hasSection() || GO->getAlignment() == 0)
-      GO->setAlignment(PrefAlign);
-    return GO->getAlignment();
+    GO->setAlignment(PrefAlign);
+    return PrefAlign;
   }
 
   return Align;
@@ -1052,9 +1046,31 @@ bool llvm::ConvertDebugDeclareToDebugValue(DbgDeclareInst *DDI,
     ExtendedArg = dyn_cast<Argument>(ZExt->getOperand(0));
   if (SExtInst *SExt = dyn_cast<SExtInst>(SI->getOperand(0)))
     ExtendedArg = dyn_cast<Argument>(SExt->getOperand(0));
-  if (ExtendedArg)
-    Builder.insertDbgValueIntrinsic(ExtendedArg, 0, DIVar, DIExpr,
+  if (ExtendedArg) {
+    // We're now only describing a subset of the variable. The piece we're
+    // describing will always be smaller than the variable size, because
+    // VariableSize == Size of Alloca described by DDI. Since SI stores
+    // to the alloca described by DDI, if it's first operand is an extend,
+    // we're guaranteed that before extension, the value was narrower than
+    // the size of the alloca, hence the size of the described variable.
+    SmallVector<uint64_t, 3> NewDIExpr;
+    unsigned PieceOffset = 0;
+    // If this already is a bit piece, we drop the bit piece from the expression
+    // and record the offset.
+    if (DIExpr->isBitPiece()) {
+      NewDIExpr.append(DIExpr->elements_begin(), DIExpr->elements_end()-3);
+      PieceOffset = DIExpr->getBitPieceOffset();
+    } else {
+      NewDIExpr.append(DIExpr->elements_begin(), DIExpr->elements_end());
+    }
+    NewDIExpr.push_back(dwarf::DW_OP_bit_piece);
+    NewDIExpr.push_back(PieceOffset); //Offset
+    const DataLayout &DL = DDI->getModule()->getDataLayout();
+    NewDIExpr.push_back(DL.getTypeSizeInBits(ExtendedArg->getType())); // Size
+    Builder.insertDbgValueIntrinsic(ExtendedArg, 0, DIVar,
+                                    Builder.createExpression(NewDIExpr),
                                     DDI->getDebugLoc(), SI);
+  }
   else
     Builder.insertDbgValueIntrinsic(SI->getOperand(0), 0, DIVar, DIExpr,
                                     DDI->getDebugLoc(), SI);
