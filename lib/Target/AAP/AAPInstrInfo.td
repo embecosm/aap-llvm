@@ -181,29 +181,34 @@ def addr_MO10 : ComplexPattern<iPTR, 2, "SelectAddr_MO10", [], []>;
 // Memsrc operand encodings consist of a 16-bit immediate field in the low
 // bits, and a 3 or 6 bit register field in the high bits. The encoding
 // is exactly the same for predecrement and postincrement address mode.
+//
+// We enforce a total order between all of the memsrc operand classes using
+// SuperClasses so that the shortest instruction is always picked first during
+// assembly matching. Load and store instructions have identical mnemonics,
+// and therefore their ordering is based on their operand classes.
 def memsrc10AsmOperand : AsmOperandClass {
   let Name = "MemSrc10";
 }
 def memsrc10PostIncAsmOperand : AsmOperandClass {
   let Name = "MemSrc10PostInc";
+  let SuperClasses = [memsrc10AsmOperand];
 }
 def memsrc10PreDecAsmOperand  : AsmOperandClass {
   let Name = "MemSrc10PreDec";
+  let SuperClasses = [memsrc10PostIncAsmOperand];
 }
 
-// short memsrc operands subclass the longer ones, as this means they will
-// be prioritized when matching assembly.
 def memsrc3AsmOperand : AsmOperandClass {
   let Name = "MemSrc3";
-  let SuperClasses = [memsrc10AsmOperand];
+  let SuperClasses = [memsrc10PreDecAsmOperand];
 }
 def memsrc3PostIncAsmOperand : AsmOperandClass {
   let Name = "MemSrc3PostInc";
-  let SuperClasses = [memsrc10PostIncAsmOperand];
+  let SuperClasses = [memsrc3AsmOperand];
 }
 def memsrc3PreDecAsmOperand  : AsmOperandClass {
   let Name = "MemSrc3PreDec";
-  let SuperClasses = [memsrc10PreDecAsmOperand];
+  let SuperClasses = [memsrc3PostIncAsmOperand];
 }
 
 let EncoderMethod = "encodeMemSrcOperand",
