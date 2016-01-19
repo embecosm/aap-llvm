@@ -470,7 +470,7 @@ static void forEachUser(const Value *User,
                         llvm::function_ref<bool(const Value *)> Callback) {
   if (!Visited.insert(User).second)
     return;
-  for (const Value *TheNextUser : User->users())
+  for (const Value *TheNextUser : User->materialized_users())
     if (Callback(TheNextUser))
       forEachUser(TheNextUser, Visited, Callback);
 }
@@ -521,7 +521,7 @@ void Verifier::visitGlobalValue(const GlobalValue &GV) {
 
 void Verifier::visitGlobalVariable(const GlobalVariable &GV) {
   if (GV.hasInitializer()) {
-    Assert(GV.getInitializer()->getType() == GV.getType()->getElementType(),
+    Assert(GV.getInitializer()->getType() == GV.getValueType(),
            "Global variable initializer type does not match global "
            "variable type!",
            &GV);
@@ -1944,7 +1944,9 @@ void Verifier::visitFunction(const Function &F) {
 
   // If this function is actually an intrinsic, verify that it is only used in
   // direct call/invokes, never having its "address taken".
-  if (F.getIntrinsicID()) {
+  // Only do this if the module is materialized, otherwise we don't have all the
+  // uses.
+  if (F.getIntrinsicID() && F.getParent()->isMaterialized()) {
     const User *U;
     if (F.hasAddressTaken(&U))
       Assert(0, "Invalid user of intrinsic instruction!", U);

@@ -330,6 +330,12 @@ public:
     return getPointerSize(AS) * 8;
   }
 
+  /// Layout function pointer size
+  unsigned getFuncPointerSize() const;
+
+  /// Layout function pointer size, in bits
+  unsigned getFuncPointerSizeInBits() const;
+
   /// Layout pointer size, in bits, based on the type.  If this function is
   /// called with a pointer type, then the type size of the pointer is returned.
   /// If this function is called with a vector of pointers, then the type size

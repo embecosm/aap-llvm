@@ -83,7 +83,7 @@ static cl::opt<bool>
 /// This is purely to provide a debugging and dianostic hook until the vector
 /// split is replaced with vector relocations.
 static cl::opt<bool> UseVectorSplit("rs4gc-split-vector-values", cl::Hidden,
-                                    cl::init(true));
+                                    cl::init(false));
 
 namespace {
 struct RewriteStatepointsForGC : public ModulePass {
@@ -1777,8 +1777,7 @@ static void relocationViaAlloca(
 
       auto InsertClobbersAt = [&](Instruction *IP) {
         for (auto *AI : ToClobber) {
-          auto AIType = cast<PointerType>(AI->getType());
-          auto PT = cast<PointerType>(AIType->getElementType());
+          auto PT = cast<PointerType>(AI->getAllocatedType());
           Constant *CPN = ConstantPointerNull::get(PT);
           StoreInst *Store = new StoreInst(CPN, AI);
           Store->insertBefore(IP);
