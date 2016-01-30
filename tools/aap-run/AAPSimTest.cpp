@@ -46,7 +46,7 @@ static void LoadObject(AAPSimulator &Sim, ObjectFile *o) {
     bool Text = Section.isText();
     bool Data = Section.isData();
     bool BSS = Section.isBSS();
-    bool TextFlag = Address & 0x1000000;
+    bool TextFlag = Address & 0x8000000;
     StringRef BytesStr;
     Section.getContents(BytesStr);
     std::string Type = (std::string(Text ? "TEXT " : "") +
