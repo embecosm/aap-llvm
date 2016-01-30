@@ -20,6 +20,7 @@
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "AAPSimulator.h"
@@ -33,6 +34,8 @@
 
 using namespace llvm;
 using namespace AAPSim;
+
+static cl::opt<bool> Trace("trace");
 
 // Should the simulator call llvm_unreachable when executing unknown
 #define UNKNOWN_SHOULD_UNREACHABLE 0
@@ -660,16 +663,19 @@ SimStatus AAPSimulator::step() {
   uint64_t Size;
   uint32_t pc_w = State.getPC();
   ArrayRef<uint8_t> *Bytes = State.getCodeArray();
+  State.setCycleCount(State.getCycleCount() + 1);
 
   // Reset any previous exception state
   State.resetStatus();
 
   if (DisAsm->getInstruction(Inst, Size, Bytes->slice(pc_w << 1), (pc_w << 1),
                              nulls(), nulls())) {
-    // Instruction decoded, execute it and write back our PC
-    dbgs() << format("%06" PRIx64 ":", pc_w);
-    IP->printInst(&Inst, dbgs(), "", *STI);
-    dbgs() << "\n";
+    if (Trace) {
+      // Instruction decoded, execute it and write back our PC
+      dbgs() << format("%06" PRIx64 ":", pc_w);
+      IP->printInst(&Inst, dbgs(), "", *STI);
+      dbgs() << "\n";
+    }
 
     uint32_t newpc_w = pc_w + (Size >> 1);
     SimStatus status;
