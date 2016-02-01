@@ -663,7 +663,6 @@ SimStatus AAPSimulator::step() {
   uint64_t Size;
   uint32_t pc_w = State.getPC();
   ArrayRef<uint8_t> *Bytes = State.getCodeArray();
-  State.setCycleCount(State.getCycleCount() + 1);
 
   // Reset any previous exception state
   State.resetStatus();
