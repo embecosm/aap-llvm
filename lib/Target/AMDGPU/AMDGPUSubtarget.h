@@ -58,8 +58,6 @@ public:
   };
 
 private:
-  std::string DevName;
-  bool Is64bit;
   bool DumpCode;
   bool R600ALUInst;
   bool HasVertexCache;
@@ -68,6 +66,7 @@ private:
   bool FP64;
   bool FP64Denormals;
   bool FP32Denormals;
+  bool FPExceptions;
   bool FastFMAF32;
   bool HalfRate64Ops;
   bool CaymanISA;
@@ -82,16 +81,19 @@ private:
   unsigned WavefrontSize;
   bool CFALUBug;
   int LocalMemorySize;
+  unsigned MaxPrivateElementSize;
   bool EnableVGPRSpilling;
   bool SGPRInitBug;
   bool IsGCN;
   bool GCN1Encoding;
   bool GCN3Encoding;
   bool CIInsts;
+  bool HasSMemRealTime;
+  bool Has16BitInsts;
   bool FeatureDisable;
   int LDSBankCount;
   unsigned IsaVersion;
-  bool EnableHugeScratchBuffer;
+  bool EnableSIScheduler;
 
   std::unique_ptr<AMDGPUFrameLowering> FrameLowering;
   std::unique_ptr<AMDGPUTargetLowering> TLInfo;
@@ -123,10 +125,6 @@ public:
 
   void ParseSubtargetFeatures(StringRef CPU, StringRef FS);
 
-  bool is64bit() const {
-    return Is64bit;
-  }
-
   bool hasVertexCache() const {
     return HasVertexCache;
   }
@@ -155,6 +153,10 @@ public:
     return FP64Denormals;
   }
 
+  bool hasFPExceptions() const {
+    return FPExceptions;
+  }
+
   bool hasFastFMAF32() const {
     return FastFMAF32;
   }
@@ -165,6 +167,14 @@ public:
 
   bool hasFlatAddressSpace() const {
     return FlatAddressSpace;
+  }
+
+  bool hasSMemRealTime() const {
+    return HasSMemRealTime;
+  }
+
+  bool has16BitInsts() const {
+    return Has16BitInsts;
   }
 
   bool useFlatForGlobal() const {
@@ -253,6 +263,10 @@ public:
     return LocalMemorySize;
   }
 
+  unsigned getMaxPrivateElementSize() const {
+    return MaxPrivateElementSize;
+  }
+
   bool hasSGPRInitBug() const {
     return SGPRInitBug;
   }
@@ -278,12 +292,8 @@ public:
     return false;
   }
 
-  StringRef getDeviceName() const {
-    return DevName;
-  }
-
-  bool enableHugeScratchBuffer() const {
-    return EnableHugeScratchBuffer;
+  bool enableSIScheduler() const {
+    return EnableSIScheduler;
   }
 
   bool dumpCode() const {

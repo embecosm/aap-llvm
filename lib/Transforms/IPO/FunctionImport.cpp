@@ -20,10 +20,11 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Linker/Linker.h"
-#include "llvm/Object/FunctionIndexObjectFile.h"
+#include "llvm/Object/ModuleSummaryIndexObjectFile.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Transforms/Utils/FunctionImportUtils.h"
 
 #include <map>
 
@@ -36,13 +37,20 @@ static cl::opt<unsigned> ImportInstrLimit(
     "import-instr-limit", cl::init(100), cl::Hidden, cl::value_desc("N"),
     cl::desc("Only import functions with less than N instructions"));
 
+static cl::opt<float>
+    ImportInstrFactor("import-instr-evolution-factor", cl::init(0.7),
+                      cl::Hidden, cl::value_desc("x"),
+                      cl::desc("As we import functions, multiply the "
+                               "`import-instr-limit` threshold by this factor "
+                               "before processing newly imported functions"));
+
 // Load lazily a module from \p FileName in \p Context.
 static std::unique_ptr<Module> loadFile(const std::string &FileName,
                                         LLVMContext &Context) {
   SMDiagnostic Err;
   DEBUG(dbgs() << "Loading '" << FileName << "'\n");
-  // Metadata isn't loaded or linked until after all functions are
-  // imported, after which it will be materialized and linked.
+  // Metadata isn't loaded until functions are imported, to minimize
+  // the memory overhead.
   std::unique_ptr<Module> Result =
       getLazyIRFileModule(FileName, Err, Context,
                           /* ShouldLazyLoadMetadata = */ true);
@@ -55,6 +63,14 @@ static std::unique_ptr<Module> loadFile(const std::string &FileName,
 }
 
 namespace {
+
+/// Track functions already seen using a map that record the current
+/// Threshold and the importing decision. Since the traversal of the call graph
+/// is DFS, we can revisit a function a second time with a higher threshold. In
+/// this case and if the function was not imported the first time, it is added
+/// back to the worklist with the new threshold
+using VisitedFunctionTrackerTy = StringMap<std::pair<unsigned, bool>>;
+
 /// Helper to load on demand a Module from file and cache it for subsequent
 /// queries. It can be used with the FunctionImporter.
 class ModuleLazyLoaderCache {
@@ -92,12 +108,12 @@ Module &ModuleLazyLoaderCache::operator()(StringRef Identifier) {
 } // anonymous namespace
 
 /// Walk through the instructions in \p F looking for external
-/// calls not already in the \p CalledFunctions set. If any are
+/// calls not already in the \p VisitedFunctions map. If any are
 /// found they are added to the \p Worklist for importing.
-static void findExternalCalls(const Module &DestModule, Function &F,
-                              const FunctionInfoIndex &Index,
-                              StringSet<> &CalledFunctions,
-                              SmallVector<StringRef, 64> &Worklist) {
+static void findExternalCalls(
+    const Module &DestModule, Function &F, const ModuleSummaryIndex &Index,
+    VisitedFunctionTrackerTy &VisitedFunctions, unsigned Threshold,
+    SmallVectorImpl<std::pair<StringRef, unsigned>> &Worklist) {
   // We need to suffix internal function calls imported from other modules,
   // prepare the suffix ahead of time.
   std::string Suffix;
@@ -125,10 +141,22 @@ static void findExternalCalls(const Module &DestModule, Function &F,
         if (CalledFunction->hasInternalLinkage()) {
           ImportedName = Renamed;
         }
-        auto It = CalledFunctions.insert(ImportedName);
+        // Compute the global identifier used in the summary index.
+        auto CalledFunctionGlobalID = GlobalValue::getGlobalIdentifier(
+            CalledFunction->getName(), CalledFunction->getLinkage(),
+            CalledFunction->getParent()->getSourceFileName());
+
+        auto CalledFunctionInfo = std::make_pair(Threshold, false);
+        auto It = VisitedFunctions.insert(
+            std::make_pair(CalledFunctionGlobalID, CalledFunctionInfo));
         if (!It.second) {
-          // This is a call to a function we already considered, skip.
-          continue;
+          // This is a call to a function we already considered, if the function
+          // has been imported the first time, or if the current threshold is
+          // not higher, skip it.
+          auto &FunctionInfo = It.first->second;
+          if (FunctionInfo.second || FunctionInfo.first >= Threshold)
+            continue;
+          It.first->second = CalledFunctionInfo;
         }
         // Ignore functions already present in the destination module
         auto *SrcGV = DestModule.getNamedValue(ImportedName);
@@ -143,7 +171,7 @@ static void findExternalCalls(const Module &DestModule, Function &F,
           }
         }
 
-        Worklist.push_back(It.first->getKey());
+        Worklist.push_back(std::make_pair(It.first->getKey(), Threshold));
         DEBUG(dbgs() << DestModule.getModuleIdentifier()
                      << ": Adding callee for : " << ImportedName << " : "
                      << F.getName() << "\n");
@@ -160,20 +188,24 @@ static void findExternalCalls(const Module &DestModule, Function &F,
 //
 // \p ModuleToFunctionsToImportMap is filled with the set of Function to import
 // per Module.
-static void GetImportList(Module &DestModule,
-                          SmallVector<StringRef, 64> &Worklist,
-                          StringSet<> &CalledFunctions,
-                          std::map<StringRef, DenseSet<const GlobalValue *>>
-                              &ModuleToFunctionsToImportMap,
-                          const FunctionInfoIndex &Index,
-                          ModuleLazyLoaderCache &ModuleLoaderCache) {
+static void
+GetImportList(Module &DestModule,
+              SmallVectorImpl<std::pair<StringRef, unsigned>> &Worklist,
+              VisitedFunctionTrackerTy &VisitedFunctions,
+              std::map<StringRef, DenseSet<const GlobalValue *>>
+                  &ModuleToFunctionsToImportMap,
+              const ModuleSummaryIndex &Index,
+              ModuleLazyLoaderCache &ModuleLoaderCache) {
   while (!Worklist.empty()) {
-    auto CalledFunctionName = Worklist.pop_back_val();
+    StringRef CalledFunctionName;
+    unsigned Threshold;
+    std::tie(CalledFunctionName, Threshold) = Worklist.pop_back_val();
     DEBUG(dbgs() << DestModule.getModuleIdentifier() << ": Process import for "
-                 << CalledFunctionName << "\n");
+                 << CalledFunctionName << " with Threshold " << Threshold
+                 << "\n");
 
     // Try to get a summary for this function call.
-    auto InfoList = Index.findFunctionInfoList(CalledFunctionName);
+    auto InfoList = Index.findGlobalValueInfoList(CalledFunctionName);
     if (InfoList == Index.end()) {
       DEBUG(dbgs() << DestModule.getModuleIdentifier() << ": No summary for "
                    << CalledFunctionName << " Ignoring.\n");
@@ -185,7 +217,7 @@ static void GetImportList(Module &DestModule,
     auto &Info = InfoList->second[0];
     assert(Info && "Nullptr in list, error importing summaries?\n");
 
-    auto *Summary = Info->functionSummary();
+    auto *Summary = dyn_cast<FunctionSummary>(Info->summary());
     if (!Summary) {
       // FIXME: in case we are lazyloading summaries, we can do it now.
       DEBUG(dbgs() << DestModule.getModuleIdentifier()
@@ -194,12 +226,16 @@ static void GetImportList(Module &DestModule,
       llvm_unreachable("Missing summary");
     }
 
-    if (Summary->instCount() > ImportInstrLimit) {
+    if (Summary->instCount() > Threshold) {
       DEBUG(dbgs() << DestModule.getModuleIdentifier() << ": Skip import of "
                    << CalledFunctionName << " with " << Summary->instCount()
-                   << " instructions (limit " << ImportInstrLimit << ")\n");
+                   << " instructions (limit " << Threshold << ")\n");
       continue;
     }
+
+    // Mark the function as imported in the VisitedFunctions tracker
+    assert(VisitedFunctions.count(CalledFunctionName));
+    VisitedFunctions[CalledFunctionName].second = true;
 
     // Get the module path from the summary.
     auto ModuleIdentifier = Summary->modulePath();
@@ -212,14 +248,12 @@ static void GetImportList(Module &DestModule,
     GlobalValue *SGV = SrcModule.getNamedValue(CalledFunctionName);
 
     if (!SGV) {
-      // The destination module is referencing function using their renamed name
-      // when importing a function that was originally local in the source
-      // module. The source module we have might not have been renamed so we try
-      // to remove the suffix added during the renaming to recover the original
+      // The function is referenced by a global identifier, which has the
+      // source file name prepended for functions that were originally local
+      // in the source module. Strip any prepended name to recover the original
       // name in the source module.
-      std::pair<StringRef, StringRef> Split =
-          CalledFunctionName.split(".llvm.");
-      SGV = SrcModule.getNamedValue(Split.first);
+      std::pair<StringRef, StringRef> Split = CalledFunctionName.rsplit(':');
+      SGV = SrcModule.getNamedValue(Split.second);
       assert(SGV && "Can't find function to import in source module");
     }
     if (!SGV) {
@@ -253,8 +287,11 @@ static void GetImportList(Module &DestModule,
     Entry.insert(F);
 
     // Process the newly imported functions and add callees to the worklist.
+    // Adjust the threshold
+    Threshold = Threshold * ImportInstrFactor;
     F->materialize();
-    findExternalCalls(DestModule, *F, Index, CalledFunctions, Worklist);
+    findExternalCalls(DestModule, *F, Index, VisitedFunctions, Threshold,
+                      Worklist);
   }
 }
 
@@ -268,13 +305,15 @@ bool FunctionImporter::importFunctions(Module &DestModule) {
                << DestModule.getModuleIdentifier() << "\n");
   unsigned ImportedCount = 0;
 
-  /// First step is collecting the called external functions.
-  StringSet<> CalledFunctions;
-  SmallVector<StringRef, 64> Worklist;
+  // First step is collecting the called external functions.
+  // We keep the function name as well as the import threshold for its callees.
+  VisitedFunctionTrackerTy VisitedFunctions;
+  SmallVector<std::pair<StringRef, unsigned>, 64> Worklist;
   for (auto &F : DestModule) {
     if (F.isDeclaration() || F.hasFnAttribute(Attribute::OptimizeNone))
       continue;
-    findExternalCalls(DestModule, F, Index, CalledFunctions, Worklist);
+    findExternalCalls(DestModule, F, Index, VisitedFunctions, ImportInstrLimit,
+                      Worklist);
   }
   if (Worklist.empty())
     return false;
@@ -291,12 +330,9 @@ bool FunctionImporter::importFunctions(Module &DestModule) {
   // Analyze the summaries and get the list of functions to import by
   // populating ModuleToFunctionsToImportMap
   ModuleLazyLoaderCache ModuleLoaderCache(ModuleLoader);
-  GetImportList(DestModule, Worklist, CalledFunctions,
+  GetImportList(DestModule, Worklist, VisitedFunctions,
                 ModuleToFunctionsToImportMap, Index, ModuleLoaderCache);
   assert(Worklist.empty() && "Worklist hasn't been flushed in GetImportList");
-
-  StringMap<std::unique_ptr<DenseMap<unsigned, MDNode *>>>
-      ModuleToTempMDValsMap;
 
   // Do the actual import of functions now, one Module at a time
   for (auto &FunctionsToImportPerModule : ModuleToFunctionsToImportMap) {
@@ -307,34 +343,17 @@ bool FunctionImporter::importFunctions(Module &DestModule) {
     assert(&DestModule.getContext() == &SrcModule->getContext() &&
            "Context mismatch");
 
-    // Save the mapping of value ids to temporary metadata created when
-    // importing this function. If we have already imported from this module,
-    // add new temporary metadata to the existing mapping.
-    auto &TempMDVals = ModuleToTempMDValsMap[SrcModule->getModuleIdentifier()];
-    if (!TempMDVals)
-      TempMDVals = llvm::make_unique<DenseMap<unsigned, MDNode *>>();
+    // If modules were created with lazy metadata loading, materialize it
+    // now, before linking it (otherwise this will be a noop).
+    SrcModule->materializeMetadata();
+    UpgradeDebugInfo(*SrcModule);
 
     // Link in the specified functions.
     if (TheLinker.linkInModule(std::move(SrcModule), Linker::Flags::None,
-                               &Index, &FunctionsToImport, TempMDVals.get()))
+                               &Index, &FunctionsToImport))
       report_fatal_error("Function Import: link error");
 
     ImportedCount += FunctionsToImport.size();
-  }
-
-  // Now link in metadata for all modules from which we imported functions.
-  for (StringMapEntry<std::unique_ptr<DenseMap<unsigned, MDNode *>>> &SME :
-       ModuleToTempMDValsMap) {
-    // Load the specified source module.
-    auto &SrcModule = ModuleLoaderCache(SME.getKey());
-    // The modules were created with lazy metadata loading. Materialize it
-    // now, before linking it.
-    SrcModule.materializeMetadata();
-    UpgradeDebugInfo(SrcModule);
-
-    // Link in all necessary metadata from this module.
-    if (TheLinker.linkInMetadata(SrcModule, SME.getValue().get()))
-      return false;
   }
 
   DEBUG(dbgs() << "Imported " << ImportedCount << " functions for Module "
@@ -355,11 +374,11 @@ static void diagnosticHandler(const DiagnosticInfo &DI) {
   OS << '\n';
 }
 
-/// Parse the function index out of an IR file and return the function
+/// Parse the summary index out of an IR file and return the summary
 /// index object if found, or nullptr if not.
-static std::unique_ptr<FunctionInfoIndex>
-getFunctionIndexForFile(StringRef Path, std::string &Error,
-                        DiagnosticHandlerFunction DiagnosticHandler) {
+static std::unique_ptr<ModuleSummaryIndex>
+getModuleSummaryIndexForFile(StringRef Path, std::string &Error,
+                             DiagnosticHandlerFunction DiagnosticHandler) {
   std::unique_ptr<MemoryBuffer> Buffer;
   ErrorOr<std::unique_ptr<MemoryBuffer>> BufferOrErr =
       MemoryBuffer::getFile(Path);
@@ -368,9 +387,9 @@ getFunctionIndexForFile(StringRef Path, std::string &Error,
     return nullptr;
   }
   Buffer = std::move(BufferOrErr.get());
-  ErrorOr<std::unique_ptr<object::FunctionIndexObjectFile>> ObjOrErr =
-      object::FunctionIndexObjectFile::create(Buffer->getMemBufferRef(),
-                                              DiagnosticHandler);
+  ErrorOr<std::unique_ptr<object::ModuleSummaryIndexObjectFile>> ObjOrErr =
+      object::ModuleSummaryIndexObjectFile::create(Buffer->getMemBufferRef(),
+                                                   DiagnosticHandler);
   if (std::error_code EC = ObjOrErr.getError()) {
     Error = EC.message();
     return nullptr;
@@ -381,9 +400,9 @@ getFunctionIndexForFile(StringRef Path, std::string &Error,
 namespace {
 /// Pass that performs cross-module function import provided a summary file.
 class FunctionImportPass : public ModulePass {
-  /// Optional function summary index to use for importing, otherwise
+  /// Optional module summary index to use for importing, otherwise
   /// the summary-file option must be specified.
-  const FunctionInfoIndex *Index;
+  const ModuleSummaryIndex *Index;
 
 public:
   /// Pass identification, replacement for typeid
@@ -394,19 +413,20 @@ public:
     return "Function Importing";
   }
 
-  explicit FunctionImportPass(const FunctionInfoIndex *Index = nullptr)
+  explicit FunctionImportPass(const ModuleSummaryIndex *Index = nullptr)
       : ModulePass(ID), Index(Index) {}
 
   bool runOnModule(Module &M) override {
     if (SummaryFile.empty() && !Index)
       report_fatal_error("error: -function-import requires -summary-file or "
                          "file from frontend\n");
-    std::unique_ptr<FunctionInfoIndex> IndexPtr;
+    std::unique_ptr<ModuleSummaryIndex> IndexPtr;
     if (!SummaryFile.empty()) {
       if (Index)
         report_fatal_error("error: -summary-file and index from frontend\n");
       std::string Error;
-      IndexPtr = getFunctionIndexForFile(SummaryFile, Error, diagnosticHandler);
+      IndexPtr =
+          getModuleSummaryIndexForFile(SummaryFile, Error, diagnosticHandler);
       if (!IndexPtr) {
         errs() << "Error loading file '" << SummaryFile << "': " << Error
                << "\n";
@@ -417,7 +437,7 @@ public:
 
     // First we need to promote to global scope and rename any local values that
     // are potentially exported to other modules.
-    if (renameModuleForThinLTO(M, Index)) {
+    if (renameModuleForThinLTO(M, *Index)) {
       errs() << "Error renaming module\n";
       return false;
     }
@@ -439,7 +459,7 @@ INITIALIZE_PASS_END(FunctionImportPass, "function-import",
                     "Summary Based Function Import", false, false)
 
 namespace llvm {
-Pass *createFunctionImportPass(const FunctionInfoIndex *Index = nullptr) {
+Pass *createFunctionImportPass(const ModuleSummaryIndex *Index = nullptr) {
   return new FunctionImportPass(Index);
 }
 }

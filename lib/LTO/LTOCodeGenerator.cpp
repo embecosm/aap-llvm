@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/LTO/LTOCodeGenerator.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
@@ -64,9 +65,22 @@ const char* LTOCodeGenerator::getVersionString() {
 #endif
 }
 
+namespace llvm {
+cl::opt<bool> LTODiscardValueNames(
+    "lto-discard-value-names",
+    cl::desc("Strip names from Value during LTO (other than GlobalValue)."),
+#ifdef NDEBUG
+    cl::init(true),
+#else
+    cl::init(false),
+#endif
+    cl::Hidden);
+}
+
 LTOCodeGenerator::LTOCodeGenerator(LLVMContext &Context)
     : Context(Context), MergedModule(new Module("ld-temp.o", Context)),
       TheLinker(new Linker(*MergedModule)) {
+  Context.setDiscardValueNames(LTODiscardValueNames);
   initializeLTOPasses();
 }
 
@@ -92,12 +106,12 @@ void LTOCodeGenerator::initializeLTOPasses() {
   initializeSROALegacyPassPass(R);
   initializeSROA_DTPass(R);
   initializeSROA_SSAUpPass(R);
-  initializePostOrderFunctionAttrsPass(R);
+  initializePostOrderFunctionAttrsLegacyPassPass(R);
   initializeReversePostOrderFunctionAttrsPass(R);
   initializeGlobalsAAWrapperPassPass(R);
   initializeLICMPass(R);
   initializeMergedLoadStoreMotionPass(R);
-  initializeGVNPass(R);
+  initializeGVNLegacyPassPass(R);
   initializeMemCpyOptPass(R);
   initializeDCEPass(R);
   initializeCFGSimplifyPassPass(R);
@@ -552,6 +566,10 @@ bool LTOCodeGenerator::compileOptimized(ArrayRef<raw_pwrite_stream *> Out) {
       splitCodeGen(std::move(MergedModule), Out, MCpu, FeatureStr, Options,
                    RelocModel, CodeModel::Default, CGOptLevel, FileType,
                    ShouldRestoreGlobalsLinkage);
+
+  // If statistics were requested, print them out after codegen.
+  if (llvm::AreStatisticsEnabled())
+    llvm::PrintStatistics();
 
   return true;
 }

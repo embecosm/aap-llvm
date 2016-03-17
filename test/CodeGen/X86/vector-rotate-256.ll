@@ -498,42 +498,34 @@ define <8 x i32> @constant_rotate_v8i32(<8 x i32> %a) nounwind {
   ret <8 x i32> %or
 }
 
-define <16 x i16> @constant_rotate_v8i16(<16 x i16> %a) nounwind {
-; AVX1-LABEL: constant_rotate_v8i16:
+define <16 x i16> @constant_rotate_v16i16(<16 x i16> %a) nounwind {
+; AVX1-LABEL: constant_rotate_v16i16:
 ; AVX1:       # BB#0:
 ; AVX1-NEXT:    vpmullw {{.*}}(%rip), %xmm0, %xmm1
 ; AVX1-NEXT:    vextractf128 $1, %ymm0, %xmm2
 ; AVX1-NEXT:    vpmullw {{.*}}(%rip), %xmm2, %xmm3
 ; AVX1-NEXT:    vinsertf128 $1, %xmm3, %ymm1, %ymm1
 ; AVX1-NEXT:    vpsrlw $8, %xmm2, %xmm3
-; AVX1-NEXT:    vmovdqa {{.*#+}} xmm4 = [32896,28784,24672,20560,16448,12336,8224,4112]
-; AVX1-NEXT:    vpblendvb %xmm4, %xmm3, %xmm2, %xmm2
+; AVX1-NEXT:    vpblendw {{.*#+}} xmm2 = xmm3[0],xmm2[1,2,3,4,5,6,7]
 ; AVX1-NEXT:    vpsrlw $4, %xmm2, %xmm3
-; AVX1-NEXT:    vmovdqa {{.*#+}} xmm4 = [256,57568,49344,41120,32896,24672,16448,8224]
-; AVX1-NEXT:    vpblendvb %xmm4, %xmm3, %xmm2, %xmm2
+; AVX1-NEXT:    vpblendw {{.*#+}} xmm2 = xmm2[0],xmm3[1,2,3,4],xmm2[5,6,7]
 ; AVX1-NEXT:    vpsrlw $2, %xmm2, %xmm3
-; AVX1-NEXT:    vmovdqa {{.*#+}} xmm4 = [512,49600,33152,16704,256,49344,32896,16448]
-; AVX1-NEXT:    vpblendvb %xmm4, %xmm3, %xmm2, %xmm2
+; AVX1-NEXT:    vpblendw {{.*#+}} xmm2 = xmm2[0],xmm3[1,2],xmm2[3,4],xmm3[5,6],xmm2[7]
 ; AVX1-NEXT:    vpsrlw $1, %xmm2, %xmm3
-; AVX1-NEXT:    vmovdqa {{.*#+}} xmm4 = [1024,33664,768,33408,512,33152,256,32896]
-; AVX1-NEXT:    vpblendvb %xmm4, %xmm3, %xmm2, %xmm2
+; AVX1-NEXT:    vpblendw {{.*#+}} xmm2 = xmm2[0],xmm3[1],xmm2[2],xmm3[3],xmm2[4],xmm3[5],xmm2[6],xmm3[7]
 ; AVX1-NEXT:    vpsrlw $8, %xmm0, %xmm3
-; AVX1-NEXT:    vmovdqa {{.*#+}} xmm4 = [256,61680,57568,53456,49344,45232,41120,37008]
-; AVX1-NEXT:    vpblendvb %xmm4, %xmm3, %xmm0, %xmm0
+; AVX1-NEXT:    vpblendw {{.*#+}} xmm0 = xmm0[0],xmm3[1,2,3,4,5,6,7]
 ; AVX1-NEXT:    vpsrlw $4, %xmm0, %xmm3
-; AVX1-NEXT:    vmovdqa {{.*#+}} xmm4 = [512,57824,49600,41376,33152,24928,16704,8480]
-; AVX1-NEXT:    vpblendvb %xmm4, %xmm3, %xmm0, %xmm0
+; AVX1-NEXT:    vpblendw {{.*#+}} xmm0 = xmm0[0],xmm3[1,2,3,4],xmm0[5,6,7]
 ; AVX1-NEXT:    vpsrlw $2, %xmm0, %xmm3
-; AVX1-NEXT:    vmovdqa {{.*#+}} xmm4 = [1024,50112,33664,17216,768,49856,33408,16960]
-; AVX1-NEXT:    vpblendvb %xmm4, %xmm3, %xmm0, %xmm0
+; AVX1-NEXT:    vpblendw {{.*#+}} xmm0 = xmm0[0],xmm3[1,2],xmm0[3,4],xmm3[5,6],xmm0[7]
 ; AVX1-NEXT:    vpsrlw $1, %xmm0, %xmm3
-; AVX1-NEXT:    vmovdqa {{.*#+}} xmm4 = [2048,34688,1792,34432,1536,34176,1280,33920]
-; AVX1-NEXT:    vpblendvb %xmm4, %xmm3, %xmm0, %xmm0
+; AVX1-NEXT:    vpblendw {{.*#+}} xmm0 = xmm0[0],xmm3[1],xmm0[2],xmm3[3],xmm0[4],xmm3[5],xmm0[6],xmm3[7]
 ; AVX1-NEXT:    vinsertf128 $1, %xmm2, %ymm0, %ymm0
 ; AVX1-NEXT:    vorps %ymm0, %ymm1, %ymm0
 ; AVX1-NEXT:    retq
 ;
-; AVX2-LABEL: constant_rotate_v8i16:
+; AVX2-LABEL: constant_rotate_v16i16:
 ; AVX2:       # BB#0:
 ; AVX2-NEXT:    vpmullw {{.*}}(%rip), %ymm0, %ymm1
 ; AVX2-NEXT:    vpxor %ymm2, %ymm2, %ymm2
@@ -550,7 +542,7 @@ define <16 x i16> @constant_rotate_v8i16(<16 x i16> %a) nounwind {
 ; AVX2-NEXT:    vpor %ymm0, %ymm1, %ymm0
 ; AVX2-NEXT:    retq
 ;
-; XOPAVX1-LABEL: constant_rotate_v8i16:
+; XOPAVX1-LABEL: constant_rotate_v16i16:
 ; XOPAVX1:       # BB#0:
 ; XOPAVX1-NEXT:    vpshlw {{.*}}(%rip), %xmm0, %xmm1
 ; XOPAVX1-NEXT:    vextractf128 $1, %ymm0, %xmm2
@@ -565,7 +557,7 @@ define <16 x i16> @constant_rotate_v8i16(<16 x i16> %a) nounwind {
 ; XOPAVX1-NEXT:    vorps %ymm0, %ymm1, %ymm0
 ; XOPAVX1-NEXT:    retq
 ;
-; XOPAVX2-LABEL: constant_rotate_v8i16:
+; XOPAVX2-LABEL: constant_rotate_v16i16:
 ; XOPAVX2:       # BB#0:
 ; XOPAVX2-NEXT:    vpmullw {{.*}}(%rip), %ymm0, %ymm1
 ; XOPAVX2-NEXT:    vpxor %xmm2, %xmm2, %xmm2

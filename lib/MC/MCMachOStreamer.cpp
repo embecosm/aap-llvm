@@ -23,6 +23,7 @@
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCSymbolMachO.h"
+#include "llvm/MC/MCValue.h"
 #include "llvm/Support/Dwarf.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -70,6 +71,7 @@ public:
 
   void ChangeSection(MCSection *Sect, const MCExpr *Subsect) override;
   void EmitLabel(MCSymbol *Symbol) override;
+  void EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) override;
   void EmitEHSymAttributes(const MCSymbol *Symbol, MCSymbol *EHSymbol) override;
   void EmitAssemblerFlag(MCAssemblerFlag Flag) override;
   void EmitLinkerOptions(ArrayRef<std::string> Options) override;
@@ -196,6 +198,19 @@ void MCMachOStreamer::EmitLabel(MCSymbol *Symbol) {
   // FIXME: Cleanup this code, these bits should be emitted based on semantic
   // properties, not on the order of definition, etc.
   cast<MCSymbolMachO>(Symbol)->clearReferenceType();
+}
+
+void MCMachOStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
+  MCValue Res;
+
+  if (Value->evaluateAsRelocatable(Res, nullptr, nullptr)) {
+    if (const MCSymbolRefExpr *SymAExpr = Res.getSymA()) {
+      const MCSymbol &SymA = SymAExpr->getSymbol();
+      if (!Res.getSymB() && (SymA.getName() == "" || Res.getConstant() != 0))
+        cast<MCSymbolMachO>(Symbol)->setAltEntry();
+    }
+  }
+  MCObjectStreamer::EmitAssignment(Symbol, Value);
 }
 
 void MCMachOStreamer::EmitDataRegion(DataRegionData::KindTy Kind) {
@@ -346,6 +361,10 @@ bool MCMachOStreamer::EmitSymbolAttribute(MCSymbol *Sym,
     Symbol->setSymbolResolver();
     break;
 
+  case MCSA_AltEntry:
+    Symbol->setAltEntry();
+    break;
+
   case MCSA_PrivateExtern:
     Symbol->setExternal(true);
     Symbol->setPrivateExtern(true);
@@ -414,7 +433,7 @@ void MCMachOStreamer::EmitZerofill(MCSection *Section, MCSymbol *Symbol,
   if (ByteAlignment != 1)
     new MCAlignFragment(ByteAlignment, 0, 0, ByteAlignment, Section);
 
-  MCFragment *F = new MCFillFragment(0, 0, Size, Section);
+  MCFragment *F = new MCFillFragment(0, Size, Section);
   Symbol->setFragment(F);
 
   // Update the maximum alignment on the zero fill section if necessary.
@@ -427,7 +446,6 @@ void MCMachOStreamer::EmitZerofill(MCSection *Section, MCSymbol *Symbol,
 void MCMachOStreamer::EmitTBSSSymbol(MCSection *Section, MCSymbol *Symbol,
                                      uint64_t Size, unsigned ByteAlignment) {
   EmitZerofill(Section, Symbol, Size, ByteAlignment);
-  return;
 }
 
 void MCMachOStreamer::EmitInstToData(const MCInst &Inst,

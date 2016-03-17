@@ -21,6 +21,7 @@
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/CodeGen/BasicTTIImpl.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Target/CostTable.h"
 #include "llvm/Target/TargetLowering.h"
@@ -115,6 +116,9 @@ static bool isIntrinsicSourceOfDivergence(const TargetIntrinsicInfo *TII,
     // IntrinsicsAMDGPU.td
     break;
 
+  case Intrinsic::amdgcn_workitem_id_x:
+  case Intrinsic::amdgcn_workitem_id_y:
+  case Intrinsic::amdgcn_workitem_id_z:
   case Intrinsic::amdgcn_interp_p1:
   case Intrinsic::amdgcn_interp_p2:
   case Intrinsic::amdgcn_mbcnt_hi:
@@ -122,6 +126,19 @@ static bool isIntrinsicSourceOfDivergence(const TargetIntrinsicInfo *TII,
   case Intrinsic::r600_read_tidig_x:
   case Intrinsic::r600_read_tidig_y:
   case Intrinsic::r600_read_tidig_z:
+  case Intrinsic::amdgcn_image_atomic_swap:
+  case Intrinsic::amdgcn_image_atomic_add:
+  case Intrinsic::amdgcn_image_atomic_sub:
+  case Intrinsic::amdgcn_image_atomic_smin:
+  case Intrinsic::amdgcn_image_atomic_umin:
+  case Intrinsic::amdgcn_image_atomic_smax:
+  case Intrinsic::amdgcn_image_atomic_umax:
+  case Intrinsic::amdgcn_image_atomic_and:
+  case Intrinsic::amdgcn_image_atomic_or:
+  case Intrinsic::amdgcn_image_atomic_xor:
+  case Intrinsic::amdgcn_image_atomic_inc:
+  case Intrinsic::amdgcn_image_atomic_dec:
+  case Intrinsic::amdgcn_image_atomic_cmpswap:
     return true;
   }
 

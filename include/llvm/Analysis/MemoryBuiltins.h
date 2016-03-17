@@ -159,15 +159,15 @@ public:
 
   SizeOffsetType compute(Value *V);
 
-  bool knownSize(SizeOffsetType &SizeOffset) {
+  static bool knownSize(const SizeOffsetType &SizeOffset) {
     return SizeOffset.first.getBitWidth() > 1;
   }
 
-  bool knownOffset(SizeOffsetType &SizeOffset) {
+  static bool knownOffset(const SizeOffsetType &SizeOffset) {
     return SizeOffset.second.getBitWidth() > 1;
   }
 
-  bool bothKnown(SizeOffsetType &SizeOffset) {
+  static bool bothKnown(const SizeOffsetType &SizeOffset) {
     return knownSize(SizeOffset) && knownOffset(SizeOffset);
   }
 
@@ -198,7 +198,7 @@ typedef std::pair<Value*, Value*> SizeOffsetEvalType;
 class ObjectSizeOffsetEvaluator
   : public InstVisitor<ObjectSizeOffsetEvaluator, SizeOffsetEvalType> {
 
-  typedef IRBuilder<true, TargetFolder> BuilderTy;
+  typedef IRBuilder<TargetFolder> BuilderTy;
   typedef std::pair<WeakVH, WeakVH> WeakEvalType;
   typedef DenseMap<const Value*, WeakEvalType> CacheMapTy;
   typedef SmallPtrSet<const Value*, 8> PtrSetTy;

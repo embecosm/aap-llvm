@@ -19,6 +19,7 @@
 #include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/LoopPass.h"
+#include "llvm/Analysis/LoopUnrollAnalyzer.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
@@ -31,6 +32,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/UnrollLoop.h"
 #include <climits>
 
@@ -169,245 +171,6 @@ static TargetTransformInfo::UnrollingPreferences gatherUnrollingPreferences(
 }
 
 namespace {
-// This class is used to get an estimate of the optimization effects that we
-// could get from complete loop unrolling. It comes from the fact that some
-// loads might be replaced with concrete constant values and that could trigger
-// a chain of instruction simplifications.
-//
-// E.g. we might have:
-//   int a[] = {0, 1, 0};
-//   v = 0;
-//   for (i = 0; i < 3; i ++)
-//     v += b[i]*a[i];
-// If we completely unroll the loop, we would get:
-//   v = b[0]*a[0] + b[1]*a[1] + b[2]*a[2]
-// Which then will be simplified to:
-//   v = b[0]* 0 + b[1]* 1 + b[2]* 0
-// And finally:
-//   v = b[1]
-class UnrolledInstAnalyzer : private InstVisitor<UnrolledInstAnalyzer, bool> {
-  typedef InstVisitor<UnrolledInstAnalyzer, bool> Base;
-  friend class InstVisitor<UnrolledInstAnalyzer, bool>;
-  struct SimplifiedAddress {
-    Value *Base = nullptr;
-    ConstantInt *Offset = nullptr;
-  };
-
-public:
-  UnrolledInstAnalyzer(unsigned Iteration,
-                       DenseMap<Value *, Constant *> &SimplifiedValues,
-                       ScalarEvolution &SE)
-      : SimplifiedValues(SimplifiedValues), SE(SE) {
-      IterationNumber = SE.getConstant(APInt(64, Iteration));
-  }
-
-  // Allow access to the initial visit method.
-  using Base::visit;
-
-private:
-  /// \brief A cache of pointer bases and constant-folded offsets corresponding
-  /// to GEP (or derived from GEP) instructions.
-  ///
-  /// In order to find the base pointer one needs to perform non-trivial
-  /// traversal of the corresponding SCEV expression, so it's good to have the
-  /// results saved.
-  DenseMap<Value *, SimplifiedAddress> SimplifiedAddresses;
-
-  /// \brief SCEV expression corresponding to number of currently simulated
-  /// iteration.
-  const SCEV *IterationNumber;
-
-  /// \brief A Value->Constant map for keeping values that we managed to
-  /// constant-fold on the given iteration.
-  ///
-  /// While we walk the loop instructions, we build up and maintain a mapping
-  /// of simplified values specific to this iteration.  The idea is to propagate
-  /// any special information we have about loads that can be replaced with
-  /// constants after complete unrolling, and account for likely simplifications
-  /// post-unrolling.
-  DenseMap<Value *, Constant *> &SimplifiedValues;
-
-  ScalarEvolution &SE;
-
-  /// \brief Try to simplify instruction \param I using its SCEV expression.
-  ///
-  /// The idea is that some AddRec expressions become constants, which then
-  /// could trigger folding of other instructions. However, that only happens
-  /// for expressions whose start value is also constant, which isn't always the
-  /// case. In another common and important case the start value is just some
-  /// address (i.e. SCEVUnknown) - in this case we compute the offset and save
-  /// it along with the base address instead.
-  bool simplifyInstWithSCEV(Instruction *I) {
-    if (!SE.isSCEVable(I->getType()))
-      return false;
-
-    const SCEV *S = SE.getSCEV(I);
-    if (auto *SC = dyn_cast<SCEVConstant>(S)) {
-      SimplifiedValues[I] = SC->getValue();
-      return true;
-    }
-
-    auto *AR = dyn_cast<SCEVAddRecExpr>(S);
-    if (!AR)
-      return false;
-
-    const SCEV *ValueAtIteration = AR->evaluateAtIteration(IterationNumber, SE);
-    // Check if the AddRec expression becomes a constant.
-    if (auto *SC = dyn_cast<SCEVConstant>(ValueAtIteration)) {
-      SimplifiedValues[I] = SC->getValue();
-      return true;
-    }
-
-    // Check if the offset from the base address becomes a constant.
-    auto *Base = dyn_cast<SCEVUnknown>(SE.getPointerBase(S));
-    if (!Base)
-      return false;
-    auto *Offset =
-        dyn_cast<SCEVConstant>(SE.getMinusSCEV(ValueAtIteration, Base));
-    if (!Offset)
-      return false;
-    SimplifiedAddress Address;
-    Address.Base = Base->getValue();
-    Address.Offset = Offset->getValue();
-    SimplifiedAddresses[I] = Address;
-    return true;
-  }
-
-  /// Base case for the instruction visitor.
-  bool visitInstruction(Instruction &I) {
-    return simplifyInstWithSCEV(&I);
-  }
-
-  /// Try to simplify binary operator I.
-  ///
-  /// TODO: Probably it's worth to hoist the code for estimating the
-  /// simplifications effects to a separate class, since we have a very similar
-  /// code in InlineCost already.
-  bool visitBinaryOperator(BinaryOperator &I) {
-    Value *LHS = I.getOperand(0), *RHS = I.getOperand(1);
-    if (!isa<Constant>(LHS))
-      if (Constant *SimpleLHS = SimplifiedValues.lookup(LHS))
-        LHS = SimpleLHS;
-    if (!isa<Constant>(RHS))
-      if (Constant *SimpleRHS = SimplifiedValues.lookup(RHS))
-        RHS = SimpleRHS;
-
-    Value *SimpleV = nullptr;
-    const DataLayout &DL = I.getModule()->getDataLayout();
-    if (auto FI = dyn_cast<FPMathOperator>(&I))
-      SimpleV =
-          SimplifyFPBinOp(I.getOpcode(), LHS, RHS, FI->getFastMathFlags(), DL);
-    else
-      SimpleV = SimplifyBinOp(I.getOpcode(), LHS, RHS, DL);
-
-    if (Constant *C = dyn_cast_or_null<Constant>(SimpleV))
-      SimplifiedValues[&I] = C;
-
-    if (SimpleV)
-      return true;
-    return Base::visitBinaryOperator(I);
-  }
-
-  /// Try to fold load I.
-  bool visitLoad(LoadInst &I) {
-    Value *AddrOp = I.getPointerOperand();
-
-    auto AddressIt = SimplifiedAddresses.find(AddrOp);
-    if (AddressIt == SimplifiedAddresses.end())
-      return false;
-    ConstantInt *SimplifiedAddrOp = AddressIt->second.Offset;
-
-    auto *GV = dyn_cast<GlobalVariable>(AddressIt->second.Base);
-    // We're only interested in loads that can be completely folded to a
-    // constant.
-    if (!GV || !GV->hasDefinitiveInitializer() || !GV->isConstant())
-      return false;
-
-    ConstantDataSequential *CDS =
-        dyn_cast<ConstantDataSequential>(GV->getInitializer());
-    if (!CDS)
-      return false;
-
-    // We might have a vector load from an array. FIXME: for now we just bail
-    // out in this case, but we should be able to resolve and simplify such
-    // loads.
-    if(!CDS->isElementTypeCompatible(I.getType()))
-      return false;
-
-    int ElemSize = CDS->getElementType()->getPrimitiveSizeInBits() / 8U;
-    assert(SimplifiedAddrOp->getValue().getActiveBits() < 64 &&
-           "Unexpectedly large index value.");
-    int64_t Index = SimplifiedAddrOp->getSExtValue() / ElemSize;
-    if (Index >= CDS->getNumElements()) {
-      // FIXME: For now we conservatively ignore out of bound accesses, but
-      // we're allowed to perform the optimization in this case.
-      return false;
-    }
-
-    Constant *CV = CDS->getElementAsConstant(Index);
-    assert(CV && "Constant expected.");
-    SimplifiedValues[&I] = CV;
-
-    return true;
-  }
-
-  bool visitCastInst(CastInst &I) {
-    // Propagate constants through casts.
-    Constant *COp = dyn_cast<Constant>(I.getOperand(0));
-    if (!COp)
-      COp = SimplifiedValues.lookup(I.getOperand(0));
-    if (COp)
-      if (Constant *C =
-              ConstantExpr::getCast(I.getOpcode(), COp, I.getType())) {
-        SimplifiedValues[&I] = C;
-        return true;
-      }
-
-    return Base::visitCastInst(I);
-  }
-
-  bool visitCmpInst(CmpInst &I) {
-    Value *LHS = I.getOperand(0), *RHS = I.getOperand(1);
-
-    // First try to handle simplified comparisons.
-    if (!isa<Constant>(LHS))
-      if (Constant *SimpleLHS = SimplifiedValues.lookup(LHS))
-        LHS = SimpleLHS;
-    if (!isa<Constant>(RHS))
-      if (Constant *SimpleRHS = SimplifiedValues.lookup(RHS))
-        RHS = SimpleRHS;
-
-    if (!isa<Constant>(LHS) && !isa<Constant>(RHS)) {
-      auto SimplifiedLHS = SimplifiedAddresses.find(LHS);
-      if (SimplifiedLHS != SimplifiedAddresses.end()) {
-        auto SimplifiedRHS = SimplifiedAddresses.find(RHS);
-        if (SimplifiedRHS != SimplifiedAddresses.end()) {
-          SimplifiedAddress &LHSAddr = SimplifiedLHS->second;
-          SimplifiedAddress &RHSAddr = SimplifiedRHS->second;
-          if (LHSAddr.Base == RHSAddr.Base) {
-            LHS = LHSAddr.Offset;
-            RHS = RHSAddr.Offset;
-          }
-        }
-      }
-    }
-
-    if (Constant *CLHS = dyn_cast<Constant>(LHS)) {
-      if (Constant *CRHS = dyn_cast<Constant>(RHS)) {
-        if (Constant *C = ConstantExpr::getCompare(I.getPredicate(), CLHS, CRHS)) {
-          SimplifiedValues[&I] = C;
-          return true;
-        }
-      }
-    }
-
-    return Base::visitCmpInst(I);
-  }
-};
-} // namespace
-
-
-namespace {
 struct EstimatedUnrollCost {
   /// \brief The estimated cost after unrolling.
   int UnrolledCost;
@@ -502,7 +265,7 @@ analyzeLoopUnrollCost(const Loop *L, unsigned TripCount, DominatorTree &DT,
     while (!SimplifiedInputValues.empty())
       SimplifiedValues.insert(SimplifiedInputValues.pop_back_val());
 
-    UnrolledInstAnalyzer Analyzer(Iteration, SimplifiedValues, SE);
+    UnrolledInstAnalyzer Analyzer(Iteration, SimplifiedValues, SE, L);
 
     BBWorklist.clear();
     BBWorklist.insert(L->getHeader());
@@ -599,18 +362,18 @@ analyzeLoopUnrollCost(const Loop *L, unsigned TripCount, DominatorTree &DT,
 
 /// ApproximateLoopSize - Approximate the size of the loop.
 static unsigned ApproximateLoopSize(const Loop *L, unsigned &NumCalls,
-                                    bool &NotDuplicatable,
+                                    bool &NotDuplicatable, bool &Convergent,
                                     const TargetTransformInfo &TTI,
                                     AssumptionCache *AC) {
   SmallPtrSet<const Value *, 32> EphValues;
   CodeMetrics::collectEphemeralValues(L, AC, EphValues);
 
   CodeMetrics Metrics;
-  for (Loop::block_iterator I = L->block_begin(), E = L->block_end();
-       I != E; ++I)
-    Metrics.analyzeBasicBlock(*I, TTI, EphValues);
+  for (BasicBlock *BB : L->blocks())
+    Metrics.analyzeBasicBlock(BB, TTI, EphValues);
   NumCalls = Metrics.NumInlineCandidates;
   NotDuplicatable = Metrics.notDuplicatable;
+  Convergent = Metrics.convergent;
 
   unsigned LoopSize = Metrics.NumInsts;
 
@@ -805,16 +568,17 @@ static bool tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI,
     Count = TripCount;
 
   unsigned NumInlineCandidates;
-  bool notDuplicatable;
-  unsigned LoopSize =
-      ApproximateLoopSize(L, NumInlineCandidates, notDuplicatable, TTI, &AC);
+  bool NotDuplicatable;
+  bool Convergent;
+  unsigned LoopSize = ApproximateLoopSize(
+      L, NumInlineCandidates, NotDuplicatable, Convergent, TTI, &AC);
   DEBUG(dbgs() << "  Loop Size = " << LoopSize << "\n");
 
   // When computing the unrolled size, note that the conditional branch on the
   // backedge and the comparison feeding it are not replicated like the rest of
   // the loop body (which is why 2 is subtracted).
   uint64_t UnrolledSize = (uint64_t)(LoopSize-2) * Count + 2;
-  if (notDuplicatable) {
+  if (NotDuplicatable) {
     DEBUG(dbgs() << "  Not unrolling loop which contains non-duplicatable"
                  << " instructions.\n");
     return false;
@@ -861,6 +625,7 @@ static bool tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI,
   if (HasRuntimeUnrollDisablePragma(L) || PragmaFullUnroll) {
     AllowRuntime = false;
   }
+  bool DecreasedCountDueToConvergence = false;
   if (Unrolling == Partial) {
     bool AllowPartial = PragmaEnableUnroll || UP.Partial;
     if (!AllowPartial && !CountSetExplicitly) {
@@ -881,14 +646,40 @@ static bool tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI,
                    << "-unroll-runtime not given\n");
       return false;
     }
+
     // Reduce unroll count to be the largest power-of-two factor of
     // the original count which satisfies the threshold limit.
     while (Count != 0 && UnrolledSize > UP.PartialThreshold) {
       Count >>= 1;
       UnrolledSize = (LoopSize-2) * Count + 2;
     }
+
     if (Count > UP.MaxCount)
       Count = UP.MaxCount;
+
+    // If the loop contains a convergent operation, the prelude we'd add
+    // to do the first few instructions before we hit the unrolled loop
+    // is unsafe -- it adds a control-flow dependency to the convergent
+    // operation.  Therefore Count must divide TripMultiple.
+    //
+    // TODO: This is quite conservative.  In practice, convergent_op()
+    // is likely to be called unconditionally in the loop.  In this
+    // case, the program would be ill-formed (on most architectures)
+    // unless n were the same on all threads in a thread group.
+    // Assuming n is the same on all threads, any kind of unrolling is
+    // safe.  But currently llvm's notion of convergence isn't powerful
+    // enough to express this.
+    unsigned OrigCount = Count;
+    while (Convergent && Count != 0 && TripMultiple % Count != 0) {
+      DecreasedCountDueToConvergence = true;
+      Count >>= 1;
+    }
+    if (OrigCount > Count) {
+      DEBUG(dbgs() << "  loop contains a convergent instruction, so unroll "
+                      "count must divide the trip multiple, "
+                   << TripMultiple << ".  Reducing unroll count from "
+                   << OrigCount << " to " << Count << ".\n");
+    }
     DEBUG(dbgs() << "  partially unrolling with count: " << Count << "\n");
   }
 
@@ -903,7 +694,16 @@ static bool tryToUnrollLoop(Loop *L, DominatorTree &DT, LoopInfo *LI,
     DebugLoc LoopLoc = L->getStartLoc();
     Function *F = Header->getParent();
     LLVMContext &Ctx = F->getContext();
-    if ((PragmaCount > 0) && Count != OriginalCount) {
+    if (PragmaCount > 0 && DecreasedCountDueToConvergence) {
+      emitOptimizationRemarkMissed(
+          Ctx, DEBUG_TYPE, *F, LoopLoc,
+          Twine("Unable to unroll loop the number of times directed by "
+                "unroll_count pragma because the loop contains a convergent "
+                "instruction, and so must have an unroll count that divides "
+                "the loop trip multiple of ") +
+              Twine(TripMultiple) + ".  Unrolling instead " + Twine(Count) +
+              " time(s).");
+    } else if ((PragmaCount > 0) && Count != OriginalCount) {
       emitOptimizationRemarkMissed(
           Ctx, DEBUG_TYPE, *F, LoopLoc,
           "Unable to unroll loop the number of times directed by "
@@ -982,35 +782,19 @@ public:
   ///
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<AssumptionCacheTracker>();
-    AU.addRequired<DominatorTreeWrapperPass>();
-    AU.addRequired<LoopInfoWrapperPass>();
-    AU.addPreserved<LoopInfoWrapperPass>();
-    AU.addRequiredID(LoopSimplifyID);
-    AU.addPreservedID(LoopSimplifyID);
-    AU.addRequiredID(LCSSAID);
-    AU.addPreservedID(LCSSAID);
-    AU.addRequired<ScalarEvolutionWrapperPass>();
-    AU.addPreserved<ScalarEvolutionWrapperPass>();
     AU.addRequired<TargetTransformInfoWrapperPass>();
-    // FIXME: Loop unroll requires LCSSA. And LCSSA requires dom info.
-    // If loop unroll does not preserve dom info then LCSSA pass on next
-    // loop will receive invalid dom info.
-    // For now, recreate dom info, if loop is unrolled.
-    AU.addPreserved<DominatorTreeWrapperPass>();
-    AU.addPreserved<GlobalsAAWrapperPass>();
+    // FIXME: Loop passes are required to preserve domtree, and for now we just
+    // recreate dom info if anything gets unrolled.
+    getLoopAnalysisUsage(AU);
   }
 };
 }
 
 char LoopUnroll::ID = 0;
 INITIALIZE_PASS_BEGIN(LoopUnroll, "loop-unroll", "Unroll loops", false, false)
-INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
-INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(LoopSimplify)
-INITIALIZE_PASS_DEPENDENCY(LCSSA)
-INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(LoopPass)
+INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
 INITIALIZE_PASS_END(LoopUnroll, "loop-unroll", "Unroll loops", false, false)
 
 Pass *llvm::createLoopUnrollPass(int Threshold, int Count, int AllowPartial,

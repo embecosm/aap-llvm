@@ -261,7 +261,7 @@ bool SystemZInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
 
     // Working from the bottom, when we see a non-terminator instruction, we're
     // done.
-    if (!isUnpredicatedTerminator(I))
+    if (!isUnpredicatedTerminator(*I))
       break;
 
     // A terminator that isn't a branch can't easily be handled by this
@@ -506,8 +506,8 @@ static unsigned getConditionalMove(unsigned Opcode) {
   }
 }
 
-bool SystemZInstrInfo::isPredicable(MachineInstr *MI) const {
-  unsigned Opcode = MI->getOpcode();
+bool SystemZInstrInfo::isPredicable(MachineInstr &MI) const {
+  unsigned Opcode = MI.getOpcode();
   return STI.hasLoadStoreOnCond() && getConditionalMove(Opcode);
 }
 
@@ -529,19 +529,20 @@ isProfitableToIfCvt(MachineBasicBlock &TMBB,
   return false;
 }
 
-bool SystemZInstrInfo::
-PredicateInstruction(MachineInstr *MI, ArrayRef<MachineOperand> Pred) const {
+bool SystemZInstrInfo::PredicateInstruction(
+    MachineInstr &MI, ArrayRef<MachineOperand> Pred) const {
   assert(Pred.size() == 2 && "Invalid condition");
   unsigned CCValid = Pred[0].getImm();
   unsigned CCMask = Pred[1].getImm();
   assert(CCMask > 0 && CCMask < 15 && "Invalid predicate");
-  unsigned Opcode = MI->getOpcode();
+  unsigned Opcode = MI.getOpcode();
   if (STI.hasLoadStoreOnCond()) {
     if (unsigned CondOpcode = getConditionalMove(Opcode)) {
-      MI->setDesc(get(CondOpcode));
-      MachineInstrBuilder(*MI->getParent()->getParent(), MI)
-        .addImm(CCValid).addImm(CCMask)
-        .addReg(SystemZ::CC, RegState::Implicit);
+      MI.setDesc(get(CondOpcode));
+      MachineInstrBuilder(*MI.getParent()->getParent(), MI)
+          .addImm(CCValid)
+          .addImm(CCMask)
+          .addReg(SystemZ::CC, RegState::Implicit);
       return true;
     }
   }
@@ -571,7 +572,8 @@ void SystemZInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   if (SystemZ::GR64BitRegClass.contains(DestReg, SrcReg))
     Opcode = SystemZ::LGR;
   else if (SystemZ::FP32BitRegClass.contains(DestReg, SrcReg))
-    Opcode = SystemZ::LER;
+    // For z13 we prefer LDR over LER to avoid partial register dependencies.
+    Opcode = STI.hasVector() ? SystemZ::LDR32 : SystemZ::LER;
   else if (SystemZ::FP64BitRegClass.contains(DestReg, SrcReg))
     Opcode = SystemZ::LDR;
   else if (SystemZ::FP128BitRegClass.contains(DestReg, SrcReg))

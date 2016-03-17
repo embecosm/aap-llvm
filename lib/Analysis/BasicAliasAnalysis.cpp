@@ -37,16 +37,17 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <algorithm>
+
+#define DEBUG_TYPE "basicaa"
+
 using namespace llvm;
 
 /// Enable analysis of recursive PHI nodes.
 static cl::opt<bool> EnableRecPhiAnalysis("basicaa-recphi", cl::Hidden,
                                           cl::init(false));
-
 /// SearchLimitReached / SearchTimes shows how often the limit of
 /// to decompose GEPs is reached. It will affect the precision
 /// of basic alias analysis.
-#define DEBUG_TYPE "basicaa"
 STATISTIC(SearchLimitReached, "Number of times the limit to "
                               "decompose GEPs is reached");
 STATISTIC(SearchTimes, "Number of times a GEP is decomposed");
@@ -319,6 +320,16 @@ static bool isObjectSize(const Value *V, uint64_t Size, const DataLayout &DL,
   return V;
 }
 
+/// To ensure a pointer offset fits in an integer of size PointerSize
+/// (in bits) when that size is smaller than 64. This is an issue in
+/// particular for 32b programs with negative indices that rely on two's
+/// complement wrap-arounds for precise alias information.
+static int64_t adjustToPointerSize(int64_t Offset, unsigned PointerSize) {
+  assert(PointerSize <= 64 && "Invalid PointerSize!");
+  unsigned ShiftBits = 64 - PointerSize;
+  return (int64_t)((uint64_t)Offset << ShiftBits) >> ShiftBits;
+}
+
 /// If V is a symbolic pointer expression, decompose it into a base pointer
 /// with a constant offset and a number of scaled symbolic offsets.
 ///
@@ -381,12 +392,13 @@ static bool isObjectSize(const Value *V, uint64_t Size, const DataLayout &DL,
     }
 
     // Don't attempt to analyze GEPs over unsized objects.
-    if (!GEPOp->getOperand(0)->getType()->getPointerElementType()->isSized())
+    if (!GEPOp->getSourceElementType()->isSized())
       return V;
 
     unsigned AS = GEPOp->getPointerAddressSpace();
     // Walk the indices of the GEP, accumulating them into BaseOff/VarIndices.
     gep_type_iterator GTI = gep_type_begin(GEPOp);
+    unsigned PointerSize = DL.getPointerSizeInBits(AS);
     for (User::const_op_iterator I = GEPOp->op_begin() + 1, E = GEPOp->op_end();
          I != E; ++I) {
       const Value *Index = *I;
@@ -415,7 +427,6 @@ static bool isObjectSize(const Value *V, uint64_t Size, const DataLayout &DL,
       // If the integer type is smaller than the pointer size, it is implicitly
       // sign extended to pointer size.
       unsigned Width = Index->getType()->getIntegerBitWidth();
-      unsigned PointerSize = DL.getPointerSizeInBits(AS);
       if (PointerSize > Width)
         SExtBits += PointerSize - Width;
 
@@ -445,10 +456,7 @@ static bool isObjectSize(const Value *V, uint64_t Size, const DataLayout &DL,
 
       // Make sure that we have a scale that makes sense for this target's
       // pointer size.
-      if (unsigned ShiftBits = 64 - PointerSize) {
-        Scale <<= ShiftBits;
-        Scale = (int64_t)Scale >> ShiftBits;
-      }
+      Scale = adjustToPointerSize(Scale, PointerSize);
 
       if (Scale) {
         VariableGEPIndex Entry = {Index, ZExtBits, SExtBits,
@@ -456,6 +464,9 @@ static bool isObjectSize(const Value *V, uint64_t Size, const DataLayout &DL,
         VarIndices.push_back(Entry);
       }
     }
+
+    // Take care of wrap-arounds
+    BaseOffs = adjustToPointerSize(BaseOffs, PointerSize);
 
     // Analyze the base pointer next.
     V = GEPOp->getOperand(0);
@@ -562,8 +573,15 @@ FunctionModRefBehavior BasicAAResult::getModRefBehavior(ImmutableCallSite CS) {
   if (CS.onlyAccessesArgMemory())
     Min = FunctionModRefBehavior(Min & FMRB_OnlyAccessesArgumentPointees);
 
-  // The AAResultBase base class has some smarts, lets use them.
-  return FunctionModRefBehavior(AAResultBase::getModRefBehavior(CS) & Min);
+  // If CS has operand bundles then aliasing attributes from the function it
+  // calls do not directly apply to the CallSite.  This can be made more
+  // precise in the future.
+  if (!CS.hasOperandBundles())
+    if (const Function *F = CS.getCalledFunction())
+      Min =
+          FunctionModRefBehavior(Min & getBestAAResults().getModRefBehavior(F));
+
+  return Min;
 }
 
 /// Returns the behavior when calling the given function. For use when the call
@@ -582,8 +600,7 @@ FunctionModRefBehavior BasicAAResult::getModRefBehavior(const Function *F) {
   if (F->onlyAccessesArgMemory())
     Min = FunctionModRefBehavior(Min & FMRB_OnlyAccessesArgumentPointees);
 
-  // Otherwise be conservative.
-  return FunctionModRefBehavior(AAResultBase::getModRefBehavior(F) & Min);
+  return Min;
 }
 
 /// Returns true if this is a writeonly (i.e Mod only) parameter.  Currently,
@@ -740,6 +757,20 @@ ModRefInfo BasicAAResult::getModRefInfo(ImmutableCallSite CS,
     }
 
     if (!PassedAsArg)
+      return MRI_NoModRef;
+  }
+
+  // If the CallSite is to malloc or calloc, we can assume that it doesn't
+  // modify any IR visible value.  This is only valid because we assume these
+  // routines do not read values visible in the IR.  TODO: Consider special
+  // casing realloc and strdup routines which access only their arguments as
+  // well.  Or alternatively, replace all of this with inaccessiblememonly once
+  // that's implemented fully. 
+  auto *Inst = CS.getInstruction();
+  if (isMallocLikeFn(Inst, &TLI) || isCallocLikeFn(Inst, &TLI)) {
+    // Be conservative if the accessed pointer may alias the allocation -
+    // fallback to the generic handling below.
+    if (getBestAAResults().alias(MemoryLocation(Inst), Loc) == NoAlias)
       return MRI_NoModRef;
   }
 
@@ -1543,7 +1574,8 @@ bool BasicAAResult::constantOffsetHeuristic(
   unsigned V0ZExtBits = 0, V0SExtBits = 0, V1ZExtBits = 0, V1SExtBits = 0;
   const Value *V0 = GetLinearExpression(Var0.V, V0Scale, V0Offset, V0ZExtBits,
                                         V0SExtBits, DL, 0, AC, DT, NSW, NUW);
-  NSW = true, NUW = true;
+  NSW = true;
+  NUW = true;
   const Value *V1 = GetLinearExpression(Var1.V, V1Scale, V1Offset, V1ZExtBits,
                                         V1SExtBits, DL, 0, AC, DT, NSW, NUW);
 
@@ -1576,12 +1608,12 @@ bool BasicAAResult::constantOffsetHeuristic(
 
 char BasicAA::PassID;
 
-BasicAAResult BasicAA::run(Function &F, AnalysisManager<Function> *AM) {
+BasicAAResult BasicAA::run(Function &F, AnalysisManager<Function> &AM) {
   return BasicAAResult(F.getParent()->getDataLayout(),
-                       AM->getResult<TargetLibraryAnalysis>(F),
-                       AM->getResult<AssumptionAnalysis>(F),
-                       AM->getCachedResult<DominatorTreeAnalysis>(F),
-                       AM->getCachedResult<LoopAnalysis>(F));
+                       AM.getResult<TargetLibraryAnalysis>(F),
+                       AM.getResult<AssumptionAnalysis>(F),
+                       &AM.getResult<DominatorTreeAnalysis>(F),
+                       AM.getCachedResult<LoopAnalysis>(F));
 }
 
 BasicAAWrapperPass::BasicAAWrapperPass() : FunctionPass(ID) {
@@ -1594,6 +1626,7 @@ void BasicAAWrapperPass::anchor() {}
 INITIALIZE_PASS_BEGIN(BasicAAWrapperPass, "basicaa",
                       "Basic Alias Analysis (stateless AA impl)", true, true)
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
+INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
 INITIALIZE_PASS_END(BasicAAWrapperPass, "basicaa",
                     "Basic Alias Analysis (stateless AA impl)", true, true)
@@ -1605,12 +1638,11 @@ FunctionPass *llvm::createBasicAAWrapperPass() {
 bool BasicAAWrapperPass::runOnFunction(Function &F) {
   auto &ACT = getAnalysis<AssumptionCacheTracker>();
   auto &TLIWP = getAnalysis<TargetLibraryInfoWrapperPass>();
-  auto *DTWP = getAnalysisIfAvailable<DominatorTreeWrapperPass>();
+  auto &DTWP = getAnalysis<DominatorTreeWrapperPass>();
   auto *LIWP = getAnalysisIfAvailable<LoopInfoWrapperPass>();
 
   Result.reset(new BasicAAResult(F.getParent()->getDataLayout(), TLIWP.getTLI(),
-                                 ACT.getAssumptionCache(F),
-                                 DTWP ? &DTWP->getDomTree() : nullptr,
+                                 ACT.getAssumptionCache(F), &DTWP.getDomTree(),
                                  LIWP ? &LIWP->getLoopInfo() : nullptr));
 
   return false;
@@ -1619,6 +1651,7 @@ bool BasicAAWrapperPass::runOnFunction(Function &F) {
 void BasicAAWrapperPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
   AU.addRequired<AssumptionCacheTracker>();
+  AU.addRequired<DominatorTreeWrapperPass>();
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
 

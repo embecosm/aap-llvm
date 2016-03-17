@@ -37,6 +37,9 @@ module LLVM_Backend {
   module Target {
     umbrella "Target"
     module * { export * }
+
+    // This is intended for (repeated) textual inclusion.
+    textual header "Target/TargetOpcodes.def"
   }
 
   // FIXME: Where should this go?
@@ -184,9 +187,6 @@ module LLVM_Utils {
     // Exclude this; it's only included on Solaris.
     exclude header "Support/Solaris.h"
 
-    // Exclude this; it's only included on AIX and fundamentally non-modular.
-    exclude header "Support/AIXDataTypesFix.h"
-
     // Exclude this; it's fundamentally non-modular.
     exclude header "Support/PluginLoader.h"
 
@@ -202,6 +202,7 @@ module LLVM_Utils {
     textual header "Support/ELFRelocs/AVR.def"
     textual header "Support/ELFRelocs/Hexagon.def"
     textual header "Support/ELFRelocs/i386.def"
+    textual header "Support/ELFRelocs/Lanai.def"
     textual header "Support/ELFRelocs/Mips.def"
     textual header "Support/ELFRelocs/PowerPC64.def"
     textual header "Support/ELFRelocs/PowerPC.def"

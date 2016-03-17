@@ -14,13 +14,13 @@
 #ifndef AAPSELECTIONDAGINFO_H
 #define AAPSELECTIONDAGINFO_H
 
-#include "llvm/Target/TargetSelectionDAGInfo.h"
+#include "llvm/CodeGen/SelectionDAGTargetInfo.h"
 
 namespace llvm {
 
 class AAPTargetMachine;
 
-class AAPSelectionDAGInfo : public TargetSelectionDAGInfo {
+class AAPSelectionDAGInfo : public SelectionDAGTargetInfo {
 public:
   explicit AAPSelectionDAGInfo();
   ~AAPSelectionDAGInfo();

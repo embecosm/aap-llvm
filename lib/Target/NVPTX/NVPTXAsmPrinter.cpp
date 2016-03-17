@@ -798,8 +798,16 @@ void NVPTXAsmPrinter::recordAndEmitFilenames(Module &M) {
     if (filenameMap.find(Filename) != filenameMap.end())
       continue;
     filenameMap[Filename] = i;
+    OutStreamer->EmitDwarfFileDirective(i, "", Filename);
     ++i;
   }
+}
+
+static bool isEmptyXXStructor(GlobalVariable *GV) {
+  if (!GV) return true;
+  const ConstantArray *InitList = dyn_cast<ConstantArray>(GV->getInitializer());
+  if (!InitList) return true;  // Not an array; we don't know how to parse.
+  return InitList->getNumOperands() == 0;
 }
 
 bool NVPTXAsmPrinter::doInitialization(Module &M) {
@@ -811,6 +819,21 @@ bool NVPTXAsmPrinter::doInitialization(Module &M) {
   StringRef FS = TM.getTargetFeatureString();
   const NVPTXTargetMachine &NTM = static_cast<const NVPTXTargetMachine &>(TM);
   const NVPTXSubtarget STI(TT, CPU, FS, NTM);
+
+  if (M.alias_size()) {
+    report_fatal_error("Module has aliases, which NVPTX does not support.");
+    return true; // error
+  }
+  if (!isEmptyXXStructor(M.getNamedGlobal("llvm.global_ctors"))) {
+    report_fatal_error(
+        "Module has a nontrivial global ctor, which NVPTX does not support.");
+    return true;  // error
+  }
+  if (!isEmptyXXStructor(M.getNamedGlobal("llvm.global_dtors"))) {
+    report_fatal_error(
+        "Module has a nontrivial global dtor, which NVPTX does not support.");
+    return true;  // error
+  }
 
   SmallString<128> Str1;
   raw_svector_ostream OS1(Str1);
@@ -1427,6 +1450,11 @@ void NVPTXAsmPrinter::emitFunctionParamList(const Function *F, raw_ostream &O) {
   bool isKernelFunc = llvm::isKernelFunction(*F);
   bool isABI = (nvptxSubtarget->getSmVersion() >= 20);
   MVT thePointerTy = TLI->getPointerTy(DL);
+
+  if (F->arg_empty()) {
+    O << "()\n";
+    return;
+  }
 
   O << "(\n";
 

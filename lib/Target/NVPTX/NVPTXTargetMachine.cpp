@@ -44,6 +44,7 @@
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
 
 using namespace llvm;
 
@@ -143,14 +144,20 @@ public:
   void addOptimizedRegAlloc(FunctionPass *RegAllocPass) override;
 
 private:
-  // if the opt level is aggressive, add GVN; otherwise, add EarlyCSE.
+  // If the opt level is aggressive, add GVN; otherwise, add EarlyCSE. This
+  // function is only called in opt mode.
   void addEarlyCSEOrGVNPass();
+
+  // Add passes that propagate special memory spaces.
+  void addMemorySpaceInferencePasses();
+
+  // Add passes that perform straight-line scalar optimizations.
+  void addStraightLineScalarOptimizationPasses();
 };
 } // end anonymous namespace
 
 TargetPassConfig *NVPTXTargetMachine::createPassConfig(PassManagerBase &PM) {
-  NVPTXPassConfig *PassConfig = new NVPTXPassConfig(this, PM);
-  return PassConfig;
+  return new NVPTXPassConfig(this, PM);
 }
 
 TargetIRAnalysis NVPTXTargetMachine::getTargetIRAnalysis() {
@@ -166,22 +173,7 @@ void NVPTXPassConfig::addEarlyCSEOrGVNPass() {
     addPass(createEarlyCSEPass());
 }
 
-void NVPTXPassConfig::addIRPasses() {
-  // The following passes are known to not play well with virtual regs hanging
-  // around after register allocation (which in our case, is *all* registers).
-  // We explicitly disable them here.  We do, however, need some functionality
-  // of the PrologEpilogCodeInserter pass, so we emulate that behavior in the
-  // NVPTXPrologEpilog pass (see NVPTXPrologEpilogPass.cpp).
-  disablePass(&PrologEpilogCodeInserterID);
-  disablePass(&MachineCopyPropagationID);
-  disablePass(&TailDuplicateID);
-
-  addPass(createNVVMReflectPass());
-  addPass(createNVPTXImageOptimizerPass());
-  addPass(createNVPTXAssignValidGlobalNamesPass());
-  addPass(createGenericToNVVMPass());
-
-  // === Propagate special address spaces ===
+void NVPTXPassConfig::addMemorySpaceInferencePasses() {
   addPass(createNVPTXLowerKernelArgsPass(&getNVPTXTargetMachine()));
   // NVPTXLowerKernelArgs emits alloca for byval parameters which can often
   // be eliminated by SROA.
@@ -192,8 +184,9 @@ void NVPTXPassConfig::addIRPasses() {
   // them unused. We could remove dead code in an ad-hoc manner, but that
   // requires manual work and might be error-prone.
   addPass(createDeadCodeEliminationPass());
+}
 
-  // === Straight-line scalar optimizations ===
+void NVPTXPassConfig::addStraightLineScalarOptimizationPasses() {
   addPass(createSeparateConstOffsetFromGEPPass());
   addPass(createSpeculativeExecutionPass());
   // ReassociateGEPs exposes more opportunites for SLSR. See
@@ -208,6 +201,28 @@ void NVPTXPassConfig::addIRPasses() {
   // NaryReassociate on GEPs creates redundant common expressions, so run
   // EarlyCSE after it.
   addPass(createEarlyCSEPass());
+}
+
+void NVPTXPassConfig::addIRPasses() {
+  // The following passes are known to not play well with virtual regs hanging
+  // around after register allocation (which in our case, is *all* registers).
+  // We explicitly disable them here.  We do, however, need some functionality
+  // of the PrologEpilogCodeInserter pass, so we emulate that behavior in the
+  // NVPTXPrologEpilog pass (see NVPTXPrologEpilogPass.cpp).
+  disablePass(&PrologEpilogCodeInserterID);
+  disablePass(&MachineCopyPropagationID);
+  disablePass(&TailDuplicateID);
+
+  addPass(createNVVMReflectPass());
+  if (getOptLevel() != CodeGenOpt::None)
+    addPass(createNVPTXImageOptimizerPass());
+  addPass(createNVPTXAssignValidGlobalNamesPass());
+  addPass(createGenericToNVVMPass());
+
+  if (getOptLevel() != CodeGenOpt::None) {
+    addMemorySpaceInferencePasses();
+    addStraightLineScalarOptimizationPasses();
+  }
 
   // === LSR and other generic IR passes ===
   TargetPassConfig::addIRPasses();
@@ -223,7 +238,8 @@ void NVPTXPassConfig::addIRPasses() {
   //   %1 = shl %a, 2
   //
   // but EarlyCSE can do neither of them.
-  addEarlyCSEOrGVNPass();
+  if (getOptLevel() != CodeGenOpt::None)
+    addEarlyCSEOrGVNPass();
 }
 
 bool NVPTXPassConfig::addInstSelector() {

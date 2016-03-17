@@ -306,6 +306,7 @@ StringRef InstrProfSymtab::getFuncName(uint64_t Pointer, size_t Size) {
   return Data.substr(Pointer - Address, Size);
 }
 
+namespace {
 struct CovMapFuncRecordReader {
   // The interface to read coverage mapping function records for
   // a module. \p Buf is a reference to the buffer pointer pointing
@@ -396,8 +397,10 @@ public:
       // function name. This is useful to ignore the redundant records for the
       // functions with ODR linkage.
       NameRefType NameRef = CFR->template getFuncNameRef<Endian>();
-      if (!UniqueFunctionMappingData.insert(NameRef).second)
+      if (!UniqueFunctionMappingData.insert(NameRef).second) {
+        CFR++;
         continue;
+      }
 
       StringRef FuncName;
       if (std::error_code EC =
@@ -411,6 +414,7 @@ public:
     return std::error_code();
   }
 };
+} // end anonymous namespace
 
 template <class IntPtrT, support::endianness Endian>
 std::unique_ptr<CovMapFuncRecordReader> CovMapFuncRecordReader::get(
@@ -422,6 +426,11 @@ std::unique_ptr<CovMapFuncRecordReader> CovMapFuncRecordReader::get(
   case CovMapVersion::Version1:
     return llvm::make_unique<VersionedCovMapFuncRecordReader<
         CovMapVersion::Version1, IntPtrT, Endian>>(P, R, F);
+  case CovMapVersion::Version2:
+    // Decompress the name data.
+    P.create(P.getNameData());
+    return llvm::make_unique<VersionedCovMapFuncRecordReader<
+        CovMapVersion::Version2, IntPtrT, Endian>>(P, R, F);
   }
   llvm_unreachable("Unsupported version");
 }

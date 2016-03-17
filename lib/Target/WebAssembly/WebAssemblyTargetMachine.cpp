@@ -58,9 +58,9 @@ WebAssemblyTargetMachine::WebAssemblyTargetMachine(
 
   initAsmInfo();
 
-  // We need a reducible CFG, so disable some optimizations which tend to
-  // introduce irreducibility.
-  setRequiresStructuredCFG(true);
+  // Note that we don't use setRequiresStructuredCFG(true). It disables
+  // optimizations than we're ok with, and want, such as critical edge
+  // splitting and tail merging.
 }
 
 WebAssemblyTargetMachine::~WebAssemblyTargetMachine() {}
@@ -154,6 +154,10 @@ bool WebAssemblyPassConfig::addInstSelector() {
   // so that we can fix up the ARGUMENT instructions before anything else
   // sees them in the wrong place.
   addPass(createWebAssemblyArgumentMove());
+  // Set the p2align operands. This information is present during ISel, however
+  // it's inconvenient to collect. Collect it now, and update the immediate
+  // operands.
+  addPass(createWebAssemblySetP2AlignOperands());
   return false;
 }
 
@@ -181,11 +185,13 @@ void WebAssemblyPassConfig::addPostRegAlloc() {
   // Fails with: should be run after register allocation.
   disablePass(&MachineCopyPropagationID);
 
-  // Mark registers as representing wasm's expression stack.
-  addPass(createWebAssemblyRegStackify());
+  if (getOptLevel() != CodeGenOpt::None) {
+    // Mark registers as representing wasm's expression stack.
+    addPass(createWebAssemblyRegStackify());
 
-  // Run the register coloring pass to reduce the total number of registers.
-  addPass(createWebAssemblyRegColoring());
+    // Run the register coloring pass to reduce the total number of registers.
+    addPass(createWebAssemblyRegColoring());
+  }
 
   TargetPassConfig::addPostRegAlloc();
 
@@ -197,6 +203,9 @@ void WebAssemblyPassConfig::addPostRegAlloc() {
 
 void WebAssemblyPassConfig::addPreEmitPass() {
   TargetPassConfig::addPreEmitPass();
+
+  // Eliminate multiple-entry loops.
+  addPass(createWebAssemblyFixIrreducibleControlFlow());
 
   // Put the CFG in structured form; insert BLOCK and LOOP markers.
   addPass(createWebAssemblyCFGStackify());

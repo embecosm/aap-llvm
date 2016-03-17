@@ -15,7 +15,7 @@
 #define LLVM_BITCODE_READERWRITER_H
 
 #include "llvm/IR/DiagnosticInfo.h"
-#include "llvm/IR/FunctionInfo.h"
+#include "llvm/IR/ModuleSummaryIndex.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -29,6 +29,14 @@ namespace llvm {
   class Module;
   class ModulePass;
   class raw_ostream;
+
+  /// Offsets of the 32-bit fields of bitcode wrapper header.
+  static const unsigned BWH_MagicField = 0*4;
+  static const unsigned BWH_VersionField = 1*4;
+  static const unsigned BWH_OffsetField = 2*4;
+  static const unsigned BWH_SizeField = 3*4;
+  static const unsigned BWH_CPUTypeField = 4*4;
+  static const unsigned BWH_HeaderSize = 5*4;
 
   /// Read the header of the specified bitcode buffer and prepare for lazy
   /// deserialization of function bodies. If ShouldLazyLoadMetadata is true,
@@ -62,29 +70,29 @@ namespace llvm {
   ErrorOr<std::unique_ptr<Module>> parseBitcodeFile(MemoryBufferRef Buffer,
                                                     LLVMContext &Context);
 
-  /// Check if the given bitcode buffer contains a function summary block.
-  bool hasFunctionSummary(MemoryBufferRef Buffer,
-                          DiagnosticHandlerFunction DiagnosticHandler);
+  /// Check if the given bitcode buffer contains a summary block.
+  bool hasGlobalValueSummary(MemoryBufferRef Buffer,
+                             DiagnosticHandlerFunction DiagnosticHandler);
 
-  /// Parse the specified bitcode buffer, returning the function info index.
-  /// If IsLazy is true, parse the entire function summary into
-  /// the index. Otherwise skip the function summary section, and only create
-  /// an index object with a map from function name to function summary offset.
-  /// The index is used to perform lazy function summary reading later.
-  ErrorOr<std::unique_ptr<FunctionInfoIndex>>
-  getFunctionInfoIndex(MemoryBufferRef Buffer,
-                       DiagnosticHandlerFunction DiagnosticHandler,
-                       bool IsLazy = false);
+  /// Parse the specified bitcode buffer, returning the module summary index.
+  /// If IsLazy is true, parse the entire module summary into
+  /// the index. Otherwise skip the module summary section, and only create
+  /// an index object with a map from value name to the value's summary offset.
+  /// The index is used to perform lazy summary reading later.
+  ErrorOr<std::unique_ptr<ModuleSummaryIndex>>
+  getModuleSummaryIndex(MemoryBufferRef Buffer,
+                        DiagnosticHandlerFunction DiagnosticHandler,
+                        bool IsLazy = false);
 
-  /// This method supports lazy reading of function summary data from the
+  /// This method supports lazy reading of summary data from the
   /// combined index during function importing. When reading the combined index
-  /// file, getFunctionInfoIndex is first invoked with IsLazy=true.
-  /// Then this method is called for each function considered for importing,
-  /// to parse the summary information for the given function name into
+  /// file, getModuleSummaryIndex is first invoked with IsLazy=true.
+  /// Then this method is called for each value considered for importing,
+  /// to parse the summary information for the given value name into
   /// the index.
-  std::error_code readFunctionSummary(
+  std::error_code readGlobalValueSummary(
       MemoryBufferRef Buffer, DiagnosticHandlerFunction DiagnosticHandler,
-      StringRef FunctionName, std::unique_ptr<FunctionInfoIndex> Index);
+      StringRef ValueName, std::unique_ptr<ModuleSummaryIndex> Index);
 
   /// \brief Write the specified module to the specified raw output stream.
   ///
@@ -95,17 +103,16 @@ namespace llvm {
   /// Value in \c M.  These will be reconstructed exactly when \a M is
   /// deserialized.
   ///
-  /// If \c EmitFunctionSummary, emit the function summary index (currently
+  /// If \c EmitSummaryIndex, emit the module's summary index (currently
   /// for use in ThinLTO optimization).
   void WriteBitcodeToFile(const Module *M, raw_ostream &Out,
                           bool ShouldPreserveUseListOrder = false,
-                          bool EmitFunctionSummary = false);
+                          bool EmitSummaryIndex = false);
 
-  /// Write the specified function summary index to the given raw output stream,
+  /// Write the specified module summary index to the given raw output stream,
   /// where it will be written in a new bitcode block. This is used when
   /// writing the combined index file for ThinLTO.
-  void WriteFunctionSummaryToFile(const FunctionInfoIndex &Index,
-                                  raw_ostream &Out);
+  void WriteIndexToFile(const ModuleSummaryIndex &Index, raw_ostream &Out);
 
   /// isBitcodeWrapper - Return true if the given bytes are the magic bytes
   /// for an LLVM IR bitcode wrapper.
@@ -163,17 +170,12 @@ namespace llvm {
   inline bool SkipBitcodeWrapperHeader(const unsigned char *&BufPtr,
                                        const unsigned char *&BufEnd,
                                        bool VerifyBufferSize) {
-    enum {
-      KnownHeaderSize = 4*4,  // Size of header we read.
-      OffsetField = 2*4,      // Offset in bytes to Offset field.
-      SizeField = 3*4         // Offset in bytes to Size field.
-    };
+    // Must contain the offset and size field!
+    if (BufEnd - BufPtr < BWH_SizeField + 4)
+      return true;
 
-    // Must contain the header!
-    if (BufEnd-BufPtr < KnownHeaderSize) return true;
-
-    unsigned Offset = support::endian::read32le(&BufPtr[OffsetField]);
-    unsigned Size = support::endian::read32le(&BufPtr[SizeField]);
+    unsigned Offset = support::endian::read32le(&BufPtr[BWH_OffsetField]);
+    unsigned Size = support::endian::read32le(&BufPtr[BWH_SizeField]);
 
     // Verify that Offset+Size fits in the file.
     if (VerifyBufferSize && Offset+Size > unsigned(BufEnd-BufPtr))

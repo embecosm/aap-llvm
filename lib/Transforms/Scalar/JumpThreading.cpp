@@ -415,7 +415,7 @@ ComputeValueKnownInPredecessors(Value *V, BasicBlock *BB, PredValueInfo &Result,
     for (BasicBlock *Pred : predecessors(BB))
       Result.push_back(std::make_pair(KC, Pred));
 
-    return true;
+    return !Result.empty();
   }
 
   // If V is a non-instruction value, or an instruction in a different block,
@@ -463,6 +463,25 @@ ComputeValueKnownInPredecessors(Value *V, BasicBlock *BB, PredValueInfo &Result,
     }
 
     return !Result.empty();
+  }
+
+  // Handle Cast instructions.  Only see through Cast when the source operand is
+  // PHI or Cmp and the source type is i1 to save the compilation time.
+  if (CastInst *CI = dyn_cast<CastInst>(I)) {
+    Value *Source = CI->getOperand(0);
+    if (!Source->getType()->isIntegerTy(1))
+      return false;
+    if (!isa<PHINode>(Source) && !isa<CmpInst>(Source))
+      return false;
+    ComputeValueKnownInPredecessors(Source, BB, Result, Preference, CxtI);
+    if (Result.empty())
+      return false;
+
+    // Convert the known values.
+    for (auto &R : Result)
+      R.first = ConstantExpr::getCast(CI->getOpcode(), R.first, CI->getType());
+
+    return true;
   }
 
   PredValueInfoTy LHSVals, RHSVals;
@@ -952,7 +971,7 @@ bool JumpThreading::SimplifyPartiallyRedundantLoad(LoadInst *LI) {
   BasicBlock::iterator BBIt(LI);
 
   if (Value *AvailableVal =
-        FindAvailableLoadedValue(LoadedPtr, LoadBB, BBIt, DefMaxInstsToScan)) {
+        FindAvailableLoadedValue(LI, LoadBB, BBIt, DefMaxInstsToScan)) {
     // If the value of the load is locally available within the block, just use
     // it.  This frequently occurs for reg2mem'd allocas.
     //cerr << "LOAD ELIMINATED:\n" << *BBIt << *LI << "\n";
@@ -994,7 +1013,7 @@ bool JumpThreading::SimplifyPartiallyRedundantLoad(LoadInst *LI) {
     // Scan the predecessor to see if the value is available in the pred.
     BBIt = PredBB->end();
     AAMDNodes ThisAATags;
-    Value *PredAvailable = FindAvailableLoadedValue(LoadedPtr, PredBB, BBIt,
+    Value *PredAvailable = FindAvailableLoadedValue(LI, PredBB, BBIt,
                                                     DefMaxInstsToScan,
                                                     nullptr, &ThisAATags);
     if (!PredAvailable) {

@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_R600_AMDGPUTARGETMACHINE_H
-#define LLVM_LIB_TARGET_R600_AMDGPUTARGETMACHINE_H
+#ifndef LLVM_LIB_TARGET_AMDGPU_AMDGPUTARGETMACHINE_H
+#define LLVM_LIB_TARGET_AMDGPU_AMDGPUTARGETMACHINE_H
 
 #include "AMDGPUFrameLowering.h"
 #include "AMDGPUInstrInfo.h"
@@ -37,8 +37,8 @@ protected:
   AMDGPUIntrinsicInfo IntrinsicInfo;
 
 public:
-  AMDGPUTargetMachine(const Target &T, const Triple &TT, StringRef FS,
-                      StringRef CPU, TargetOptions Options, Reloc::Model RM,
+  AMDGPUTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
+                      StringRef FS, TargetOptions Options, Reloc::Model RM,
                       CodeModel::Model CM, CodeGenOpt::Level OL);
   ~AMDGPUTargetMachine();
 
@@ -60,11 +60,11 @@ public:
 // R600 Target Machine (R600 -> Cayman)
 //===----------------------------------------------------------------------===//
 
-class R600TargetMachine : public AMDGPUTargetMachine {
+class R600TargetMachine final : public AMDGPUTargetMachine {
 
 public:
-  R600TargetMachine(const Target &T, const Triple &TT, StringRef FS,
-                    StringRef CPU, TargetOptions Options, Reloc::Model RM,
+  R600TargetMachine(const Target &T, const Triple &TT, StringRef CPU,
+                    StringRef FS, TargetOptions Options, Reloc::Model RM,
                     CodeModel::Model CM, CodeGenOpt::Level OL);
 
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
@@ -74,11 +74,11 @@ public:
 // GCN Target Machine (SI+)
 //===----------------------------------------------------------------------===//
 
-class GCNTargetMachine : public AMDGPUTargetMachine {
+class GCNTargetMachine final : public AMDGPUTargetMachine {
 
 public:
-  GCNTargetMachine(const Target &T, const Triple &TT, StringRef FS,
-                   StringRef CPU, TargetOptions Options, Reloc::Model RM,
+  GCNTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
+                   StringRef FS, TargetOptions Options, Reloc::Model RM,
                    CodeModel::Model CM, CodeGenOpt::Level OL);
 
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;

@@ -1404,7 +1404,7 @@ void DAGTypeLegalizer::ExpandIntegerResult(SDNode *N, unsigned ResNo) {
 std::pair <SDValue, SDValue> DAGTypeLegalizer::ExpandAtomic(SDNode *Node) {
   unsigned Opc = Node->getOpcode();
   MVT VT = cast<AtomicSDNode>(Node)->getMemoryVT().getSimpleVT();
-  RTLIB::Libcall LC = RTLIB::getATOMIC(Opc, VT);
+  RTLIB::Libcall LC = RTLIB::getSYNC(Opc, VT);
   assert(LC != RTLIB::UNKNOWN_LIBCALL && "Unexpected atomic op or value type!");
 
   return ExpandChainLibCall(LC, Node, false);
@@ -1442,15 +1442,6 @@ void DAGTypeLegalizer::ExpandShiftByConstant(SDNode *N, const APInt &Amt,
     } else if (Amt == NVTBits) {
       Lo = DAG.getConstant(0, DL, NVT);
       Hi = InL;
-    } else if (Amt == 1 &&
-               TLI.isOperationLegalOrCustom(ISD::ADDC,
-                              TLI.getTypeToExpandTo(*DAG.getContext(), NVT))) {
-      // Emit this X << 1 as X+X.
-      SDVTList VTList = DAG.getVTList(NVT, MVT::Glue);
-      SDValue LoOps[2] = { InL, InL };
-      Lo = DAG.getNode(ISD::ADDC, DL, VTList, LoOps);
-      SDValue HiOps[3] = { InH, InH, Lo.getValue(1) };
-      Hi = DAG.getNode(ISD::ADDE, DL, VTList, HiOps);
     } else {
       Lo = DAG.getNode(ISD::SHL, DL, NVT, InL, DAG.getConstant(Amt, DL, ShTy));
       Hi = DAG.getNode(ISD::OR, DL, NVT,

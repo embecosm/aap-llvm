@@ -165,6 +165,7 @@ public:
 
     VK_GOT,
     VK_GOTOFF,
+    VK_GOTREL,
     VK_GOTPCREL,
     VK_GOTTPOFF,
     VK_INDNTPOFF,
@@ -176,6 +177,8 @@ public:
     VK_TLSLDM,
     VK_TPOFF,
     VK_DTPOFF,
+    VK_TLSCALL,   // symbol(tlscall)
+    VK_TLSDESC,   // symbol(tlsdesc)
     VK_TLVP,      // Mach-O thread local variable relocations
     VK_TLVPPAGE,
     VK_TLVPPAGEOFF,
@@ -194,8 +197,6 @@ public:
     VK_ARM_PREL31,
     VK_ARM_SBREL,          // symbol(sbrel)
     VK_ARM_TLSLDO,         // symbol(tlsldo)
-    VK_ARM_TLSCALL,        // symbol(tlscall)
-    VK_ARM_TLSDESC,        // symbol(tlsdesc)
     VK_ARM_TLSDESCSEQ,
 
     VK_PPC_LO,             // symbol@l
@@ -214,7 +215,6 @@ public:
     VK_PPC_TOC_HI,         // symbol@toc@h
     VK_PPC_TOC_HA,         // symbol@toc@ha
     VK_PPC_DTPMOD,         // symbol@dtpmod
-    VK_PPC_TPREL,          // symbol@tprel
     VK_PPC_TPREL_LO,       // symbol@tprel@l
     VK_PPC_TPREL_HI,       // symbol@tprel@h
     VK_PPC_TPREL_HA,       // symbol@tprel@ha
@@ -222,7 +222,6 @@ public:
     VK_PPC_TPREL_HIGHERA,  // symbol@tprel@highera
     VK_PPC_TPREL_HIGHEST,  // symbol@tprel@highest
     VK_PPC_TPREL_HIGHESTA, // symbol@tprel@highesta
-    VK_PPC_DTPREL,         // symbol@dtprel
     VK_PPC_DTPREL_LO,      // symbol@dtprel@l
     VK_PPC_DTPREL_HI,      // symbol@dtprel@h
     VK_PPC_DTPREL_HA,      // symbol@dtprel@ha

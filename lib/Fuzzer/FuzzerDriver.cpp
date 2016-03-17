@@ -40,16 +40,20 @@ struct FlagDescription {
 };
 
 struct {
+#define FUZZER_DEPRECATED_FLAG(Name)
 #define FUZZER_FLAG_INT(Name, Default, Description) int Name;
 #define FUZZER_FLAG_UNSIGNED(Name, Default, Description) unsigned int Name;
 #define FUZZER_FLAG_STRING(Name, Description) const char *Name;
 #include "FuzzerFlags.def"
+#undef FUZZER_DEPRECATED_FLAG
 #undef FUZZER_FLAG_INT
 #undef FUZZER_FLAG_UNSIGNED
 #undef FUZZER_FLAG_STRING
 } Flags;
 
 static const FlagDescription FlagDescriptions [] {
+#define FUZZER_DEPRECATED_FLAG(Name)                                           \
+  {#Name, "Deprecated; don't use", 0, nullptr, nullptr, nullptr},
 #define FUZZER_FLAG_INT(Name, Default, Description)                            \
   {#Name, Description, Default, &Flags.Name, nullptr, nullptr},
 #define FUZZER_FLAG_UNSIGNED(Name, Default, Description)                       \
@@ -58,6 +62,7 @@ static const FlagDescription FlagDescriptions [] {
 #define FUZZER_FLAG_STRING(Name, Description)                                  \
   {#Name, Description, 0, nullptr, &Flags.Name, nullptr},
 #include "FuzzerFlags.def"
+#undef FUZZER_DEPRECATED_FLAG
 #undef FUZZER_FLAG_INT
 #undef FUZZER_FLAG_UNSIGNED
 #undef FUZZER_FLAG_STRING
@@ -70,8 +75,14 @@ static std::vector<std::string> *Inputs;
 static std::string *ProgName;
 
 static void PrintHelp() {
-  Printf("Usage: %s [-flag1=val1 [-flag2=val2 ...] ] [dir1 [dir2 ...] ]\n",
-         ProgName->c_str());
+  Printf("Usage:\n");
+  auto Prog = ProgName->c_str();
+  Printf("\nTo run fuzzing pass 0 or more directories.\n");
+  Printf("%s [-flag1=val1 [-flag2=val2 ...] ] [dir1 [dir2 ...] ]\n", Prog);
+
+  Printf("\nTo run individual tests without fuzzing pass 1 or more files:\n");
+  Printf("%s [-flag1=val1 [-flag2=val2 ...] ] file1 [file2 ...]\n", Prog);
+
   Printf("\nFlags: (strictly in form -flag=value)\n");
   size_t MaxFlagLen = 0;
   for (size_t F = 0; F < kNumFlags; F++)
@@ -100,13 +111,18 @@ static const char *FlagValue(const char *Param, const char *Name) {
 // Avoid calling stol as it triggers a bug in clang/glibc build.
 static long MyStol(const char *Str) {
   long Res = 0;
+  long Sign = 1;
+  if (*Str == '-') {
+    Str++;
+    Sign = -1;
+  }
   for (size_t i = 0; Str[i]; i++) {
     char Ch = Str[i];
     if (Ch < '0' || Ch > '9')
       return Res;
     Res = Res * 10 + (Ch - '0');
   }
-  return Res;
+  return Res * Sign;
 }
 
 static bool ParseOneFlag(const char *Param) {
@@ -115,7 +131,7 @@ static bool ParseOneFlag(const char *Param) {
     static bool PrintedWarning = false;
     if (!PrintedWarning) {
       PrintedWarning = true;
-      Printf("WARNING: libFuzzer ignores flags that start with '--'\n");
+      Printf("INFO: libFuzzer ignores flags that start with '--'\n");
     }
     return true;
   }
@@ -139,6 +155,9 @@ static bool ParseOneFlag(const char *Param) {
         *FlagDescriptions[F].StrFlag = Str;
         if (Flags.verbosity >= 2)
           Printf("Flag: %s %s\n", Name, Str);
+        return true;
+      } else {  // Deprecated flag.
+        Printf("Flag: %s: deprecated, don't use\n", Name);
         return true;
       }
     }
@@ -218,29 +237,20 @@ int RunOneTest(Fuzzer *F, const char *InputFilePath) {
   Unit U = FileToVector(InputFilePath);
   Unit PreciseSizedU(U);
   assert(PreciseSizedU.size() == PreciseSizedU.capacity());
-  F->ExecuteCallback(PreciseSizedU);
+  F->ExecuteCallback(PreciseSizedU.data(), PreciseSizedU.size());
   return 0;
 }
 
-int FuzzerDriver(int argc, char **argv, UserCallback Callback) {
-  FuzzerRandomLibc Rand(0);
-  SimpleUserSuppliedFuzzer SUSF(&Rand, Callback);
-  return FuzzerDriver(argc, argv, SUSF);
+static bool AllInputsAreFiles() {
+  if (Inputs->empty()) return false;
+  for (auto &Path : *Inputs)
+    if (!IsFile(Path))
+      return false;
+  return true;
 }
 
-int FuzzerDriver(int argc, char **argv, UserSuppliedFuzzer &USF) {
-  std::vector<std::string> Args(argv, argv + argc);
-  return FuzzerDriver(Args, USF);
-}
-
-int FuzzerDriver(const std::vector<std::string> &Args, UserCallback Callback) {
-  FuzzerRandomLibc Rand(0);
-  SimpleUserSuppliedFuzzer SUSF(&Rand, Callback);
-  return FuzzerDriver(Args, SUSF);
-}
-
-int FuzzerDriver(const std::vector<std::string> &Args,
-                 UserSuppliedFuzzer &USF) {
+static int FuzzerDriver(const std::vector<std::string> &Args,
+                        UserCallback Callback) {
   using namespace fuzzer;
   assert(!Args.empty());
   ProgName = new std::string(Args[0]);
@@ -259,14 +269,16 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   if (Flags.workers > 0 && Flags.jobs > 0)
     return RunInMultipleProcesses(Args, Flags.workers, Flags.jobs);
 
+  const size_t kMaxSaneLen = 1 << 20;
+  const size_t kMinDefaultLen = 64;
   Fuzzer::FuzzingOptions Options;
   Options.Verbosity = Flags.verbosity;
   Options.MaxLen = Flags.max_len;
   Options.UnitTimeoutSec = Flags.timeout;
+  Options.TimeoutExitCode = Flags.timeout_exitcode;
   Options.MaxTotalTimeSec = Flags.max_total_time;
   Options.DoCrossOver = Flags.cross_over;
   Options.MutateDepth = Flags.mutate_depth;
-  Options.ExitOnFirst = Flags.exit_on_first;
   Options.UseCounters = Flags.use_counters;
   Options.UseIndirCalls = Flags.use_indir_calls;
   Options.UseTraces = Flags.use_traces;
@@ -297,44 +309,72 @@ int FuzzerDriver(const std::vector<std::string> &Args,
     Printf("Dictionary: %zd entries\n", Dictionary.size());
   Options.SaveArtifacts = !Flags.test_single_input;
   Options.PrintNewCovPcs = Flags.print_new_cov_pcs;
+  Options.PrintFinalStats = Flags.print_final_stats;
 
-  Fuzzer F(USF, Options);
+  unsigned Seed = Flags.seed;
+  // Initialize Seed.
+  if (Seed == 0)
+    Seed = (std::chrono::system_clock::now().time_since_epoch().count() << 10) +
+           getpid();
+  if (Flags.verbosity)
+    Printf("INFO: Seed: %u\n", Seed);
+
+  Random Rand(Seed);
+  MutationDispatcher MD(Rand);
+  Fuzzer F(Callback, MD, Options);
 
   for (auto &U: Dictionary)
     if (U.size() <= Word::GetMaxSize())
-      USF.GetMD().AddWordToManualDictionary(Word(U.data(), U.size()));
+      MD.AddWordToManualDictionary(Word(U.data(), U.size()));
 
   // Timer
   if (Flags.timeout > 0)
     SetTimer(Flags.timeout / 2 + 1);
+  if (Flags.handle_segv) SetSigSegvHandler();
+  if (Flags.handle_bus) SetSigBusHandler();
+  if (Flags.handle_abrt) SetSigAbrtHandler();
+  if (Flags.handle_ill) SetSigIllHandler();
+  if (Flags.handle_fpe) SetSigFpeHandler();
+  if (Flags.handle_int) SetSigIntHandler();
 
   if (Flags.test_single_input) {
     RunOneTest(&F, Flags.test_single_input);
     exit(0);
   }
 
-  if (Flags.save_minimized_corpus) {
-    Printf("The flag -save_minimized_corpus is deprecated; use -merge=1\n");
-    exit(1);
+  if (AllInputsAreFiles()) {
+    int Runs = std::max(1, Flags.runs);
+    Printf("%s: Running %zd inputs %d time(s) each.\n", ProgName->c_str(),
+           Inputs->size(), Runs);
+    for (auto &Path : *Inputs) {
+      auto StartTime = system_clock::now();
+      for (int Iter = 0; Iter < Runs; Iter++)
+        RunOneTest(&F, Path.c_str());
+      auto StopTime = system_clock::now();
+      auto MS = duration_cast<milliseconds>(StopTime - StartTime).count();
+      Printf("%s: %zd ms\n", Path.c_str(), (long)MS);
+    }
+    exit(0);
   }
 
+
   if (Flags.merge) {
+    if (Options.MaxLen == 0)
+      F.SetMaxLen(kMaxSaneLen);
     F.Merge(*Inputs);
     exit(0);
   }
 
-  unsigned Seed = Flags.seed;
-  // Initialize Seed.
-  if (Seed == 0)
-    Seed = time(0) * 10000 + getpid();
-  if (Flags.verbosity)
-    Printf("Seed: %u\n", Seed);
-  USF.GetRand().ResetSeed(Seed);
+  size_t TemporaryMaxLen = Options.MaxLen ? Options.MaxLen : kMaxSaneLen;
 
-  F.RereadOutputCorpus();
+  F.RereadOutputCorpus(TemporaryMaxLen);
   for (auto &inp : *Inputs)
     if (inp != Options.OutputCorpus)
-      F.ReadDir(inp, nullptr);
+      F.ReadDir(inp, nullptr, TemporaryMaxLen);
+
+  if (Options.MaxLen == 0)
+    F.SetMaxLen(
+        std::min(std::max(kMinDefaultLen, F.MaxUnitSizeInCorpus()), kMaxSaneLen));
 
   if (F.CorpusSize() == 0)
     F.AddToCorpus(Unit());  // Can't fuzz empty corpus, so add an empty input.
@@ -347,8 +387,14 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   if (Flags.verbosity)
     Printf("Done %d runs in %zd second(s)\n", F.getTotalNumberOfRuns(),
            F.secondsSinceProcessStartUp());
+  F.PrintFinalStats();
 
   exit(0);  // Don't let F destroy itself.
+}
+
+int FuzzerDriver(int argc, char **argv, UserCallback Callback) {
+  std::vector<std::string> Args(argv, argv + argc);
+  return FuzzerDriver(Args, Callback);
 }
 
 }  // namespace fuzzer

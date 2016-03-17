@@ -38,14 +38,12 @@ class MDNode;
 /// IRBuilder and needs to be inserted.
 ///
 /// By default, this inserts the instruction at the insertion point.
-template <bool preserveNames = true>
 class IRBuilderDefaultInserter {
 protected:
   void InsertHelper(Instruction *I, const Twine &Name,
                     BasicBlock *BB, BasicBlock::iterator InsertPt) const {
     if (BB) BB->getInstList().insert(InsertPt, I);
-    if (preserveNames)
-      I->setName(Name);
+    I->setName(Name);
   }
 };
 
@@ -436,6 +434,14 @@ public:
   CallInst *CreateMaskedStore(Value *Val, Value *Ptr, unsigned Align,
                               Value *Mask);
 
+  /// \brief Create a call to Masked Gather intrinsic
+  CallInst *CreateMaskedGather(Value *Ptrs, unsigned Align, Value *Mask = 0,
+                               Value *PassThru = 0, const Twine& Name = "");
+
+  /// \brief Create a call to Masked Scatter intrinsic
+  CallInst *CreateMaskedScatter(Value *Val, Value *Ptrs, unsigned Align,
+                                Value *Mask = 0);
+
   /// \brief Create an assume intrinsic call that allows the optimizer to
   /// assume that the provided condition will be true.
   CallInst *CreateAssumption(Value *Cond);
@@ -512,9 +518,9 @@ public:
 
 private:
   /// \brief Create a call to a masked intrinsic with given Id.
-  /// Masked intrinsic has only one overloaded type - data type.
   CallInst *CreateMaskedIntrinsic(Intrinsic::ID Id, ArrayRef<Value *> Ops,
-                                  Type *DataTy, const Twine &Name = "");
+                                  ArrayRef<Type *> OverloadedTypes,
+                                  const Twine &Name = "");
 
   Value *getCastedInt8PtrValue(Value *Ptr);
 };
@@ -529,14 +535,12 @@ private:
 /// created. Convenience state exists to specify fast-math flags and fp-math
 /// tags.
 ///
-/// The first template argument handles whether or not to preserve names in the
-/// final instruction output. This defaults to on.  The second template argument
-/// specifies a class to use for creating constants.  This defaults to creating
-/// minimally folded constants.  The third template argument allows clients to
-/// specify custom insertion hooks that are called on every newly created
-/// insertion.
-template<bool preserveNames = true, typename T = ConstantFolder,
-         typename Inserter = IRBuilderDefaultInserter<preserveNames> >
+/// The first template argument specifies a class to use for creating constants.
+/// This defaults to creating minimally folded constants.  The second template
+/// argument allows clients to specify custom insertion hooks that are called on
+/// every newly created insertion.
+template <typename T = ConstantFolder,
+          typename Inserter = IRBuilderDefaultInserter>
 class IRBuilder : public IRBuilderBase, public Inserter {
   T Folder;
 
@@ -585,10 +589,6 @@ public:
 
   /// \brief Get the constant folder being used.
   const T &getFolder() { return Folder; }
-
-  /// \brief Return true if this builder is configured to actually add the
-  /// requested names to IR created through it.
-  bool isNamePreserving() const { return preserveNames; }
 
   /// \brief Insert and return the specified instruction.
   template<typename InstTy>
@@ -1539,16 +1539,7 @@ public:
   }
 
   CallInst *CreateCall(Value *Callee, ArrayRef<Value *> Args = None,
-                       ArrayRef<OperandBundleDef> OpBundles = None,
                        const Twine &Name = "", MDNode *FPMathTag = nullptr) {
-    CallInst *CI = CallInst::Create(Callee, Args, OpBundles);
-    if (isa<FPMathOperator>(CI))
-      CI = cast<CallInst>(AddFPMathAttributes(CI, FPMathTag, FMF));
-    return Insert(CI, Name);
-  }
-
-  CallInst *CreateCall(Value *Callee, ArrayRef<Value *> Args,
-                       const Twine &Name, MDNode *FPMathTag = nullptr) {
     PointerType *PTy = cast<PointerType>(Callee->getType());
     FunctionType *FTy = cast<FunctionType>(PTy->getElementType());
     return CreateCall(FTy, Callee, Args, Name, FPMathTag);
@@ -1563,18 +1554,31 @@ public:
     return Insert(CI, Name);
   }
 
+  CallInst *CreateCall(Value *Callee, ArrayRef<Value *> Args,
+                       ArrayRef<OperandBundleDef> OpBundles,
+                       const Twine &Name = "", MDNode *FPMathTag = nullptr) {
+    CallInst *CI = CallInst::Create(Callee, Args, OpBundles);
+    if (isa<FPMathOperator>(CI))
+      CI = cast<CallInst>(AddFPMathAttributes(CI, FPMathTag, FMF));
+    return Insert(CI, Name);
+  }
+
   CallInst *CreateCall(Function *Callee, ArrayRef<Value *> Args,
                        const Twine &Name = "", MDNode *FPMathTag = nullptr) {
     return CreateCall(Callee->getFunctionType(), Callee, Args, Name, FPMathTag);
   }
 
   Value *CreateSelect(Value *C, Value *True, Value *False,
-                      const Twine &Name = "") {
+                      const Twine &Name = "", MDNode *ProfWeights = nullptr) {
     if (Constant *CC = dyn_cast<Constant>(C))
       if (Constant *TC = dyn_cast<Constant>(True))
         if (Constant *FC = dyn_cast<Constant>(False))
           return Insert(Folder.CreateSelect(CC, TC, FC), Name);
-    return Insert(SelectInst::Create(C, True, False), Name);
+
+    SelectInst *Sel = SelectInst::Create(C, True, False);
+    // TODO: "unpredictable" metadata can apply to a select too.
+    Sel->setMetadata(LLVMContext::MD_prof, ProfWeights);
+    return Insert(Sel, Name);
   }
 
   VAArgInst *CreateVAArg(Value *List, Type *Ty, const Twine &Name = "") {

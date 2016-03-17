@@ -13,6 +13,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/SetVector.h"
@@ -52,38 +53,6 @@ typedef SmallSetVector<Function *, 8> SCCNodeSet;
 }
 
 namespace {
-struct PostOrderFunctionAttrs : public CallGraphSCCPass {
-  static char ID; // Pass identification, replacement for typeid
-  PostOrderFunctionAttrs() : CallGraphSCCPass(ID) {
-    initializePostOrderFunctionAttrsPass(*PassRegistry::getPassRegistry());
-  }
-
-  bool runOnSCC(CallGraphSCC &SCC) override;
-
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.setPreservesCFG();
-    AU.addRequired<AssumptionCacheTracker>();
-    AU.addRequired<TargetLibraryInfoWrapperPass>();
-    CallGraphSCCPass::getAnalysisUsage(AU);
-  }
-
-private:
-  TargetLibraryInfo *TLI;
-};
-}
-
-char PostOrderFunctionAttrs::ID = 0;
-INITIALIZE_PASS_BEGIN(PostOrderFunctionAttrs, "functionattrs",
-                      "Deduce function attributes", false, false)
-INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
-INITIALIZE_PASS_DEPENDENCY(CallGraphWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
-INITIALIZE_PASS_END(PostOrderFunctionAttrs, "functionattrs",
-                    "Deduce function attributes", false, false)
-
-Pass *llvm::createPostOrderFunctionAttrsPass() { return new PostOrderFunctionAttrs(); }
-
-namespace {
 /// The three kinds of memory access relevant to 'readonly' and
 /// 'readnone' attributes.
 enum MemoryAccessKind {
@@ -119,8 +88,12 @@ static MemoryAccessKind checkFunctionMemoryAccess(Function &F, AAResults &AAR,
     // Detect these now, skipping to the next instruction if one is found.
     CallSite CS(cast<Value>(I));
     if (CS) {
-      // Ignore calls to functions in the same SCC.
-      if (CS.getCalledFunction() && SCCNodes.count(CS.getCalledFunction()))
+      // Ignore calls to functions in the same SCC, as long as the call sites
+      // don't have operand bundles.  Calls with operand bundles are allowed to
+      // have memory effects not described by the memory effects of the call
+      // target.
+      if (!CS.hasOperandBundles() && CS.getCalledFunction() &&
+          SCCNodes.count(CS.getCalledFunction()))
         continue;
       FunctionModRefBehavior MRB = AAR.getModRefBehavior(CS);
 
@@ -562,7 +535,7 @@ static bool addArgumentAttrs(const SCCNodeSet &SCCNodes) {
                      UE = Tracker.Uses.end();
                  UI != UE; ++UI) {
               Node->Uses.push_back(AG[*UI]);
-              if (*UI != A)
+              if (*UI != &*A)
                 HasNonLocalUses = true;
             }
           }
@@ -930,6 +903,49 @@ static bool addNonNullAttrs(const SCCNodeSet &SCCNodes,
   return MadeChange;
 }
 
+/// Remove the convergent attribute from all functions in the SCC if every
+/// callsite within the SCC is not convergent (except for calls to functions
+/// within the SCC).  Returns true if changes were made.
+static bool removeConvergentAttrs(const SCCNodeSet &SCCNodes) {
+  // For every function in SCC, ensure that either
+  //  * it is not convergent, or
+  //  * we can remove its convergent attribute.
+  bool HasConvergentFn = false;
+  for (Function *F : SCCNodes) {
+    if (!F->isConvergent()) continue;
+    HasConvergentFn = true;
+
+    // Can't remove convergent from function declarations.
+    if (F->isDeclaration()) return false;
+
+    // Can't remove convergent if any of our functions has a convergent call to a
+    // function not in the SCC.
+    for (Instruction &I : instructions(*F)) {
+      CallSite CS(&I);
+      // Bail if CS is a convergent call to a function not in the SCC.
+      if (CS && CS.isConvergent() &&
+          SCCNodes.count(CS.getCalledFunction()) == 0)
+        return false;
+    }
+  }
+
+  // If the SCC doesn't have any convergent functions, we have nothing to do.
+  if (!HasConvergentFn) return false;
+
+  // If we got here, all of the calls the SCC makes to functions not in the SCC
+  // are non-convergent.  Therefore all of the SCC's functions can also be made
+  // non-convergent.  We'll remove the attr from the callsites in
+  // InstCombineCalls.
+  for (Function *F : SCCNodes) {
+    if (!F->isConvergent()) continue;
+
+    DEBUG(dbgs() << "Removing convergent attr from fn " << F->getName()
+                 << "\n");
+    F->setNotConvergent();
+  }
+  return true;
+}
+
 static bool setDoesNotRecurse(Function &F) {
   if (F.doesNotRecurse())
     return false;
@@ -938,34 +954,130 @@ static bool setDoesNotRecurse(Function &F) {
   return true;
 }
 
-static bool addNoRecurseAttrs(const CallGraphSCC &SCC) {
+static bool addNoRecurseAttrs(const SCCNodeSet &SCCNodes) {
   // Try and identify functions that do not recurse.
 
   // If the SCC contains multiple nodes we know for sure there is recursion.
-  if (!SCC.isSingular())
+  if (SCCNodes.size() != 1)
     return false;
 
-  const CallGraphNode *CGN = *SCC.begin();
-  Function *F = CGN->getFunction();
+  Function *F = *SCCNodes.begin();
   if (!F || F->isDeclaration() || F->doesNotRecurse())
     return false;
 
   // If all of the calls in F are identifiable and are to norecurse functions, F
   // is norecurse. This check also detects self-recursion as F is not currently
   // marked norecurse, so any called from F to F will not be marked norecurse.
-  if (std::all_of(CGN->begin(), CGN->end(),
-                  [](const CallGraphNode::CallRecord &CR) {
-                    Function *F = CR.second->getFunction();
-                    return F && F->doesNotRecurse();
-                  }))
-    // Function calls a potentially recursive function.
-    return setDoesNotRecurse(*F);
+  for (Instruction &I : instructions(*F))
+    if (auto CS = CallSite(&I)) {
+      Function *Callee = CS.getCalledFunction();
+      if (!Callee || Callee == F || !Callee->doesNotRecurse())
+        // Function calls a potentially recursive function.
+        return false;
+    }
 
-  // Nothing else we can deduce usefully during the postorder traversal.
-  return false;
+  // Every call was to a non-recursive function other than this function, and
+  // we have no indirect recursion as the SCC size is one. This function cannot
+  // recurse.
+  return setDoesNotRecurse(*F);
 }
 
-bool PostOrderFunctionAttrs::runOnSCC(CallGraphSCC &SCC) {
+PreservedAnalyses PostOrderFunctionAttrsPass::run(LazyCallGraph::SCC &C,
+                                                  CGSCCAnalysisManager &AM) {
+  Module &M = *C.begin()->getFunction().getParent();
+  const ModuleAnalysisManager &MAM =
+      AM.getResult<ModuleAnalysisManagerCGSCCProxy>(C).getManager();
+  FunctionAnalysisManager &FAM =
+      AM.getResult<FunctionAnalysisManagerCGSCCProxy>(C).getManager();
+
+  // FIXME: Need some way to make it more reasonable to assume that this is
+  // always cached.
+  TargetLibraryInfo &TLI = *MAM.getCachedResult<TargetLibraryAnalysis>(M);
+
+  // We pass a lambda into functions to wire them up to the analysis manager
+  // for getting function analyses.
+  auto AARGetter = [&](Function &F) -> AAResults & {
+    return FAM.getResult<AAManager>(F);
+  };
+
+  // Fill SCCNodes with the elements of the SCC. Also track whether there are
+  // any external or opt-none nodes that will prevent us from optimizing any
+  // part of the SCC.
+  SCCNodeSet SCCNodes;
+  bool HasUnknownCall = false;
+  for (LazyCallGraph::Node &N : C) {
+    Function &F = N.getFunction();
+    if (F.hasFnAttribute(Attribute::OptimizeNone)) {
+      // Treat any function we're trying not to optimize as if it were an
+      // indirect call and omit it from the node set used below.
+      HasUnknownCall = true;
+      continue;
+    }
+    // Track whether any functions in this SCC have an unknown call edge.
+    // Note: if this is ever a performance hit, we can common it with
+    // subsequent routines which also do scans over the instructions of the
+    // function.
+    if (!HasUnknownCall)
+      for (Instruction &I : instructions(F))
+        if (auto CS = CallSite(&I))
+          if (!CS.getCalledFunction()) {
+            HasUnknownCall = true;
+            break;
+          }
+
+    SCCNodes.insert(&F);
+  }
+
+  bool Changed = false;
+  Changed |= addReadAttrs(SCCNodes, AARGetter);
+  Changed |= addArgumentAttrs(SCCNodes);
+
+  // If we have no external nodes participating in the SCC, we can deduce some
+  // more precise attributes as well.
+  if (!HasUnknownCall) {
+    Changed |= addNoAliasAttrs(SCCNodes);
+    Changed |= addNonNullAttrs(SCCNodes, TLI);
+    Changed |= removeConvergentAttrs(SCCNodes);
+    Changed |= addNoRecurseAttrs(SCCNodes);
+  }
+
+  return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
+}
+
+namespace {
+struct PostOrderFunctionAttrsLegacyPass : public CallGraphSCCPass {
+  static char ID; // Pass identification, replacement for typeid
+  PostOrderFunctionAttrsLegacyPass() : CallGraphSCCPass(ID) {
+    initializePostOrderFunctionAttrsLegacyPassPass(*PassRegistry::getPassRegistry());
+  }
+
+  bool runOnSCC(CallGraphSCC &SCC) override;
+
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    AU.setPreservesCFG();
+    AU.addRequired<AssumptionCacheTracker>();
+    AU.addRequired<TargetLibraryInfoWrapperPass>();
+    getAAResultsAnalysisUsage(AU);
+    CallGraphSCCPass::getAnalysisUsage(AU);
+  }
+
+private:
+  TargetLibraryInfo *TLI;
+};
+}
+
+char PostOrderFunctionAttrsLegacyPass::ID = 0;
+INITIALIZE_PASS_BEGIN(PostOrderFunctionAttrsLegacyPass, "functionattrs",
+                      "Deduce function attributes", false, false)
+INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
+INITIALIZE_PASS_DEPENDENCY(CallGraphWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
+INITIALIZE_PASS_END(PostOrderFunctionAttrsLegacyPass, "functionattrs",
+                    "Deduce function attributes", false, false)
+
+Pass *llvm::createPostOrderFunctionAttrsLegacyPass() { return new PostOrderFunctionAttrsLegacyPass(); }
+
+bool PostOrderFunctionAttrsLegacyPass::runOnSCC(CallGraphSCC &SCC) {
   TLI = &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
   bool Changed = false;
 
@@ -1006,9 +1118,10 @@ bool PostOrderFunctionAttrs::runOnSCC(CallGraphSCC &SCC) {
   if (!ExternalNode) {
     Changed |= addNoAliasAttrs(SCCNodes);
     Changed |= addNonNullAttrs(SCCNodes, *TLI);
+    Changed |= removeConvergentAttrs(SCCNodes);
+    Changed |= addNoRecurseAttrs(SCCNodes);
   }
 
-  Changed |= addNoRecurseAttrs(SCC);
   return Changed;
 }
 

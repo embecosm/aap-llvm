@@ -230,11 +230,20 @@ class Test:
                 return True
 
             # If this is a part of the target triple, it fails.
-            if item in self.suite.config.target_triple:
+            if item and item in self.suite.config.target_triple:
                 return True
 
         return False
 
+    def isEarlyTest(self):
+        """
+        isEarlyTest() -> bool
+
+        Check whether this test should be executed early in a particular run.
+        This can be used for test suites with long running tests to maximize
+        parallelism or where it is desirable to surface their failures early.
+        """
+        return self.suite.config.is_early
 
     def getJUnitXML(self):
         test_name = self.path_in_suite[-1]

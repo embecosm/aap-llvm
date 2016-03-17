@@ -510,15 +510,11 @@ bool ConvertToScalarInfo::CanConvertToScalar(Value *V, uint64_t Offset,
 
     if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(UI)) {
       // If this is a GEP with a variable indices, we can't handle it.
-      PointerType* PtrTy = dyn_cast<PointerType>(GEP->getPointerOperandType());
-      if (!PtrTy)
-        return false;
-
       // Compute the offset that this GEP adds to the pointer.
       SmallVector<Value*, 8> Indices(GEP->op_begin()+1, GEP->op_end());
       Value *GEPNonConstantIdx = nullptr;
       if (!GEP->hasAllConstantIndices()) {
-        if (!isa<VectorType>(PtrTy->getElementType()))
+        if (!isa<VectorType>(GEP->getSourceElementType()))
           return false;
         if (NonConstantIdx)
           return false;
@@ -528,8 +524,8 @@ bool ConvertToScalarInfo::CanConvertToScalar(Value *V, uint64_t Offset,
         HadDynamicAccess = true;
       } else
         GEPNonConstantIdx = NonConstantIdx;
-      uint64_t GEPOffset = DL.getIndexedOffset(PtrTy,
-                                               Indices);
+      uint64_t GEPOffset = DL.getIndexedOffsetInType(GEP->getSourceElementType(),
+                                                     Indices);
       // See if all uses can be converted.
       if (!CanConvertToScalar(GEP, Offset+GEPOffset, GEPNonConstantIdx))
         return false;
@@ -623,8 +619,8 @@ void ConvertToScalarInfo::ConvertUsesToScalar(Value *Ptr, AllocaInst *NewAI,
         GEPNonConstantIdx = Indices.pop_back_val();
       } else
         GEPNonConstantIdx = NonConstantIdx;
-      uint64_t GEPOffset = DL.getIndexedOffset(GEP->getPointerOperandType(),
-                                               Indices);
+      uint64_t GEPOffset = DL.getIndexedOffsetInType(GEP->getSourceElementType(),
+                                                     Indices);
       ConvertUsesToScalar(GEP, NewAI, Offset+GEPOffset*8, GEPNonConstantIdx);
       GEP->eraseFromParent();
       continue;
@@ -1740,7 +1736,7 @@ void SROA::isSafeGEP(GetElementPtrInst *GEPI,
     Indices.pop_back();
 
   const DataLayout &DL = GEPI->getModule()->getDataLayout();
-  Offset += DL.getIndexedOffset(GEPI->getPointerOperandType(), Indices);
+  Offset += DL.getIndexedOffsetInType(GEPI->getSourceElementType(), Indices);
   if (!TypeHasComponent(Info.AI->getAllocatedType(), Offset, NonConstantIdxSize,
                         DL))
     MarkUnsafe(Info, GEPI);
@@ -2056,7 +2052,7 @@ void SROA::RewriteGEP(GetElementPtrInst *GEPI, AllocaInst *AI, uint64_t Offset,
   Value* NonConstantIdx = nullptr;
   if (!GEPI->hasAllConstantIndices())
     NonConstantIdx = Indices.pop_back_val();
-  Offset += DL.getIndexedOffset(GEPI->getPointerOperandType(), Indices);
+  Offset += DL.getIndexedOffsetInType(GEPI->getSourceElementType(), Indices);
 
   RewriteForScalarRepl(GEPI, AI, Offset, NewElts);
 

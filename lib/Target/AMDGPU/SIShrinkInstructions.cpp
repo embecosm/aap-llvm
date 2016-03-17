@@ -125,10 +125,7 @@ static bool canShrink(MachineInstr &MI, const SIInstrInfo *TII,
   if (TII->hasModifiersSet(MI, AMDGPU::OpName::omod))
     return false;
 
-  if (TII->hasModifiersSet(MI, AMDGPU::OpName::clamp))
-    return false;
-
-  return true;
+  return !TII->hasModifiersSet(MI, AMDGPU::OpName::clamp);
 }
 
 /// \brief This function checks \p MI for operands defined by a move immediate
@@ -229,6 +226,30 @@ bool SIShrinkInstructions::runOnMachineFunction(MachineFunction &MF) {
         continue;
       }
 
+      if (MI.getOpcode() == AMDGPU::V_MOV_B32_e32) {
+        // If this has a literal constant source that is the same as the
+        // reversed bits of an inline immediate, replace with a bitreverse of
+        // that constant. This saves 4 bytes in the common case of materializing
+        // sign bits.
+
+        // Test if we are after regalloc. We only want to do this after any
+        // optimizations happen because this will confuse them.
+        // XXX - not exactly a check for post-regalloc run.
+        MachineOperand &Src = MI.getOperand(1);
+        if (Src.isImm() &&
+            TargetRegisterInfo::isPhysicalRegister(MI.getOperand(0).getReg())) {
+          int64_t Imm = Src.getImm();
+          if (isInt<32>(Imm) && !TII->isInlineConstant(Src, 4)) {
+            int32_t ReverseImm = reverseBits<int32_t>(static_cast<int32_t>(Imm));
+            if (ReverseImm >= -16 && ReverseImm <= 64) {
+              MI.setDesc(TII->get(AMDGPU::V_BFREV_B32_e32));
+              Src.setImm(ReverseImm);
+              continue;
+            }
+          }
+        }
+      }
+
       if (!TII->hasVALU32BitEncoding(MI.getOpcode()))
         continue;
 
@@ -287,9 +308,9 @@ bool SIShrinkInstructions::runOnMachineFunction(MachineFunction &MF) {
       MachineInstrBuilder Inst32 =
           BuildMI(MBB, I, MI.getDebugLoc(), TII->get(Op32));
 
-      // Add the dst operand if the 32-bit encoding also has an explicit $dst.
+      // Add the dst operand if the 32-bit encoding also has an explicit $vdst.
       // For VOPC instructions, this is replaced by an implicit def of vcc.
-      int Op32DstIdx = AMDGPU::getNamedOperandIdx(Op32, AMDGPU::OpName::dst);
+      int Op32DstIdx = AMDGPU::getNamedOperandIdx(Op32, AMDGPU::OpName::vdst);
       if (Op32DstIdx != -1) {
         // dst
         Inst32.addOperand(MI.getOperand(0));

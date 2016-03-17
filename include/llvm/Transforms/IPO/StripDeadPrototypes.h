@@ -23,9 +23,7 @@
 namespace llvm {
 
 /// Pass to remove unused function declarations.
-class StripDeadPrototypesPass {
-public:
-  static StringRef name() { return "StripDeadPrototypesPass"; }
+struct StripDeadPrototypesPass : PassInfoMixin<StripDeadPrototypesPass> {
   PreservedAnalyses run(Module &M);
 };
 

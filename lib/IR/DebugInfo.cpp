@@ -17,7 +17,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -36,23 +35,6 @@ using namespace llvm::dwarf;
 DISubprogram *llvm::getDISubprogram(const MDNode *Scope) {
   if (auto *LocalScope = dyn_cast_or_null<DILocalScope>(Scope))
     return LocalScope->getSubprogram();
-  return nullptr;
-}
-
-DISubprogram *llvm::getDISubprogram(const Function *F) {
-  // We look for the first instr that has a debug annotation leading back to F.
-  for (auto &BB : *F) {
-    auto Inst = std::find_if(BB.begin(), BB.end(), [](const Instruction &Inst) {
-      return Inst.getDebugLoc();
-    });
-    if (Inst == BB.end())
-      continue;
-    DebugLoc DLoc = Inst->getDebugLoc();
-    const MDNode *Scope = DLoc.getInlinedAtScope();
-    auto *Subprogram = getDISubprogram(Scope);
-    return Subprogram->describes(F) ? Subprogram : nullptr;
-  }
-
   return nullptr;
 }
 

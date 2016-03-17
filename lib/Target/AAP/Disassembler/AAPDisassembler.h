@@ -10,7 +10,7 @@
 #ifndef AAPDISASSEMBLER_H
 #define AAPDISASSEMBLER_H
 
-#include "llvm/MC/MCDisassembler.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
 
 // Pull DecodeStatus and its enum values into the global namespace.
 typedef llvm::MCDisassembler::DecodeStatus DecodeStatus;

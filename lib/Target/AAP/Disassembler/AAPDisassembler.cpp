@@ -15,7 +15,7 @@
 #include "AAPDisassembler.h"
 #include "AAPRegisterInfo.h"
 #include "AAPSubtarget.h"
-#include "llvm/MC/MCDisassembler.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCFixedLenDisassembler.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCSubtargetInfo.h"

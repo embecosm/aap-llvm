@@ -156,7 +156,6 @@ XCoreTargetLowering::XCoreTargetLowering(const TargetMachine &TM,
   // Atomic operations
   // We request a fence for ATOMIC_* instructions, to reduce them to Monotonic.
   // As we are always Sequential Consistent, an ATOMIC_FENCE becomes a no OP.
-  setInsertFencesForAtomic(true);
   setOperationAction(ISD::ATOMIC_FENCE, MVT::Other, Custom);
   setOperationAction(ISD::ATOMIC_LOAD, MVT::i32, Custom);
   setOperationAction(ISD::ATOMIC_STORE, MVT::i32, Custom);
@@ -725,11 +724,9 @@ ExpandADDSUB(SDNode *N, SelectionDAG &DAG) const
          (N->getOpcode() == ISD::ADD || N->getOpcode() == ISD::SUB) &&
         "Unknown operand to lower!");
 
-  if (N->getOpcode() == ISD::ADD) {
-    SDValue Result = TryExpandADDWithMul(N, DAG);
-    if (Result.getNode())
+  if (N->getOpcode() == ISD::ADD)
+    if (SDValue Result = TryExpandADDWithMul(N, DAG))
       return Result;
-  }
 
   SDLoc dl(N);
 

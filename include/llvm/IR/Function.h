@@ -199,7 +199,7 @@ public:
 
   /// @brief Return true if the function has the attribute.
   bool hasFnAttribute(Attribute::AttrKind Kind) const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex, Kind);
+    return AttributeSets.hasFnAttribute(Kind);
   }
   bool hasFnAttribute(StringRef Kind) const {
     return AttributeSets.hasAttribute(AttributeSet::FunctionIndex, Kind);
@@ -207,6 +207,8 @@ public:
 
   /// @brief Return the attribute for the given attribute kind.
   Attribute getFnAttribute(Attribute::AttrKind Kind) const {
+    if (!hasFnAttribute(Kind))
+      return Attribute();
     return AttributeSets.getAttribute(AttributeSet::FunctionIndex, Kind);
   }
   Attribute getFnAttribute(StringRef Kind) const {
@@ -215,6 +217,8 @@ public:
 
   /// \brief Return the stack alignment for the function.
   unsigned getFnStackAlignment() const {
+    if (!hasFnAttribute(Attribute::StackAlignment))
+      return 0;
     return AttributeSets.getStackAlignment(AttributeSet::FunctionIndex);
   }
 
@@ -233,8 +237,16 @@ public:
   /// @brief adds the attributes to the list of attributes.
   void addAttributes(unsigned i, AttributeSet attrs);
 
+  /// @brief removes the attribute from the list of attributes.
+  void removeAttribute(unsigned i, Attribute::AttrKind attr);
+
   /// @brief removes the attributes from the list of attributes.
   void removeAttributes(unsigned i, AttributeSet attr);
+
+  /// @brief check if an attributes is in the list of attributes.
+  bool hasAttribute(unsigned i, Attribute::AttrKind attr) const {
+    return getAttributes().hasAttribute(i, attr);
+  }
 
   /// @brief adds the dereferenceable attribute to the list of attributes.
   void addDereferenceableAttr(unsigned i, uint64_t Bytes);
@@ -262,8 +274,7 @@ public:
 
   /// @brief Determine if the function does not access memory.
   bool doesNotAccessMemory() const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::ReadNone);
+    return hasFnAttribute(Attribute::ReadNone);
   }
   void setDoesNotAccessMemory() {
     addFnAttr(Attribute::ReadNone);
@@ -271,9 +282,7 @@ public:
 
   /// @brief Determine if the function does not access or only reads memory.
   bool onlyReadsMemory() const {
-    return doesNotAccessMemory() ||
-      AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                 Attribute::ReadOnly);
+    return doesNotAccessMemory() || hasFnAttribute(Attribute::ReadOnly);
   }
   void setOnlyReadsMemory() {
     addFnAttr(Attribute::ReadOnly);
@@ -282,16 +291,14 @@ public:
   /// @brief Determine if the call can access memmory only using pointers based
   /// on its arguments.
   bool onlyAccessesArgMemory() const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::ArgMemOnly);
+    return hasFnAttribute(Attribute::ArgMemOnly);
   }
   void setOnlyAccessesArgMemory() { addFnAttr(Attribute::ArgMemOnly); }
 
   /// @brief Determine if the function may only access memory that is 
   ///  inaccessible from the IR.
   bool onlyAccessesInaccessibleMemory() const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::InaccessibleMemOnly);
+    return hasFnAttribute(Attribute::InaccessibleMemOnly);
   }
   void setOnlyAccessesInaccessibleMemory() {
     addFnAttr(Attribute::InaccessibleMemOnly);
@@ -300,8 +307,7 @@ public:
   /// @brief Determine if the function may only access memory that is
   //  either inaccessible from the IR or pointed to by its arguments.
   bool onlyAccessesInaccessibleMemOrArgMem() const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::InaccessibleMemOrArgMemOnly);
+    return hasFnAttribute(Attribute::InaccessibleMemOrArgMemOnly);
   }
   void setOnlyAccessesInaccessibleMemOrArgMem() {
     addFnAttr(Attribute::InaccessibleMemOrArgMemOnly);
@@ -309,8 +315,7 @@ public:
 
   /// @brief Determine if the function cannot return.
   bool doesNotReturn() const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::NoReturn);
+    return hasFnAttribute(Attribute::NoReturn);
   }
   void setDoesNotReturn() {
     addFnAttr(Attribute::NoReturn);
@@ -318,8 +323,7 @@ public:
 
   /// @brief Determine if the function cannot unwind.
   bool doesNotThrow() const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::NoUnwind);
+    return hasFnAttribute(Attribute::NoUnwind);
   }
   void setDoesNotThrow() {
     addFnAttr(Attribute::NoUnwind);
@@ -327,8 +331,7 @@ public:
 
   /// @brief Determine if the call cannot be duplicated.
   bool cannotDuplicate() const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::NoDuplicate);
+    return hasFnAttribute(Attribute::NoDuplicate);
   }
   void setCannotDuplicate() {
     addFnAttr(Attribute::NoDuplicate);
@@ -336,18 +339,19 @@ public:
 
   /// @brief Determine if the call is convergent.
   bool isConvergent() const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::Convergent);
+    return hasFnAttribute(Attribute::Convergent);
   }
   void setConvergent() {
     addFnAttr(Attribute::Convergent);
+  }
+  void setNotConvergent() {
+    removeFnAttr(Attribute::Convergent);
   }
 
   /// Determine if the function is known not to recurse, directly or
   /// indirectly.
   bool doesNotRecurse() const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::NoRecurse);
+    return hasFnAttribute(Attribute::NoRecurse);
   }
   void setDoesNotRecurse() {
     addFnAttr(Attribute::NoRecurse);
@@ -356,8 +360,7 @@ public:
   /// @brief True if the ABI mandates (or the user requested) that this
   /// function be in a unwind table.
   bool hasUWTable() const {
-    return AttributeSets.hasAttribute(AttributeSet::FunctionIndex,
-                                      Attribute::UWTable);
+    return hasFnAttribute(Attribute::UWTable);
   }
   void setHasUWTable() {
     addFnAttr(Attribute::UWTable);
@@ -545,6 +548,12 @@ public:
   /// \brief Get the prologue data associated with this function.
   Constant *getPrologueData() const;
   void setPrologueData(Constant *PrologueData);
+
+  /// Print the function to an output stream with an optional
+  /// AssemblyAnnotationWriter.
+  void print(raw_ostream &OS, AssemblyAnnotationWriter *AAW = nullptr,
+             bool ShouldPreserveUseListOrder = false,
+             bool IsForDebug = false) const;
 
   /// viewCFG - This function is meant for use from the debugger.  You can just
   /// say 'call F->viewCFG()' and a ghostview window should pop up from the

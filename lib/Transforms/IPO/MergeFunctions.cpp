@@ -1186,7 +1186,8 @@ int FunctionComparator::cmpBasicBlocks(const BasicBlock *BBL,
       }
     }
 
-    ++InstL, ++InstR;
+    ++InstL;
+    ++InstR;
   } while (InstL != InstLE && InstR != InstRE);
 
   if (InstL != InstLE && InstR == InstRE)
@@ -1249,7 +1250,7 @@ int FunctionComparator::compare() {
   // functions, then takes each block from each terminator in order. As an
   // artifact, this also means that unreachable blocks are ignored.
   SmallVector<const BasicBlock *, 8> FnLBBs, FnRBBs;
-  SmallSet<const BasicBlock *, 128> VisitedBBs; // in terms of F1.
+  SmallPtrSet<const BasicBlock *, 32> VisitedBBs; // in terms of F1.
 
   FnLBBs.push_back(&FnL->getEntryBlock());
   FnRBBs.push_back(&FnR->getEntryBlock());
@@ -1645,7 +1646,7 @@ void MergeFunctions::writeThunkOrAlias(Function *F, Function *G) {
 // Helper for writeThunk,
 // Selects proper bitcast operation,
 // but a bit simpler then CastInst::getCastOpcode.
-static Value *createCast(IRBuilder<false> &Builder, Value *V, Type *DestTy) {
+static Value *createCast(IRBuilder<> &Builder, Value *V, Type *DestTy) {
   Type *SrcTy = V->getType();
   if (SrcTy->isStructTy()) {
     assert(DestTy->isStructTy());
@@ -1688,7 +1689,7 @@ void MergeFunctions::writeThunk(Function *F, Function *G) {
   Function *NewG = Function::Create(G->getFunctionType(), G->getLinkage(), "",
                                     G->getParent());
   BasicBlock *BB = BasicBlock::Create(F->getContext(), "", NewG);
-  IRBuilder<false> Builder(BB);
+  IRBuilder<> Builder(BB);
 
   SmallVector<Value *, 16> Args;
   unsigned i = 0;
