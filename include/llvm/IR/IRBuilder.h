@@ -518,9 +518,9 @@ public:
 
 private:
   /// \brief Create a call to a masked intrinsic with given Id.
+  /// Masked intrinsic has only one overloaded type - data type.
   CallInst *CreateMaskedIntrinsic(Intrinsic::ID Id, ArrayRef<Value *> Ops,
-                                  ArrayRef<Type *> OverloadedTypes,
-                                  const Twine &Name = "");
+                                  Type *DataTy, const Twine &Name = "");
 
   Value *getCastedInt8PtrValue(Value *Ptr);
 };
@@ -1569,15 +1569,18 @@ public:
   }
 
   Value *CreateSelect(Value *C, Value *True, Value *False,
-                      const Twine &Name = "", MDNode *ProfWeights = nullptr) {
+                      const Twine &Name = "", Instruction *MDFrom = nullptr) {
     if (Constant *CC = dyn_cast<Constant>(C))
       if (Constant *TC = dyn_cast<Constant>(True))
         if (Constant *FC = dyn_cast<Constant>(False))
           return Insert(Folder.CreateSelect(CC, TC, FC), Name);
 
     SelectInst *Sel = SelectInst::Create(C, True, False);
-    // TODO: "unpredictable" metadata can apply to a select too.
-    Sel->setMetadata(LLVMContext::MD_prof, ProfWeights);
+    if (MDFrom) {
+      MDNode *Prof = MDFrom->getMetadata(LLVMContext::MD_prof);
+      MDNode *Unpred = MDFrom->getMetadata(LLVMContext::MD_unpredictable);
+      Sel = addBranchMetadata(Sel, Prof, Unpred);
+    }
     return Insert(Sel, Name);
   }
 

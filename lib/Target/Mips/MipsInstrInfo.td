@@ -315,6 +315,10 @@ class ASE_CNMIPS {
   list<Predicate> InsnPredicates = [HasCnMips];
 }
 
+class ASE_MIPS64_CNMIPS {
+  list<Predicate> InsnPredicates = [HasMips64, HasCnMips];
+}
+
 class ASE_MSA {
   list<Predicate> InsnPredicates = [HasMSA];
 }
@@ -449,8 +453,10 @@ class UImmAsmOperandClass<int Bits, list<AsmOperandClass> Supers = []>
 //     uimm5 < uimm5_64, and uimm5 < vsplat_uimm5
 //   This is entirely arbitrary. We need an ordering and what we pick is
 //   unimportant since only one is possible for a given mnemonic.
+def ConstantUImm26AsmOperandClass
+    : ConstantUImmAsmOperandClass<26, []>;
 def ConstantUImm20AsmOperandClass
-    : ConstantUImmAsmOperandClass<20, []>;
+    : ConstantUImmAsmOperandClass<20, [ConstantUImm26AsmOperandClass]>;
 def UImm16RelaxedAsmOperandClass
     : UImmAsmOperandClass<16, [ConstantUImm20AsmOperandClass]> {
   let Name = "UImm16_Relaxed";
@@ -461,10 +467,25 @@ def UImm16AsmOperandClass
     : UImmAsmOperandClass<16, [UImm16RelaxedAsmOperandClass]>;
 def ConstantUImm10AsmOperandClass
     : ConstantUImmAsmOperandClass<10, [UImm16AsmOperandClass]>;
+def ConstantSImm10AsmOperandClass
+    : ConstantSImmAsmOperandClass<10, [ConstantUImm10AsmOperandClass]>;
+def ConstantSImm7Lsl2AsmOperandClass : AsmOperandClass {
+  let Name = "SImm7Lsl2";
+  let RenderMethod = "addImmOperands";
+  let PredicateMethod = "isScaledSImm<7, 2>";
+  let SuperClasses = [ConstantSImm10AsmOperandClass];
+  let DiagnosticType = "SImm7_Lsl2";
+}
 def ConstantUImm8AsmOperandClass
-    : ConstantUImmAsmOperandClass<8, [ConstantUImm10AsmOperandClass]>;
+    : ConstantUImmAsmOperandClass<8, [ConstantSImm7Lsl2AsmOperandClass]>;
+def ConstantUImm7Sub1AsmOperandClass
+    : ConstantUImmAsmOperandClass<7, [ConstantUImm8AsmOperandClass], -1> {
+  // Specify the names since the -1 offset causes invalid identifiers otherwise.
+  let Name = "UImm7_N1";
+  let DiagnosticType = "UImm7_N1";
+}
 def ConstantUImm7AsmOperandClass
-    : ConstantUImmAsmOperandClass<7, [ConstantUImm8AsmOperandClass]>;
+    : ConstantUImmAsmOperandClass<7, [ConstantUImm7Sub1AsmOperandClass]>;
 def ConstantUImm6Lsl2AsmOperandClass : AsmOperandClass {
   let Name = "UImm6Lsl2";
   let RenderMethod = "addImmOperands";
@@ -507,8 +528,10 @@ def ConstantUImm5Plus1AsmOperandClass
           5, [ConstantUImm5Plus32NormalizeAsmOperandClass], 1>;
 def ConstantUImm5AsmOperandClass
     : ConstantUImmAsmOperandClass<5, [ConstantUImm5Plus1AsmOperandClass]>;
+def ConstantSImm5AsmOperandClass
+    : ConstantSImmAsmOperandClass<5, [ConstantUImm5AsmOperandClass]>;
 def ConstantUImm4AsmOperandClass
-    : ConstantUImmAsmOperandClass<4, [ConstantUImm5AsmOperandClass]>;
+    : ConstantUImmAsmOperandClass<4, [ConstantSImm5AsmOperandClass]>;
 def ConstantSImm4AsmOperandClass
     : ConstantSImmAsmOperandClass<4, [ConstantUImm4AsmOperandClass]>;
 def ConstantUImm3AsmOperandClass
@@ -552,10 +575,6 @@ def calltarget  : Operand<iPTR> {
 
 def imm64: Operand<i64>;
 
-def simm6 : Operand<i32> {
-  let ParserMatchClass = ConstantSImm6AsmOperandClass;
-  let OperandType = "OPERAND_IMMEDIATE";
-}
 def simm9 : Operand<i32>;
 def simm10 : Operand<i32>;
 def simm11 : Operand<i32>;
@@ -576,7 +595,6 @@ def simm18_lsl3 : Operand<i32> {
   let ParserMatchClass = MipsJumpTargetAsmOperand;
 }
 
-def simm20      : Operand<i32>;
 def simm32      : Operand<i32>;
 
 def simm16_64   : Operand<i64> {
@@ -598,7 +616,7 @@ def uimm_range_2_64 : Operand<i32> {
 }
 
 // Unsigned Operands
-foreach I = {1, 2, 3, 4, 5, 6, 7, 8, 10, 20} in
+foreach I = {1, 2, 3, 4, 5, 6, 7, 8, 10, 20, 26} in
   def uimm # I : Operand<i32> {
     let PrintMethod = "printUImm<" # I # ">";
     let ParserMatchClass =
@@ -709,13 +727,52 @@ def uimm5_64_report_uimm6 : Operand<i64> {
   let ParserMatchClass = ConstantUImm5ReportUImm6AsmOperandClass;
 }
 
+foreach I = {1, 2, 3, 4} in
+  def uimm # I # _ptr : Operand<iPTR> {
+    let PrintMethod = "printUImm<" # I # ">";
+    let ParserMatchClass =
+        !cast<AsmOperandClass>("ConstantUImm" # I # "AsmOperandClass");
+  }
+
+foreach I = {1, 2, 3, 4, 5, 6, 8} in
+  def vsplat_uimm # I : Operand<vAny> {
+    let PrintMethod = "printUImm<" # I # ">";
+    let ParserMatchClass =
+        !cast<AsmOperandClass>("ConstantUImm" # I # "AsmOperandClass");
+  }
+
 // Signed operands
-foreach I = {4} in
+foreach I = {4, 5, 6} in
   def simm # I : Operand<i32> {
-    let DecoderMethod = "DecodeSImmWithOffset<" # I # ">";
+    let DecoderMethod = "DecodeSImmWithOffsetAndScale<" # I # ">";
     let ParserMatchClass =
         !cast<AsmOperandClass>("ConstantSImm" # I # "AsmOperandClass");
   }
+
+foreach I = {10} in
+  def simm # I # _64 : Operand<i64> {
+    let DecoderMethod = "DecodeSImmWithOffsetAndScale<" # I # ">";
+    let ParserMatchClass =
+        !cast<AsmOperandClass>("ConstantSImm" # I # "AsmOperandClass");
+  }
+
+foreach I = {5, 10} in
+  def vsplat_simm # I : Operand<vAny> {
+    let ParserMatchClass =
+        !cast<AsmOperandClass>("ConstantSImm" # I # "AsmOperandClass");
+  }
+
+def simm7_lsl2 : Operand<OtherVT> {
+  let EncoderMethod = "getSImm7Lsl2Encoding";
+  let DecoderMethod = "DecodeSImmWithOffsetAndScale<" # I # ", 0, 4>";
+  let ParserMatchClass = ConstantSImm7Lsl2AsmOperandClass;
+}
+
+// This is almost the same as a uimm7 but 0x7f is interpreted as -1.
+def li16_imm : Operand<i32> {
+  let DecoderMethod = "DecodeLi16Imm";
+  let ParserMatchClass = ConstantUImm7Sub1AsmOperandClass;
+}
 
 
 def pcrel16      : Operand<i32> {
@@ -1764,11 +1821,12 @@ def MULT  : MMRel, Mult<"mult", II_MULT, GPR32Opnd, [HI0, LO0]>,
             MULT_FM<0, 0x18>, ISA_MIPS1_NOT_32R6_64R6;
 def MULTu : MMRel, Mult<"multu", II_MULTU, GPR32Opnd, [HI0, LO0]>,
             MULT_FM<0, 0x19>, ISA_MIPS1_NOT_32R6_64R6;
-def SDIV  : MMRel, Div<"div", II_DIV, GPR32Opnd, [HI0, LO0]>,
-            MULT_FM<0, 0x1a>, ISA_MIPS1_NOT_32R6_64R6;
-def UDIV  : MMRel, Div<"divu", II_DIVU, GPR32Opnd, [HI0, LO0]>,
-            MULT_FM<0, 0x1b>, ISA_MIPS1_NOT_32R6_64R6;
-
+let AdditionalPredicates = [NotInMicroMips] in {
+  def SDIV  : MMRel, Div<"div", II_DIV, GPR32Opnd, [HI0, LO0]>,
+              MULT_FM<0, 0x1a>, ISA_MIPS1_NOT_32R6_64R6;
+  def UDIV  : MMRel, Div<"divu", II_DIVU, GPR32Opnd, [HI0, LO0]>,
+              MULT_FM<0, 0x1b>, ISA_MIPS1_NOT_32R6_64R6;
+}
 def MTHI : MMRel, MoveToLOHI<"mthi", GPR32Opnd, [HI0]>, MTLO_FM<0x11>,
            ISA_MIPS1_NOT_32R6_64R6;
 def MTLO : MMRel, MoveToLOHI<"mtlo", GPR32Opnd, [LO0]>, MTLO_FM<0x13>,
@@ -1836,12 +1894,12 @@ def PseudoMSUBU : MAddSubPseudo<MSUBU, MipsMSubu, II_MSUBU>,
                   ISA_MIPS32_NOT_32R6_64R6;
 }
 
-def PseudoSDIV : MultDivPseudo<SDIV, ACC64, GPR32Opnd, MipsDivRem, II_DIV,
-                               0, 1, 1>, ISA_MIPS1_NOT_32R6_64R6;
-def PseudoUDIV : MultDivPseudo<UDIV, ACC64, GPR32Opnd, MipsDivRemU, II_DIVU,
-                               0, 1, 1>, ISA_MIPS1_NOT_32R6_64R6;
 let AdditionalPredicates = [NotInMicroMips] in {
-def RDHWR : MMRel, ReadHardware<GPR32Opnd, HWRegsOpnd>, RDHWR_FM;
+  def PseudoSDIV : MultDivPseudo<SDIV, ACC64, GPR32Opnd, MipsDivRem, II_DIV,
+                                 0, 1, 1>, ISA_MIPS1_NOT_32R6_64R6;
+  def PseudoUDIV : MultDivPseudo<UDIV, ACC64, GPR32Opnd, MipsDivRemU, II_DIVU,
+                                 0, 1, 1>, ISA_MIPS1_NOT_32R6_64R6;
+  def RDHWR : MMRel, ReadHardware<GPR32Opnd, HWRegsOpnd>, RDHWR_FM;
 }
 // TODO: Add '0 < pos+size <= 32' constraint check to ext instruction
 def EXT : MMRel, ExtBase<"ext", GPR32Opnd, uimm5, uimm5_plus1, immZExt5,
@@ -1851,7 +1909,10 @@ def INS : MMRel, InsBase<"ins", GPR32Opnd, uimm5, uimm5_inssize_plus1, MipsIns>,
 
 /// Move Control Registers From/To CPU Registers
 def MFC0 : MFC3OP<"mfc0", GPR32Opnd, COP0Opnd>, MFC3OP_FM<0x10, 0>, ISA_MIPS32;
-def MTC0 : MTC3OP<"mtc0", COP0Opnd, GPR32Opnd>, MFC3OP_FM<0x10, 4>, ISA_MIPS32;
+let AdditionalPredicates = [NotInMicroMips] in {
+  def MTC0 : MTC3OP<"mtc0", COP0Opnd, GPR32Opnd>, MFC3OP_FM<0x10, 4>,
+             ISA_MIPS32;
+}
 def MFC2 : MFC3OP<"mfc2", GPR32Opnd, COP2Opnd>, MFC3OP_FM<0x12, 0>;
 def MTC2 : MTC3OP<"mtc2", COP2Opnd, GPR32Opnd>, MFC3OP_FM<0x12, 4>;
 
@@ -2178,10 +2239,10 @@ def SDivMacro : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
 def UDivMacro : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
                                   "divu\t$rs, $rt">; //, ISA_MIPS1_NOT_32R6_64R6;
 
-def DSDivMacro : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
+def DSDivMacro : MipsAsmPseudoInst<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
                                    "ddiv\t$rs, $rt">; //, ISA_MIPS64_NOT_64R6;
 
-def DUDivMacro : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
+def DUDivMacro : MipsAsmPseudoInst<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
                                    "ddivu\t$rs, $rt">; //, ISA_MIPS64_NOT_64R6;
 
 def Ulh : MipsAsmPseudoInst<(outs GPR32Opnd:$rt), (ins mem:$addr),

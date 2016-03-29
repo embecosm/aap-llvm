@@ -42,8 +42,9 @@ PrefDist("ppc-loop-prefetch-distance", cl::Hidden, cl::init(300),
 TargetTransformInfo::PopcntSupportKind
 PPCTTIImpl::getPopcntSupport(unsigned TyWidth) {
   assert(isPowerOf2_32(TyWidth) && "Ty width must be power of 2");
-  if (ST->hasPOPCNTD() && TyWidth <= 64)
-    return TTI::PSK_FastHardware;
+  if (ST->hasPOPCNTD() != PPCSubtarget::POPCNTD_Unavailable && TyWidth <= 64)
+    return ST->hasPOPCNTD() == PPCSubtarget::POPCNTD_Slow ?
+             TTI::PSK_SlowHardware : TTI::PSK_FastHardware;
   return TTI::PSK_Software;
 }
 
@@ -375,7 +376,7 @@ int PPCTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
   // If we can use the permutation-based load sequence, then this is also
   // relatively cheap (not counting loop-invariant instructions): one load plus
   // one permute (the last load in a series has extra cost, but we're
-  // neglecting that here). Note that on the P7, we should do unaligned loads
+  // neglecting that here). Note that on the P7, we could do unaligned loads
   // for Altivec types using the VSX instructions, but that's more expensive
   // than using the permutation-based load sequence. On the P8, that's no
   // longer true.

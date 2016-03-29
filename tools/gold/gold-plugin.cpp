@@ -901,22 +901,17 @@ static SubtargetFeatures getFeatures(Triple &TheTriple) {
 }
 
 static CodeGenOpt::Level getCGOptLevel() {
-  CodeGenOpt::Level CGOptLevel;
   switch (options::OptLevel) {
   case 0:
-    CGOptLevel = CodeGenOpt::None;
-    break;
+    return CodeGenOpt::None;
   case 1:
-    CGOptLevel = CodeGenOpt::Less;
-    break;
+    return CodeGenOpt::Less;
   case 2:
-    CGOptLevel = CodeGenOpt::Default;
-    break;
+    return CodeGenOpt::Default;
   case 3:
-    CGOptLevel = CodeGenOpt::Aggressive;
-    break;
+    return CodeGenOpt::Aggressive;
   }
-  return CGOptLevel;
+  llvm_unreachable("Invalid optimization level");
 }
 
 void CodeGen::initTargetMachine() {
@@ -1294,10 +1289,14 @@ static ld_plugin_status all_symbols_read_hook(void) {
 
   if (options::TheOutputType == options::OT_BC_ONLY ||
       options::TheOutputType == options::OT_DISABLE) {
-    if (options::TheOutputType == options::OT_DISABLE)
+    if (options::TheOutputType == options::OT_DISABLE) {
       // Remove the output file here since ld.bfd creates the output file
       // early.
-      sys::fs::remove(output_name);
+      std::error_code EC = sys::fs::remove(output_name);
+      if (EC)
+        message(LDPL_ERROR, "Failed to delete '%s': %s", output_name.c_str(),
+                EC.message().c_str());
+    }
     exit(0);
   }
 

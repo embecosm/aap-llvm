@@ -2469,6 +2469,7 @@ CCAssignFn *AArch64TargetLowering::CCAssignFnForCall(CallingConv::ID CC,
   case CallingConv::C:
   case CallingConv::Fast:
   case CallingConv::PreserveMost:
+  case CallingConv::CXX_FAST_TLS:
     if (!Subtarget->isTargetDarwin())
       return CC_AArch64_AAPCS;
     return IsVarArg ? CC_AArch64_DarwinPCS_VarArg : CC_AArch64_DarwinPCS;
@@ -2815,6 +2816,13 @@ bool AArch64TargetLowering::isEligibleForTailCallOptimization(
   const Function *CallerF = MF.getFunction();
   CallingConv::ID CallerCC = CallerF->getCallingConv();
   bool CCMatch = CallerCC == CalleeCC;
+
+  // Disable tailcall for CXX_FAST_TLS when callee and caller have different
+  // calling conventions, given that CXX_FAST_TLS has a bigger CSR set.
+  if (!CCMatch &&
+      (CallerCC == CallingConv::CXX_FAST_TLS ||
+       CalleeCC == CallingConv::CXX_FAST_TLS))
+    return false;
 
   // Byval parameters hand the function a pointer directly into the stack area
   // we want to reuse during a tail call. Working around this *is* possible (see
@@ -7508,6 +7516,10 @@ SDValue
 AArch64TargetLowering::BuildSDIVPow2(SDNode *N, const APInt &Divisor,
                                      SelectionDAG &DAG,
                                      std::vector<SDNode *> *Created) const {
+  AttributeSet Attr = DAG.getMachineFunction().getFunction()->getAttributes();
+  if (isIntDivCheap(N->getValueType(0), Attr))
+    return SDValue(N,0); // Lower SDIV as SDIV
+
   // fold (sdiv X, pow2)
   EVT VT = N->getValueType(0);
   if ((VT != MVT::i32 && VT != MVT::i64) ||
@@ -10289,4 +10301,17 @@ void AArch64TargetLowering::insertCopiesSplitCSR(
               TII->get(TargetOpcode::COPY), *I)
           .addReg(NewVR);
   }
+}
+
+bool AArch64TargetLowering::isIntDivCheap(EVT VT, AttributeSet Attr) const {
+  // Integer division on AArch64 is expensive. However, when aggressively
+  // optimizing for code size, we prefer to use a div instruction, as it is
+  // usually smaller than the alternative sequence.
+  // The exception to this is vector division. Since AArch64 doesn't have vector
+  // integer division, leaving the division as-is is a loss even in terms of
+  // size, because it will have to be scalarized, while the alternative code
+  // sequence can be performed in vector form.
+  bool OptSize =
+      Attr.hasAttribute(AttributeSet::FunctionIndex, Attribute::MinSize);
+  return OptSize && !VT.isVector();
 }

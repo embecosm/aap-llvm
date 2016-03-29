@@ -194,6 +194,7 @@ ScalarEnumerationTraits<ELFYAML::ELF_EM>::enumeration(IO &IO,
   ECase(EM_78KOR)
   ECase(EM_56800EX)
   ECase(EM_AMDGPU)
+  ECase(EM_LANAI)
 #undef ECase
 }
 
@@ -527,6 +528,9 @@ void ScalarEnumerationTraits<ELFYAML::ELF_REL>::enumeration(
   case ELF::EM_ARM:
 #include "llvm/Support/ELFRelocs/ARM.def"
     break;
+  case ELF::EM_LANAI:
+#include "llvm/Support/ELFRelocs/Lanai.def"
+  break;
   case ELF::EM_AAP:
 #include "llvm/Support/ELFRelocs/AAP.def"
     break;

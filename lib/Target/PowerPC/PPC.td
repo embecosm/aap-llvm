@@ -86,8 +86,6 @@ def FeatureFPCVT     : SubtargetFeature<"fpcvt", "HasFPCVT", "true",
   "Enable fc[ft]* (unsigned and single-precision) and lfiwzx instructions">;
 def FeatureISEL      : SubtargetFeature<"isel","HasISEL", "true",
                                         "Enable the isel instruction">;
-def FeaturePOPCNTD   : SubtargetFeature<"popcntd","HasPOPCNTD", "true",
-                                        "Enable the popcnt[dw] instructions">;
 def FeatureBPERMD    : SubtargetFeature<"bpermd", "HasBPERMD", "true",
                                         "Enable the bpermd instruction">;
 def FeatureExtDiv    : SubtargetFeature<"extdiv", "HasExtDiv", "true",
@@ -151,6 +149,16 @@ def FeatureFloat128 :
   SubtargetFeature<"float128", "HasFloat128", "true",
                    "Enable the __float128 data type for IEEE-754R Binary128.",
                    [FeatureVSX]>;
+
+def FeaturePOPCNTD   : SubtargetFeature<"popcntd","HasPOPCNTD",
+                                        "POPCNTD_Fast",
+                                        "Enable the popcnt[dw] instructions">;
+// Note that for the a2/a2q processor models we should not use popcnt[dw] by
+// default. These processors do support the instructions, but they're
+// microcoded, and the software emulation is about twice as fast.
+def FeatureSlowPOPCNTD : SubtargetFeature<"slow-popcntd","HasPOPCNTD",
+                                          "POPCNTD_Slow",
+                                          "Has slow popcnt[dw] instructions">;
 
 def DeprecatedDST    : SubtargetFeature<"", "DeprecatedDST", "true",
   "Treat vector data stream cache control instructions as deprecated">;
@@ -337,16 +345,17 @@ def : ProcessorModel<"a2", PPCA2Model,
                    FeatureFRSQRTE, FeatureFRSQRTES, FeatureRecipPrec,
                    FeatureSTFIWX, FeatureLFIWAX,
                    FeatureFPRND, FeatureFPCVT, FeatureISEL,
-                   FeaturePOPCNTD, FeatureCMPB, FeatureLDBRX, Feature64Bit
-               /*, Feature64BitRegs */, FeatureMFTB]>;
+                   FeatureSlowPOPCNTD, FeatureCMPB, FeatureLDBRX,
+                   Feature64Bit /*, Feature64BitRegs */, FeatureMFTB]>;
 def : ProcessorModel<"a2q", PPCA2Model,
                   [DirectiveA2, FeatureICBT, FeatureBookE, FeatureMFOCRF,
                    FeatureFCPSGN, FeatureFSqrt, FeatureFRE, FeatureFRES,
                    FeatureFRSQRTE, FeatureFRSQRTES, FeatureRecipPrec,
                    FeatureSTFIWX, FeatureLFIWAX,
                    FeatureFPRND, FeatureFPCVT, FeatureISEL,
-                   FeaturePOPCNTD, FeatureCMPB, FeatureLDBRX, Feature64Bit
-               /*, Feature64BitRegs */, FeatureQPX, FeatureMFTB]>;
+                   FeatureSlowPOPCNTD, FeatureCMPB, FeatureLDBRX,
+                   Feature64Bit /*, Feature64BitRegs */, FeatureQPX,
+                   FeatureMFTB]>;
 def : ProcessorModel<"pwr3", G5Model,
                   [DirectivePwr3, FeatureAltivec,
                    FeatureFRES, FeatureFRSQRTE, FeatureMFOCRF,

@@ -86,6 +86,19 @@ static cl::opt<bool>
 EnableFMFInDAG("enable-fmf-dag", cl::init(true), cl::Hidden,
                 cl::desc("Enable fast-math-flags for DAG nodes"));
 
+/// Minimum jump table density for normal functions.
+static cl::opt<unsigned>
+JumpTableDensity("jump-table-density", cl::init(10), cl::Hidden,
+                 cl::desc("Minimum density for building a jump table in "
+                          "a normal function"));
+
+/// Minimum jump table density for -Os or -Oz functions.
+static cl::opt<unsigned>
+OptsizeJumpTableDensity("optsize-jump-table-density", cl::init(40), cl::Hidden,
+                        cl::desc("Minimum density for building a jump table in "
+                                 "an optsize function"));
+
+
 // Limit the width of DAG chains. This is important in general to prevent
 // DAG-based analysis from blowing up. For example, alias analysis and
 // load clustering may not complete in reasonable time. It is difficult to
@@ -2127,6 +2140,12 @@ void SelectionDAGBuilder::visitInvoke(const InvokeInst &I) {
   MachineBasicBlock *Return = FuncInfo.MBBMap[I.getSuccessor(0)];
   const BasicBlock *EHPadBB = I.getSuccessor(1);
 
+  // Deopt bundles are lowered in LowerCallSiteWithDeoptBundle, and we don't
+  // have to do anything here to lower funclet bundles.
+  assert(!I.hasOperandBundlesOtherThan(
+             {LLVMContext::OB_deopt, LLVMContext::OB_funclet}) &&
+         "Cannot lower invokes with arbitrary operand bundles yet!");
+
   const Value *Callee(I.getCalledValue());
   const Function *Fn = dyn_cast<Function>(Callee);
   if (isa<InlineAsm>(Callee))
@@ -2146,8 +2165,15 @@ void SelectionDAGBuilder::visitInvoke(const InvokeInst &I) {
       LowerStatepoint(ImmutableStatepoint(&I), EHPadBB);
       break;
     }
-  } else
+  } else if (I.countOperandBundlesOfType(LLVMContext::OB_deopt)) {
+    // Currently we do not lower any intrinsic calls with deopt operand bundles.
+    // Eventually we will support lowering the @llvm.experimental.deoptimize
+    // intrinsic, and right now there are no plans to support other intrinsics
+    // with deopt state.
+    LowerCallSiteWithDeoptBundle(&I, getValue(Callee), EHPadBB);
+  } else {
     LowerCallTo(&I, getValue(Callee), false, EHPadBB);
+  }
 
   // If the value of the invoke is used outside of its defining block, make it
   // available as a virtual register.
@@ -5447,6 +5473,10 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     setValue(&I, N);
     return nullptr;
   }
+
+  case Intrinsic::experimental_deoptimize:
+    LowerDeoptimizeCall(&I);
+    return nullptr;
   }
 }
 
@@ -6100,9 +6130,19 @@ void SelectionDAGBuilder::visitCall(const CallInst &I) {
         RenameFn,
         DAG.getTargetLoweringInfo().getPointerTy(DAG.getDataLayout()));
 
-  // Check if we can potentially perform a tail call. More detailed checking is
-  // be done within LowerCallTo, after more information about the call is known.
-  LowerCallTo(&I, Callee, I.isTailCall());
+  // Deopt bundles are lowered in LowerCallSiteWithDeoptBundle, and we don't
+  // have to do anything here to lower funclet bundles.
+  assert(!I.hasOperandBundlesOtherThan(
+             {LLVMContext::OB_deopt, LLVMContext::OB_funclet}) &&
+         "Cannot lower calls with arbitrary operand bundles!");
+
+  if (I.countOperandBundlesOfType(LLVMContext::OB_deopt))
+    LowerCallSiteWithDeoptBundle(&I, Callee, nullptr);
+  else
+    // Check if we can potentially perform a tail call. More detailed checking
+    // is be done within LowerCallTo, after more information about the call is
+    // known.
+    LowerCallTo(&I, Callee, I.isTailCall());
 }
 
 namespace {
@@ -7891,7 +7931,8 @@ void SelectionDAGBuilder::updateDAGForMaybeTailCall(SDValue MaybeTC) {
 
 bool SelectionDAGBuilder::isDense(const CaseClusterVector &Clusters,
                                   unsigned *TotalCases, unsigned First,
-                                  unsigned Last) {
+                                  unsigned Last,
+                                  unsigned Density) {
   assert(Last >= First);
   assert(TotalCases[Last] >= TotalCases[First]);
 
@@ -7912,7 +7953,7 @@ bool SelectionDAGBuilder::isDense(const CaseClusterVector &Clusters,
   assert(NumCases < UINT64_MAX / 100);
   assert(Range >= NumCases);
 
-  return NumCases * 100 >= Range * MinJumpTableDensity;
+  return NumCases * 100 >= Range * Density;
 }
 
 static inline bool areJTsAllowed(const TargetLowering &TLI) {
@@ -8026,7 +8067,11 @@ void SelectionDAGBuilder::findJumpTables(CaseClusterVector &Clusters,
       TotalCases[i] += TotalCases[i - 1];
   }
 
-  if (N >= MinJumpTableSize && isDense(Clusters, &TotalCases[0], 0, N - 1)) {
+  unsigned MinDensity = JumpTableDensity;
+  if (DefaultMBB->getParent()->getFunction()->optForSize())
+    MinDensity = OptsizeJumpTableDensity;
+  if (N >= MinJumpTableSize
+      && isDense(Clusters, &TotalCases[0], 0, N - 1, MinDensity)) {
     // Cheap case: the whole range might be suitable for jump table.
     CaseCluster JTCluster;
     if (buildJumpTable(Clusters, 0, N - 1, SI, DefaultMBB, JTCluster)) {
@@ -8071,7 +8116,7 @@ void SelectionDAGBuilder::findJumpTables(CaseClusterVector &Clusters,
     // Search for a solution that results in fewer partitions.
     for (int64_t j = N - 1; j > i; j--) {
       // Try building a partition from Clusters[i..j].
-      if (isDense(Clusters, &TotalCases[0], i, j)) {
+      if (isDense(Clusters, &TotalCases[0], i, j, MinDensity)) {
         unsigned NumPartitions = 1 + (j == N - 1 ? 0 : MinPartitions[j + 1]);
         bool IsTable = j - i + 1 >= MinJumpTableSize;
         unsigned Tables = IsTable + (j == N - 1 ? 0 : NumTables[j + 1]);

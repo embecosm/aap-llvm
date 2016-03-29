@@ -448,6 +448,12 @@ namespace {
         StoreSDNode* St, SmallVectorImpl<MemOpLink> &StoreNodes,
         SmallVectorImpl<LSBaseSDNode*> &AliasLoadNodes);
 
+    /// Helper function for MergeConsecutiveStores. Checks if
+    /// Candidate stores have indirect dependency through their
+    /// operands. \return True if safe to merge
+    bool checkMergeStoreCandidatesForDependencies(
+        SmallVectorImpl<MemOpLink> &StoreNodes);
+
     /// Merge consecutive store operations into a wide store.
     /// This optimization uses wide integers or vectors when possible.
     /// \return True if some memory operations were changed.
@@ -3089,6 +3095,7 @@ SDValue DAGCombiner::visitAND(SDNode *N) {
   // the 'X' node here can either be nothing or an extract_vector_elt to catch
   // more cases.
   if ((N0.getOpcode() == ISD::EXTRACT_VECTOR_ELT &&
+       N0.getValueSizeInBits() == N0.getOperand(0).getScalarValueSizeInBits() &&
        N0.getOperand(0).getOpcode() == ISD::LOAD) ||
       N0.getOpcode() == ISD::LOAD) {
     LoadSDNode *Load = cast<LoadSDNode>( (N0.getOpcode() == ISD::LOAD) ?
@@ -9635,6 +9642,7 @@ bool DAGCombiner::CombineToPreIndexedLoadStore(SDNode *N) {
   // Caches for hasPredecessorHelper.
   SmallPtrSet<const SDNode *, 32> Visited;
   SmallVector<const SDNode *, 16> Worklist;
+  Worklist.push_back(N);
 
   // If the offset is a constant, there may be other adds of constants that
   // can be folded with this one. We should do this to avoid having to keep
@@ -9650,7 +9658,7 @@ bool DAGCombiner::CombineToPreIndexedLoadStore(SDNode *N) {
       if (Use.getUser() == Ptr.getNode() || Use != BasePtr)
         continue;
 
-      if (N->hasPredecessorHelper(Use.getUser(), Visited, Worklist))
+      if (SDNode::hasPredecessorHelper(Use.getUser(), Visited, Worklist))
         continue;
 
       if (Use.getUser()->getOpcode() != ISD::ADD &&
@@ -9683,7 +9691,7 @@ bool DAGCombiner::CombineToPreIndexedLoadStore(SDNode *N) {
   for (SDNode *Use : Ptr.getNode()->uses()) {
     if (Use == N)
       continue;
-    if (N->hasPredecessorHelper(Use, Visited, Worklist))
+    if (SDNode::hasPredecessorHelper(Use, Visited, Worklist))
       return false;
 
     // If Ptr may be folded in addressing mode of other use, then it's
@@ -11319,9 +11327,8 @@ void DAGCombiner::getStoreMergeAndAliasCandidates(
       break;
 
     // No truncation.
-    if (StoreSDNode *St = dyn_cast<StoreSDNode>(Index))
-      if (St->isTruncatingStore())
-        break;
+    if (Index->isTruncatingStore())
+      break;
 
     // The stored memory type must be the same.
     if (Index->getMemoryVT() != MemVT)
@@ -11363,6 +11370,30 @@ void DAGCombiner::getStoreMergeAndAliasCandidates(
       }
     }
   }
+}
+
+// We need to check that merging these stores does not cause a loop
+// in the DAG. Any store candidate may depend on another candidate
+// indirectly through its operand (we already consider dependencies
+// through the chain). Check in parallel by searching up from
+// non-chain operands of candidates.
+bool DAGCombiner::checkMergeStoreCandidatesForDependencies(
+    SmallVectorImpl<MemOpLink> &StoreNodes) {
+  SmallPtrSet<const SDNode *, 16> Visited;
+  SmallVector<const SDNode *, 8> Worklist;
+  // search ops of store candidates
+  for (unsigned i = 0; i < StoreNodes.size(); ++i) {
+    SDNode *n = StoreNodes[i].MemNode;
+    // Potential loops may happen only through non-chain operands
+    for (unsigned j = 1; j < n->getNumOperands(); ++j)
+      Worklist.push_back(n->getOperand(j).getNode());
+  }
+  // search through DAG. We can stop early if we find a storenode
+  for (unsigned i = 0; i < StoreNodes.size(); ++i) {
+    if (SDNode::hasPredecessorHelper(StoreNodes[i].MemNode, Visited, Worklist))
+      return false;
+  }
+  return true;
 }
 
 bool DAGCombiner::MergeConsecutiveStores(StoreSDNode* St) {
@@ -11416,6 +11447,12 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode* St) {
 
   // Check if there is anything to merge.
   if (StoreNodes.size() < 2)
+    return false;
+
+  // only do dep endence check in AA case
+  bool UseAA = CombinerAA.getNumOccurrences() > 0 ? CombinerAA
+                                                  : DAG.getSubtarget().useAA();
+  if (UseAA && !checkMergeStoreCandidatesForDependencies(StoreNodes))
     return false;
 
   // Sort the memory operands according to their distance from the

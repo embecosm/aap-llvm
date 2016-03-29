@@ -162,8 +162,8 @@ public:
   }
 
   /// Return the list of <CalleeGUID, ProfileCount> pairs.
-  std::vector<EdgeTy> &edges() { return CallGraphEdgeList; }
-  const std::vector<EdgeTy> &edges() const { return CallGraphEdgeList; }
+  std::vector<EdgeTy> &calls() { return CallGraphEdgeList; }
+  const std::vector<EdgeTy> &calls() const { return CallGraphEdgeList; }
 };
 
 /// \brief Global variable summary information to aid decisions and
@@ -304,12 +304,13 @@ public:
     GlobalValueMap[ValueGUID].push_back(std::move(Info));
   }
 
-  /// Iterator to allow writer to walk through table during emission.
-  iterator_range<StringMap<uint64_t>::const_iterator>
-  modPathStringEntries() const {
-    return llvm::make_range(ModulePathStringTable.begin(),
-                            ModulePathStringTable.end());
+  /// Table of modules, containing an id.
+  const StringMap<uint64_t> &modulePaths() const {
+    return ModulePathStringTable;
   }
+
+  /// Table of modules, containing an id.
+  StringMap<uint64_t> &modulePaths() { return ModulePathStringTable; }
 
   /// Get the module ID recorded for the given module path.
   uint64_t getModuleId(const StringRef ModPath) const {

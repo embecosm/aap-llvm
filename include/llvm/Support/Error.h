@@ -35,6 +35,12 @@ public:
   /// Print an error message to an output stream.
   virtual void log(raw_ostream &OS) const = 0;
 
+  /// Convert this error to a std::error_code.
+  ///
+  /// This is a temporary crutch to enable interaction with code still
+  /// using std::error_code. It will be removed in the future.
+  virtual std::error_code convertToErrorCode() const = 0;
+
   // Check whether this instance is a subclass of the class identified by
   // ClassID.
   virtual bool isA(const void *const ClassID) const {
@@ -163,8 +169,7 @@ public:
   /// considered unchecked. The source error becomes a checked success value,
   /// regardless of its original state.
   Error &operator=(Error &&Other) {
-    // Move assignment shouldn't drop an existing error, but we won't complain
-    // about overwriting success.
+    // Don't allow overwriting of unchecked values.
     assertIsChecked();
     setPtr(Other.getPtr());
 
@@ -195,7 +200,7 @@ public:
 
   /// Check whether one error is a subclass of another.
   template <typename ErrT> bool isA() const {
-    return getPtr()->isA(ErrT::classID());
+    return getPtr() && getPtr()->isA(ErrT::classID());
   }
 
 private:
@@ -280,14 +285,8 @@ public:
     return ClassID == classID() || ParentErrT::isA(ClassID);
   }
 
-  static const void *classID() { return &ID; }
-
-private:
-  static char ID;
+  static const void *classID() { return &ThisErrT::ID; }
 };
-
-template <typename MyErrT, typename ParentErrT>
-char ErrorInfo<MyErrT, ParentErrT>::ID = 0;
 
 /// Special ErrorInfo subclass representing a list of ErrorInfos.
 /// Instances of this class are constructed by joinError.
@@ -309,6 +308,11 @@ public:
       OS << "\n";
     }
   }
+
+  std::error_code convertToErrorCode() const override;
+
+  // Used by ErrorInfo::classID.
+  static char ID;
 
 private:
   ErrorList(std::unique_ptr<ErrorInfoBase> Payload1,
@@ -519,7 +523,8 @@ inline void handleAllErrors(Error E) {
 /// (allowing clean deallocation of resources, etc.), while reporting error
 /// information to the user.
 template <typename... HandlerTs>
-void logAllUnhandledErrors(Error E, raw_ostream &OS, std::string ErrorBanner) {
+void logAllUnhandledErrors(Error E, raw_ostream &OS,
+                           const std::string &ErrorBanner) {
   if (!E)
     return;
   OS << ErrorBanner;
@@ -539,6 +544,36 @@ void logAllUnhandledErrors(Error E, raw_ostream &OS, std::string ErrorBanner) {
 inline void consumeError(Error Err) {
   handleAllErrors(std::move(Err), [](const ErrorInfoBase &) {});
 }
+
+/// Helper for Errors used as out-parameters.
+///
+/// This helper is for use with the Error-as-out-parameter idiom, where an error
+/// is passed to a function or method by reference, rather than being returned.
+/// In such cases it is helpful to set the checked bit on entry to the function
+/// so that the error can be written to (unchecked Errors abort on assignment)
+/// and clear the checked bit on exit so that clients cannot accidentally forget
+/// to check the result. This helper performs these actions automatically using
+/// RAII:
+///
+/// Result foo(Error &Err) {
+///   ErrorAsOutParameter ErrAsOutParam(Err); // 'Checked' flag set
+///   // <body of foo>
+///   // <- 'Checked' flag auto-cleared when ErrAsOutParam is destructed.
+/// }
+class ErrorAsOutParameter {
+public:
+  ErrorAsOutParameter(Error &Err) : Err(Err) {
+    // Raise the checked bit if Err is success.
+    (void)!!Err;
+  }
+  ~ErrorAsOutParameter() {
+    // Clear the checked bit.
+    if (!Err)
+      Err = Error::success();
+  }
+private:
+  Error &Err;
+};
 
 /// Tagged union holding either a T or a Error.
 ///
@@ -717,8 +752,12 @@ class ECError : public ErrorInfo<ECError> {
 public:
   ECError() = default;
   ECError(std::error_code EC) : EC(EC) {}
-  std::error_code getErrorCode() const { return EC; }
+  void setErrorCode(std::error_code EC) { this->EC = EC; }
+  std::error_code convertToErrorCode() const override { return EC; }
   void log(raw_ostream &OS) const override { OS << EC.message(); }
+
+  // Used by ErrorInfo::classID.
+  static char ID;
 
 protected:
   std::error_code EC;
@@ -738,9 +777,76 @@ inline Error errorCodeToError(std::error_code EC) {
 inline std::error_code errorToErrorCode(Error Err) {
   std::error_code EC;
   handleAllErrors(std::move(Err),
-                  [&](const ECError &ECE) { EC = ECE.getErrorCode(); });
+                  [&](const ErrorInfoBase &EI) {
+                    EC = EI.convertToErrorCode();
+                  });
   return EC;
 }
+
+/// Convert an ErrorOr<T> to an Expected<T>.
+template <typename T>
+Expected<T> errorOrToExpected(ErrorOr<T> &&EO) {
+  if (auto EC = EO.getError())
+    return errorCodeToError(EC);
+  return std::move(*EO);
+}
+
+/// Convert an Expected<T> to an ErrorOr<T>.
+template <typename T>
+ErrorOr<T> expectedToErrorOr(Expected<T> &&E) {
+  if (auto Err = E.takeError())
+    return errorToErrorCode(std::move(Err));
+  return std::move(*E);
+}
+
+/// Helper for check-and-exit error handling.
+///
+/// For tool use only. NOT FOR USE IN LIBRARY CODE.
+///
+class ExitOnError {
+public:
+
+  /// Create an error on exit helper.
+  ExitOnError(std::string Banner = "", int DefaultErrorExitCode = 1)
+    : Banner(std::move(Banner)),
+      GetExitCode([=](const Error&) { return DefaultErrorExitCode; }) {}
+
+  /// Set the banner string for any errors caught by operator().
+  void setBanner(std::string Banner) {
+    this->Banner = std::move(Banner);
+  }
+
+  /// Set the exit-code mapper function.
+  void setExitCodeMapper(std::function<int(const Error&)> GetExitCode) {
+    this->GetExitCode = std::move(GetExitCode);
+  }
+
+  /// Check Err. If it's in a failure state log the error(s) and exit.
+  void operator()(Error Err) const {
+    checkError(std::move(Err));
+  }
+
+  /// Check E. If it's in a success state return the contained value. If it's
+  /// in a failure state log the error(s) and exit.
+  template <typename T>
+  T operator()(Expected<T> &&E) const {
+    checkError(E.takeError());
+    return std::move(*E);
+  }
+
+private:
+
+  void checkError(Error Err) const {
+    if (Err) {
+      int ExitCode = GetExitCode(Err);
+      logAllUnhandledErrors(std::move(Err), errs(), Banner);
+      exit(ExitCode);
+    }
+  }
+
+  std::string Banner;
+  std::function<int(const Error&)> GetExitCode;
+};
 
 } // namespace llvm
 

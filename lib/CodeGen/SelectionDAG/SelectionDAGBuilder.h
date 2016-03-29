@@ -303,12 +303,9 @@ private:
     BranchProbability DefaultProb;
   };
 
-  /// Minimum jump table density, in percent.
-  enum { MinJumpTableDensity = 40 };
-
   /// Check whether a range of clusters is dense enough for a jump table.
   bool isDense(const CaseClusterVector &Clusters, unsigned *TotalCases,
-               unsigned First, unsigned Last);
+               unsigned First, unsigned Last, unsigned MinDensity);
 
   /// Build a jump table cluster from Clusters[First..Last]. Returns false if it
   /// decides it's not a good idea.
@@ -727,16 +724,15 @@ public:
   void UpdateSplitBlock(MachineBasicBlock *First, MachineBasicBlock *Last);
 
   /// Describes a gc.statepoint or a gc.statepoint like thing for the purposes
-  /// of lowering into a STATEPOINT node.  Right now it only abstracts an actual
-  /// gc.statepoint, but that will change in the future.
+  /// of lowering into a STATEPOINT node.
   struct StatepointLoweringInfo {
     /// Bases[i] is the base pointer for Ptrs[i].  Together they denote the set
     /// of gc pointers this STATEPOINT has to relocate.
-    ArrayRef<const Value *> Bases;
-    ArrayRef<const Value *> Ptrs;
+    SmallVector<const Value *, 16> Bases;
+    SmallVector<const Value *, 16> Ptrs;
 
     /// The set of gc.relocate calls associated with this gc.statepoint.
-    ArrayRef<const GCRelocateInst *> GCRelocates;
+    SmallVector<const GCRelocateInst *, 16> GCRelocates;
 
     /// The full list of gc arguments to the gc.statepoint being lowered.
     ArrayRef<const Use> GCArgs;
@@ -772,12 +768,22 @@ public:
   };
 
   /// Lower \p SLI into a STATEPOINT instruction.
-  SDValue LowerAsStatepoint(StatepointLoweringInfo &SLI);
+  SDValue LowerAsSTATEPOINT(StatepointLoweringInfo &SLI);
 
   // This function is responsible for the whole statepoint lowering process.
   // It uniformly handles invoke and call statepoints.
   void LowerStatepoint(ImmutableStatepoint Statepoint,
                        const BasicBlock *EHPadBB = nullptr);
+
+  void LowerCallSiteWithDeoptBundle(ImmutableCallSite CS, SDValue Callee,
+                                    const BasicBlock *EHPadBB);
+
+  void LowerDeoptimizeCall(const CallInst *CI);
+
+  void LowerCallSiteWithDeoptBundleImpl(ImmutableCallSite CS, SDValue Callee,
+                                        const BasicBlock *EHPadBB,
+                                        bool VarArgDisallowed);
+
 private:
   // Terminator instructions.
   void visitRet(const ReturnInst &I);
