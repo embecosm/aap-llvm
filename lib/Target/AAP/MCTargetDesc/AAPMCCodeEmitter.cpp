@@ -244,9 +244,9 @@ unsigned AAPMCCodeEmitter::encodeImm12(const MCInst &MI, unsigned Op,
   return encodeImmN(MI, Op, Fixups, STI, MCFixupKind(AAP::fixup_AAP_ABS12));
 }
 
-unsigned AAPMCCodeEmitter::encodeImm16(const MCInst &MI, unsigned Op,
-                                       SmallVectorImpl<MCFixup> &Fixups,
-                                       const MCSubtargetInfo &STI) const {
+unsigned AAPMCCodeEmitter::encodeField16(const MCInst &MI, unsigned Op,
+                                         SmallVectorImpl<MCFixup> &Fixups,
+                                         const MCSubtargetInfo &STI) const {
   return encodeImmN(MI, Op, Fixups, STI, MCFixupKind(AAP::fixup_AAP_ABS16));
 }
 

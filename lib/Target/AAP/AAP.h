@@ -48,15 +48,19 @@ static bool inline isImm6(int64_t I) { return isUInt<6>(I); }
 static bool inline isImm9(int64_t I) { return isUInt<9>(I); }
 static bool inline isImm10(int64_t I) { return isUInt<10>(I); }
 static bool inline isImm12(int64_t I) { return isUInt<12>(I); }
-static bool inline isImm16(int64_t I) { return isUInt<16>(I); }
 
 static bool inline isOff3(int64_t I) { return isInt<3>(I); }
 static bool inline isOff6(int64_t I) { return isInt<6>(I); }
 static bool inline isOff9(int64_t I) { return isInt<9>(I); }
 static bool inline isOff10(int64_t I) { return isInt<10>(I); }
 
+static bool inline isField16(int64_t I) {
+  return isInt<16>(I) || isUInt<16>(I);
+}
+
 static bool inline isShiftImm3(int64_t I) { return (I >= 1) && (I <= 8); }
 static bool inline isShiftImm6(int64_t I) { return (I >= 1) && (I <= 64); }
+
 } // end of namespace AAP
 } // end namespace llvm
 

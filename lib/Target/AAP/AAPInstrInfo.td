@@ -56,11 +56,11 @@ def brtarget : Operand<OtherVT> {
 // A constant immediate is an immediate which cannot be an expression, only
 // an absolute value.
 let RenderMethod = "addImmOperands" in {
-  def imm16AsmOperand : AsmOperandClass {
-    let Name = "Imm16"; let SuperClasses = [ImmAsmOperand];
+  def field16AsmOperand : AsmOperandClass {
+    let Name = "Field16"; let SuperClasses = [ImmAsmOperand];
   }
   def imm12AsmOperand : AsmOperandClass {
-    let Name = "Imm12"; let SuperClasses = [imm16AsmOperand];
+    let Name = "Imm12"; let SuperClasses = [field16AsmOperand];
   }
   def imm10AsmOperand : AsmOperandClass {
     let Name = "Imm10"; let SuperClasses = [imm12AsmOperand];
@@ -98,11 +98,11 @@ let RenderMethod = "addImmOperands" in {
 }
 
 // The various AAP functions called in ImmLeaf here are defined in AAP.h
-def imm16 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isImm16(Imm);
+def field16 : Operand<i16>, ImmLeaf<i16, [{
+  return AAP::isField16(Imm);
 }]> {
-  let EncoderMethod = "encodeImm16";
-  let ParserMatchClass = imm16AsmOperand;
+  let EncoderMethod = "encodeField16";
+  let ParserMatchClass = field16AsmOperand;
 }
 def imm12 : Operand<i16>, ImmLeaf<i16, [{
   return AAP::isImm12(Imm);
@@ -262,8 +262,8 @@ def MOV_r_short : Inst_rrr_short
 
 // May expand to MOVI_i6_short in peephole pass
 def MOVI_i16 : Inst_r_i16
-  <0x0, 0xf, (outs GR64:$rD), (ins imm16:$imm), "movi\t$rD, $imm",
-    [(set GR64:$rD, (i16 imm16:$imm))]>;
+  <0x0, 0xf, (outs GR64:$rD), (ins field16:$imm), "movi\t$rD, $imm",
+    [(set GR64:$rD, (i16 field16:$imm))]>;
 def MOVI_i6_short : Inst_r_i6_short
   <0x0, 0xf, (outs GR8:$rD), (ins const6:$imm), "movi\t$rD, $imm", []>;
 
@@ -325,7 +325,7 @@ let Defs = [PSW] in {
 
 // LEA Pseudo operation, expanded to ADD_i10 or SUB_i10 during frame index
 // elimination depending on the sign of the immediate.
-def LEA : Pseudo<(outs GR64:$rD), (ins GR64:$rA, imm16:$imm), "#LEA", []>;
+def LEA : Pseudo<(outs GR64:$rD), (ins GR64:$rA, i16imm:$imm), "#LEA", []>;
 
 // Select over MOVI_i16 + ADD_r
 // May expand to ADDI_i3_short in peephole

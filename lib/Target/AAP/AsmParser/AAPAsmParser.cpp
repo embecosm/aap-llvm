@@ -231,10 +231,11 @@ public:
       return AAP::isImm12(Res);
     return true;
   }
-  static bool isImm16(const MCExpr *I) {
+
+  static bool isField16(const MCExpr *I) {
     int64_t Res;
     if (I->evaluateAsAbsolute(Res))
-      return AAP::isImm16(Res);
+      return AAP::isField16(Res);
     return true;
   }
 
@@ -277,7 +278,8 @@ public:
   bool  isImm9() const { return isImm() &&  isImm9(getImm()); }
   bool isImm10() const { return isImm() && isImm10(getImm()); }
   bool isImm12() const { return isImm() && isImm12(getImm()); }
-  bool isImm16() const { return isImm() && isImm16(getImm()); }
+
+  bool isField16() const { return isImm() && isField16(getImm()); }
 
   bool  isOff3() const { return isImm() &&  isOff3(getImm()); }
   bool isOff10() const { return isImm() && isOff10(getImm()); }

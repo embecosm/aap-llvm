@@ -64,9 +64,10 @@ public:
   unsigned encodeImm12(const MCInst &MI, unsigned Op,
                        SmallVectorImpl<MCFixup> &Fixups,
                        MCSubtargetInfo const &STI) const;
-  unsigned encodeImm16(const MCInst &MI, unsigned Op,
-                       SmallVectorImpl<MCFixup> &Fixups,
-                       MCSubtargetInfo const &STI) const;
+
+  unsigned encodeField16(const MCInst &MI, unsigned Op,
+                         SmallVectorImpl<MCFixup> &Fixups,
+                         MCSubtargetInfo const &STI) const;
 
   unsigned encodeShiftConst3(const MCInst &MI, unsigned Op,
                              SmallVectorImpl<MCFixup> &Fixups,
