@@ -71,24 +71,7 @@ void AAPAsmPrinter::printOperand(const MachineInstr *MI, int OpNum,
     O << *MO.getMBB()->getSymbol();
     return;
   case MachineOperand::MO_GlobalAddress: {
-    bool isMemOp = Modifier && !strcmp(Modifier, "mem");
-    uint64_t Offset = MO.getOffset();
-
-    // If the global address expression is a part of displacement field with a
-    // register base, we should not emit any prefix symbol here, e.g.
-    //   mov.w &foo, r1
-    // vs
-    //   mov.w glb(r1), r2
-    // Otherwise (!) msp430-as will silently miscompile the output :(
-    O << (isMemOp ? '&' : '#');
-    if (Offset)
-      O << '(' << Offset << '+';
-
     O << *getSymbol(MO.getGlobal());
-
-    if (Offset)
-      O << ')';
-
     return;
   }
   }
