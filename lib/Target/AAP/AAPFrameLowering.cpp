@@ -118,20 +118,6 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
   }
 }
 
-bool AAPFrameLowering::spillCalleeSavedRegisters(
-    MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
-    const std::vector<CalleeSavedInfo> &CSI,
-    const TargetRegisterInfo *TRI) const {
-  return false;
-}
-
-bool AAPFrameLowering::restoreCalleeSavedRegisters(
-    MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
-    const std::vector<CalleeSavedInfo> &CSI,
-    const TargetRegisterInfo *TRI) const {
-  return false;
-}
-
 // This function eliminates ADJCALLSTACKDOWN,
 // ADJCALLSTACKUP pseudo instructions
 void AAPFrameLowering::eliminateCallFramePseudoInstr(
