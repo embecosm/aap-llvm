@@ -70,21 +70,15 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8, Expand);
 
   // Handle conditionals via brcc and selectcc
-  setOperationAction(ISD::BRCOND, MVT::i8,    Expand);
   setOperationAction(ISD::BRCOND, MVT::i16,   Expand);
   setOperationAction(ISD::BRCOND, MVT::Other, Expand);
 
-  setOperationAction(ISD::SELECT, MVT::i8,    Expand);
   setOperationAction(ISD::SELECT, MVT::i16,   Expand);
-  setOperationAction(ISD::SELECT, MVT::Other, Expand);
 
-  setOperationAction(ISD::SETCC, MVT::i8,     Expand);
   setOperationAction(ISD::SETCC, MVT::i16,    Expand);
   setOperationAction(ISD::SETCC, MVT::Other,  Expand);
 
-  setOperationAction(ISD::SELECT_CC, MVT::i8,   Promote);
   setOperationAction(ISD::SELECT_CC, MVT::i16,  Custom);
-  setOperationAction(ISD::BR_CC,     MVT::i8,   Promote);
   setOperationAction(ISD::BR_CC,     MVT::i16,  Custom);
 
   // Expand some condition codes which are not natively supported
@@ -97,7 +91,6 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::BRIND,     MVT::Other,  Expand);
 
   // No support for jump tables
-  setOperationAction(ISD::JumpTable, MVT::i8,  Expand);
   setOperationAction(ISD::JumpTable, MVT::i16, Expand);
   setOperationAction(ISD::BR_JT, MVT::Other,   Expand);
 
@@ -108,58 +101,35 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::VACOPY,  MVT::Other, Expand);
 
   // ALU operations unsupported by the architecture
-  setOperationAction(ISD::SDIV,    MVT::i8,  Expand);
   setOperationAction(ISD::SDIV,    MVT::i16, Expand);
-  setOperationAction(ISD::UDIV,    MVT::i8,  Expand);
   setOperationAction(ISD::UDIV,    MVT::i16, Expand);
-  setOperationAction(ISD::UREM,    MVT::i8,  Expand);
   setOperationAction(ISD::UREM,    MVT::i16, Expand);
-  setOperationAction(ISD::SREM,    MVT::i8,  Expand);
   setOperationAction(ISD::SREM,    MVT::i16, Expand);
-  setOperationAction(ISD::SDIVREM, MVT::i8,  Expand);
   setOperationAction(ISD::SDIVREM, MVT::i16, Expand);
-  setOperationAction(ISD::UDIVREM, MVT::i8,  Expand);
   setOperationAction(ISD::UDIVREM, MVT::i16, Expand);
 
-  setOperationAction(ISD::MUL, MVT::i8,    Expand);
   setOperationAction(ISD::MUL, MVT::i16,   Expand);
-  setOperationAction(ISD::MULHS, MVT::i8,  Expand);
   setOperationAction(ISD::MULHS, MVT::i16, Expand);
-  setOperationAction(ISD::MULHU, MVT::i8,  Expand);
   setOperationAction(ISD::MULHU, MVT::i16, Expand);
-  setOperationAction(ISD::SMUL_LOHI, MVT::i8,  Expand);
   setOperationAction(ISD::SMUL_LOHI, MVT::i16, Expand);
-  setOperationAction(ISD::UMUL_LOHI, MVT::i8,  Expand);
   setOperationAction(ISD::UMUL_LOHI, MVT::i16, Expand);
 
   // Use ADDE/SUBE
-  setOperationAction(ISD::SUBC, MVT::i8,  Expand);
   setOperationAction(ISD::SUBC, MVT::i16, Expand);
 
-  setOperationAction(ISD::ROTL, MVT::i8,  Expand);
   setOperationAction(ISD::ROTL, MVT::i16, Expand);
-  setOperationAction(ISD::ROTR, MVT::i8,  Expand);
   setOperationAction(ISD::ROTR, MVT::i16, Expand);
 
-  setOperationAction(ISD::SHL_PARTS, MVT::i8,  Expand);
   setOperationAction(ISD::SHL_PARTS, MVT::i16, Expand);
-  setOperationAction(ISD::SRL_PARTS, MVT::i8,  Expand);
   setOperationAction(ISD::SRL_PARTS, MVT::i16, Expand);
-  setOperationAction(ISD::SRA_PARTS, MVT::i8,  Expand);
   setOperationAction(ISD::SRA_PARTS, MVT::i16, Expand);
 
-  setOperationAction(ISD::BSWAP, MVT::i8,  Expand);
   setOperationAction(ISD::BSWAP, MVT::i16, Expand);
 
-  setOperationAction(ISD::CTTZ, MVT::i8,  Expand);
   setOperationAction(ISD::CTTZ, MVT::i16, Expand);
-  setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i8,  Expand);
   setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i16, Expand);
-  setOperationAction(ISD::CTLZ, MVT::i8,  Expand);
   setOperationAction(ISD::CTLZ, MVT::i16, Expand);
-  setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i8,  Expand);
   setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i16, Expand);
-  setOperationAction(ISD::CTPOP, MVT::i8,  Expand);
   setOperationAction(ISD::CTPOP, MVT::i16, Expand);
 
   // Custom DAGCombine operations
@@ -308,12 +278,8 @@ SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
   // get equivalent AAP condition code
   AAPCC::CondCode TargetCC = getAAPCondCode(CC);
 
-  SmallVector<SDValue, 5> Ops;
-  Ops.push_back(Chain);
-  Ops.push_back(DAG.getConstant(TargetCC, dl, MVT::i16));
-  Ops.push_back(LHS);
-  Ops.push_back(RHS);
-  Ops.push_back(BranchTarget);
+  SDValue Ops[] = { Chain, DAG.getConstant(TargetCC, dl, MVT::i16),
+                    LHS, RHS, BranchTarget };
   return DAG.getNode(AAPISD::BR_CC, dl, Op.getValueType(), Ops);
 }
 
@@ -329,12 +295,8 @@ SDValue AAPTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
   // get equivalent AAP condition code
   AAPCC::CondCode TargetCC = getAAPCondCode(CC);
 
-  SmallVector<SDValue, 5> Ops;
-  Ops.push_back(LHS);
-  Ops.push_back(RHS);
-  Ops.push_back(TrueValue);
-  Ops.push_back(FalseValue);
-  Ops.push_back(DAG.getConstant(TargetCC, dl, MVT::i16));
+  SDValue Ops[] = { LHS, RHS, TrueValue, FalseValue,
+                    DAG.getConstant(TargetCC, dl, MVT::i16) };
   return DAG.getNode(AAPISD::SELECT_CC, dl, Op.getValueType(), Ops);
 }
 
