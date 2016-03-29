@@ -123,9 +123,6 @@ SDNode *AAPDAGToDAGISel::Select(SDNode *Node) {
   return ResNode;
 }
 
-static bool isOff3(int64_t Imm) { return (Imm >= -4 && Imm <= 3); }
-static bool isOff10(int64_t Imm) { return (Imm >= -512 && Imm <= 511); }
-
 bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {
   // if Address is FI, get the TargetFrameIndex
   if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
@@ -161,7 +158,8 @@ bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {
       int64_t off = CN->getSExtValue();
       if (isConstantOffset) {
         Offset = CurDAG->getTargetConstant(off, dl, MVT::i16);
-      } else if (isSubOffset) {
+      } else {
+        assert(isSubOffset);
         Offset = CurDAG->getTargetConstant(-off, dl, MVT::i16);
       }
       return true;
@@ -174,9 +172,9 @@ bool AAPDAGToDAGISel::SelectAddr_MO3(SDValue Addr, SDValue &Base,
                                      SDValue &Offset) {
   SDValue B, O;
   bool ret = SelectAddr(Addr, B, O);
-  if (ret && isa<ConstantSDNode>(O)) {
+  if (ret) {
     int64_t c = dyn_cast<ConstantSDNode>(O)->getSExtValue();
-    if (isOff3(c)) {
+    if (AAP::isOff3(c)) {
       Base = B;
       Offset = O;
       return true;
@@ -188,9 +186,9 @@ bool AAPDAGToDAGISel::SelectAddr_MO10(SDValue Addr, SDValue &Base,
                                       SDValue &Offset) {
   SDValue B, O;
   bool ret = SelectAddr(Addr, B, O);
-  if (ret && isa<ConstantSDNode>(O)) {
+  if (ret) {
     int64_t c = dyn_cast<ConstantSDNode>(O)->getSExtValue();
-    if (isOff10(c)) {
+    if (AAP::isOff10(c)) {
       Base = B;
       Offset = O;
       return true;
