@@ -84,6 +84,12 @@ static void LoadBinary(AAPSimulator &Sim, std::string filename) {
     report_error(filename, object_error::invalid_file_type);
 }
 
+static cl::opt<bool>
+DebugTrace("debug-trace", cl::desc("Enable debug tracing"));
+
+static cl::opt<bool>
+DebugTrace2("d", cl::desc("Enable debug tracing"), cl::Hidden);
+
 int main(int argc, char **argv) {
   // Init LLVM, call llvm_shutdown() on exit, parse args, etc.
   PrettyStackTraceProgram X(argc, argv);
@@ -100,6 +106,7 @@ int main(int argc, char **argv) {
 
   // Set up Simulator
   AAPSimulator Sim;
+  Sim.setTracing(DebugTrace || DebugTrace2);
 
   ToolName = argv[0];
 

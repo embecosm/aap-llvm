@@ -54,6 +54,10 @@ public:
 
   /// Step the processor
   SimStatus step();
+
+  /// Trace control
+  bool getTracing() const { return State.getTracing(); }
+  void setTracing(bool enabled) { State.setTracing(enabled); }
 };
 
 } // End AAPSim namespace

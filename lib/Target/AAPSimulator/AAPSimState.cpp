@@ -37,7 +37,7 @@ AAPSimState::AAPSimState() {
   // We haven't hit any exception yet
   status = SimStatus::SIM_OK;
 
-  debug_trace = true;
+  debug_trace = false;
 }
 
 AAPSimState::~AAPSimState() {
