@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <chrono>
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -90,6 +91,9 @@ DebugTrace("debug-trace", cl::desc("Enable debug tracing"));
 static cl::opt<bool>
 DebugTrace2("d", cl::desc("Enable debug tracing"), cl::Hidden);
 
+static cl::opt<double>
+Timeout("timeout", cl::desc("Timeout in seconds"), cl::value_desc("duration"), cl::init(0.0));
+
 int main(int argc, char **argv) {
   // Init LLVM, call llvm_shutdown() on exit, parse args, etc.
   PrettyStackTraceProgram X(argc, argv);
@@ -108,14 +112,28 @@ int main(int argc, char **argv) {
   AAPSimulator Sim;
   Sim.setTracing(DebugTrace || DebugTrace2);
 
+  // Set up timeout if specified
+  std::chrono::time_point <std::chrono::system_clock, std::chrono::duration<double> > timeoutEnd =
+      std::chrono::system_clock::now() + std::chrono::duration<double>(Timeout);
+  bool timeoutActive = Timeout > 0.0;
+
   ToolName = argv[0];
 
   // Load Binary
   LoadBinary(Sim, InputFilename);
+  unsigned stepCount = 0;
   SimStatus status = SimStatus::SIM_OK;
   while (status == SimStatus::SIM_OK) {
     status = Sim.step();
+    if (timeoutActive && stepCount++ == 10000) {
+      stepCount = 0;
+      if (std::chrono::system_clock::now() > timeoutEnd) {
+        status = SimStatus::SIM_TIMEOUT;
+        break;
+      }
+    }
   }
+
   // Deal with the final simulator status
   switch (status) {
     default: break;
@@ -133,6 +151,9 @@ int main(int argc, char **argv) {
       return 1;
     case SimStatus::SIM_EXCEPT_REG:
       outs() << " *** Invalid register trap ***\n";
+      return 1;
+    case SimStatus::SIM_TIMEOUT:
+      outs() << " *** Simulator timeout ***\n";
       return 1;
     case SimStatus::SIM_QUIT:
       outs() << " *** EXIT CODE " << Sim.getState().getExitCode() << " ***\n";
