@@ -21,6 +21,7 @@
 #include "llvm/MC/MCObjectStreamer.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/COFF.h"
+#include "llvm/Support/EndianStream.h"
 
 using namespace llvm;
 using namespace llvm::codeview;
@@ -118,6 +119,11 @@ void CodeViewContext::emitStringTable(MCObjectStreamer &OS) {
 }
 
 void CodeViewContext::emitFileChecksums(MCObjectStreamer &OS) {
+  // Do nothing if there are no file checksums. Microsoft's linker rejects empty
+  // CodeView substreams.
+  if (Filenames.empty())
+    return;
+
   MCContext &Ctx = OS.getContext();
   MCSymbol *FileBegin = Ctx.createTempSymbol("filechecksums_begin", false),
            *FileEnd = Ctx.createTempSymbol("filechecksums_end", false);
@@ -220,6 +226,11 @@ static bool compressAnnotation(uint32_t Data, SmallVectorImpl<char> &Buffer) {
   return false;
 }
 
+static bool compressAnnotation(BinaryAnnotationsOpCode Annotation,
+                               SmallVectorImpl<char> &Buffer) {
+  return compressAnnotation(static_cast<uint32_t>(Annotation), Buffer);
+}
+
 static uint32_t encodeSignedNumber(uint32_t Data) {
   if (Data >> 31)
     return ((-Data) << 1) | 1;
@@ -291,7 +302,7 @@ void CodeViewContext::encodeInlineLineTable(MCAsmLayout &Layout,
   StartLoc.setFileNum(Frag.StartFileId);
   StartLoc.setLine(Frag.StartLineNum);
   const MCCVLineEntry *LastLoc = &StartLoc;
-  bool WithinFunction = true;
+  bool HaveOpenRange = false;
 
   SmallVectorImpl<char> &Buffer = Frag.getContents();
   Buffer.clear(); // Clear old contents if we went through relaxation.
@@ -299,22 +310,28 @@ void CodeViewContext::encodeInlineLineTable(MCAsmLayout &Layout,
     if (!InlinedFuncIds.count(Loc.getFunctionId())) {
       // We've hit a cv_loc not attributed to this inline call site. Use this
       // label to end the PC range.
-      if (WithinFunction) {
+      if (HaveOpenRange) {
         unsigned Length =
             computeLabelDiff(Layout, LastLoc->getLabel(), Loc.getLabel());
-        compressAnnotation(ChangeCodeLength, Buffer);
+        compressAnnotation(BinaryAnnotationsOpCode::ChangeCodeLength, Buffer);
         compressAnnotation(Length, Buffer);
       }
-      WithinFunction = false;
+      HaveOpenRange = false;
       continue;
     }
-    WithinFunction = true;
+
+    // If we've already opened the function and we're at an indirectly inlined
+    // location, continue until the next directly inlined location.
+    bool DirectlyInlined = Loc.getFunctionId() == Frag.SiteFuncId;
+    if (!DirectlyInlined && HaveOpenRange)
+      continue;
+    HaveOpenRange = true;
 
     if (Loc.getFileNum() != LastLoc->getFileNum()) {
       // File ids are 1 based, and each file checksum table entry is 8 bytes
       // long. See emitFileChecksums above.
       unsigned FileOffset = 8 * (Loc.getFileNum() - 1);
-      compressAnnotation(ChangeFile, Buffer);
+      compressAnnotation(BinaryAnnotationsOpCode::ChangeFile, Buffer);
       compressAnnotation(FileOffset, Buffer);
     }
 
@@ -326,27 +343,28 @@ void CodeViewContext::encodeInlineLineTable(MCAsmLayout &Layout,
     unsigned CodeDelta =
         computeLabelDiff(Layout, LastLoc->getLabel(), Loc.getLabel());
     if (CodeDelta == 0) {
-      compressAnnotation(ChangeLineOffset, Buffer);
+      compressAnnotation(BinaryAnnotationsOpCode::ChangeLineOffset, Buffer);
       compressAnnotation(EncodedLineDelta, Buffer);
     } else if (EncodedLineDelta < 0x8 && CodeDelta <= 0xf) {
       // The ChangeCodeOffsetAndLineOffset combination opcode is used when the
       // encoded line delta uses 3 or fewer set bits and the code offset fits
       // in one nibble.
       unsigned Operand = (EncodedLineDelta << 4) | CodeDelta;
-      compressAnnotation(ChangeCodeOffsetAndLineOffset, Buffer);
+      compressAnnotation(BinaryAnnotationsOpCode::ChangeCodeOffsetAndLineOffset,
+                         Buffer);
       compressAnnotation(Operand, Buffer);
     } else {
       // Otherwise use the separate line and code deltas.
-      compressAnnotation(ChangeLineOffset, Buffer);
+      compressAnnotation(BinaryAnnotationsOpCode::ChangeLineOffset, Buffer);
       compressAnnotation(EncodedLineDelta, Buffer);
-      compressAnnotation(ChangeCodeOffset, Buffer);
+      compressAnnotation(BinaryAnnotationsOpCode::ChangeCodeOffset, Buffer);
       compressAnnotation(CodeDelta, Buffer);
     }
 
     LastLoc = &Loc;
   }
 
-  assert(WithinFunction);
+  assert(HaveOpenRange);
 
   unsigned EndSymLength =
       computeLabelDiff(Layout, LastLoc->getLabel(), Frag.getFnEndSym());
@@ -362,7 +380,7 @@ void CodeViewContext::encodeInlineLineTable(MCAsmLayout &Layout,
     }
   }
 
-  compressAnnotation(ChangeCodeLength, Buffer);
+  compressAnnotation(BinaryAnnotationsOpCode::ChangeCodeLength, Buffer);
   compressAnnotation(std::min(EndSymLength, LocAfterLength), Buffer);
 }
 

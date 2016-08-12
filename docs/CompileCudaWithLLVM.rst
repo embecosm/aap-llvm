@@ -53,7 +53,7 @@ How to Compile CUDA C/C++ with LLVM
 ===================================
 
 We assume you have installed the CUDA driver and runtime. Consult the `NVIDIA
-CUDA installation Guide
+CUDA installation guide
 <https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html>`_ if
 you have not.
 
@@ -148,6 +148,46 @@ compilation, in host and device modes:
 Both clang and nvcc define ``__CUDACC__`` during CUDA compilation.  You can
 detect NVCC specifically by looking for ``__NVCC__``.
 
+Flags that control numerical code
+=================================
+
+If you're using GPUs, you probably care about making numerical code run fast.
+GPU hardware allows for more control over numerical operations than most CPUs,
+but this results in more compiler options for you to juggle.
+
+Flags you may wish to tweak include:
+
+* ``-ffp-contract={on,off,fast}`` (defaults to ``fast`` on host and device when
+  compiling CUDA) Controls whether the compiler emits fused multiply-add
+  operations.
+
+  * ``off``: never emit fma operations, and prevent ptxas from fusing multiply
+    and add instructions.
+  * ``on``: fuse multiplies and adds within a single statement, but never
+    across statements (C11 semantics).  Prevent ptxas from fusing other
+    multiplies and adds.
+  * ``fast``: fuse multiplies and adds wherever profitable, even across
+    statements.  Doesn't prevent ptxas from fusing additional multiplies and
+    adds.
+
+  Fused multiply-add instructions can be much faster than the unfused
+  equivalents, but because the intermediate result in an fma is not rounded,
+  this flag can affect numerical code.
+
+* ``-fcuda-flush-denormals-to-zero`` (default: off) When this is enabled,
+  floating point operations may flush `denormal
+  <https://en.wikipedia.org/wiki/Denormal_number>`_ inputs and/or outputs to 0.
+  Operations on denormal numbers are often much slower than the same operations
+  on normal numbers.
+
+* ``-fcuda-approx-transcendentals`` (default: off) When this is enabled, the
+  compiler may emit calls to faster, approximate versions of transcendental
+  functions, instead of using the slower, fully IEEE-compliant versions.  For
+  example, this flag allows clang to emit the ptx ``sin.approx.f32``
+  instruction.
+
+  This is implied by ``-ffast-math``.
+
 Optimizations
 =============
 
@@ -167,10 +207,9 @@ customizable target-independent optimization pipeline.
   straight-line scalar optimizations <https://goo.gl/4Rb9As>`_.
 
 * **Inferring memory spaces**. `This optimization
-  <http://www.llvm.org/docs/doxygen/html/NVPTXFavorNonGenericAddrSpaces_8cpp_source.html>`_
+  <https://github.com/llvm-mirror/llvm/blob/master/lib/Target/NVPTX/NVPTXInferAddressSpaces.cpp>`_
   infers the memory space of an address so that the backend can emit faster
-  special loads and stores from it. Details can be found in the `design
-  document for memory space inference <https://goo.gl/5wH2Ct>`_.
+  special loads and stores from it.
 
 * **Aggressive loop unrooling and function inlining**. Loop unrolling and
   function inlining need to be more aggressive for GPUs than for CPUs because
@@ -200,6 +239,19 @@ customizable target-independent optimization pipeline.
   32-bit ones on NVIDIA GPUs due to lack of a divide unit. Many of the 64-bit
   divides in our benchmarks have a divisor and dividend which fit in 32-bits at
   runtime. This optimization provides a fast path for this common case.
+
+Publication
+===========
+
+| `gpucc: An Open-Source GPGPU Compiler <http://dl.acm.org/citation.cfm?id=2854041>`_
+| Jingyue Wu, Artem Belevich, Eli Bendersky, Mark Heffernan, Chris Leary, Jacques Pienaar, Bjarke Roune, Rob Springer, Xuetian Weng, Robert Hundt
+| *Proceedings of the 2016 International Symposium on Code Generation and Optimization (CGO 2016)*
+| `Slides for the CGO talk <http://wujingyue.com/docs/gpucc-talk.pdf>`_
+
+Tutorial
+========
+
+`CGO 2016 gpucc tutorial <http://wujingyue.com/docs/gpucc-tutorial.pdf>`_
 
 Obtaining Help
 ==============

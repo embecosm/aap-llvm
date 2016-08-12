@@ -11,26 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-class DSe_vi <bits<8> op> : Enc64 {
-  bits<8> vdst;
-  bits<1> gds;
-  bits<8> addr;
-  bits<8> data0;
-  bits<8> data1;
-  bits<8> offset0;
-  bits<8> offset1;
-
-  let Inst{7-0} = offset0;
-  let Inst{15-8} = offset1;
-  let Inst{16} = gds;
-  let Inst{24-17} = op;
-  let Inst{31-26} = 0x36; //encoding
-  let Inst{39-32} = addr;
-  let Inst{47-40} = data0;
-  let Inst{55-48} = data1;
-  let Inst{63-56} = vdst;
-}
-
 class MUBUFe_vi <bits<7> op> : Enc64 {
   bits<12> offset;
   bits<1> offen;
@@ -182,7 +162,7 @@ class VOP_DPP <dag outs, dag ins, string asm, list<dag> pattern, bit HasMods = 0
   let DPP = 1;
   let Size = 8;
 
-  let AsmMatchConverter = !if(!eq(HasMods,1), "cvtDPP_mod", "cvtDPP_nomod");
+  let AsmMatchConverter = !if(!eq(HasMods,1), "cvtDPP", "");
 }
 
 class VOP_DPPe : Enc64 {
@@ -223,6 +203,69 @@ class VOP2_DPPe <bits<6> op> : VOP_DPPe {
   let Inst{24-17} = vdst;
   let Inst{30-25} = op;
   let Inst{31} = 0x0; //encoding
+}
+
+class VOP_SDWA <dag outs, dag ins, string asm, list<dag> pattern, bit HasMods = 0> :
+    VOPAnyCommon <outs, ins, asm, pattern> {
+  let SDWA = 1;
+  let Size = 8;
+}
+
+class VOP_SDWAe : Enc64 {
+  bits<8> src0;
+  bits<3> src0_sel;
+  bits<2> src0_fmodifiers; // {abs,neg}
+  bits<1> src0_imodifiers; // sext
+  bits<3> src1_sel;
+  bits<2> src1_fmodifiers;
+  bits<1> src1_imodifiers;
+  bits<3> dst_sel;
+  bits<2> dst_unused;
+  bits<1> clamp;
+
+  let Inst{39-32} = src0;
+  let Inst{42-40} = dst_sel;
+  let Inst{44-43} = dst_unused;
+  let Inst{45} = clamp;
+  let Inst{50-48} = src0_sel;
+  let Inst{53-52} = src0_fmodifiers;
+  let Inst{51} = src0_imodifiers;
+  let Inst{58-56} = src1_sel;
+  let Inst{61-60} = src1_fmodifiers;
+  let Inst{59} = src1_imodifiers;
+}
+
+class VOP1_SDWAe <bits<8> op> : VOP_SDWAe {
+  bits<8> vdst;
+
+  let Inst{8-0} = 0xf9; // sdwa
+  let Inst{16-9} = op;
+  let Inst{24-17} = vdst;
+  let Inst{31-25} = 0x3f; // encoding
+}
+
+class VOP2_SDWAe <bits<6> op> : VOP_SDWAe {
+  bits<8> vdst;
+  bits<8> src1;
+
+  let Inst{8-0} = 0xf9; // sdwa
+  let Inst{16-9} = src1;
+  let Inst{24-17} = vdst;
+  let Inst{30-25} = op;
+  let Inst{31} = 0x0; // encoding
+}
+
+class VOPC_SDWAe <bits<8> op> : VOP_SDWAe {
+  bits<8> src1;
+
+  let Inst{8-0} = 0xf9; // sdwa
+  let Inst{16-9} = src1;
+  let Inst{24-17} = op;
+  let Inst{31-25} = 0x3e; // encoding
+
+  // VOPC disallows dst_sel and dst_unused as they have no effect on destination
+  let Inst{42-40} = 0x6;
+  let Inst{44-43} = 0x2;
 }
 
 class EXPe_vi : EXPe {

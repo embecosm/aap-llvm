@@ -219,6 +219,8 @@ let isNVStorable = 1 in {
   def V6_vS32b_npred_ai_128B   : T_vstore_pred_ai_128B <"vmem", "vS32b_ai", 1>,
                                  V6_vS32b_npred_ai_128B_enc;
 }
+
+
 let isNVStorable = 1, isNonTemporal = 1 in {
   def V6_vS32b_nt_pred_ai  : T_vstore_pred_ai_64B <"vmem", "vS32b_ai", 0, 1>,
                              V6_vS32b_nt_pred_ai_enc;
@@ -1032,26 +1034,32 @@ class VSELInst<dag outs, dag ins, string asmstr, list<dag> pattern = [],
   : InstHexagon<outs, ins, asmstr, pattern, cstr, itin, type>;
 
 let isCodeGenOnly = 1, isPseudo = 1, hasSideEffects = 0 in {
-def VSelectPseudo_V6 : VSELInst<(outs VectorRegs:$dst),
-            (ins PredRegs:$src1, VectorRegs:$src2, VectorRegs:$src3),
-            ".error \"should not emit\" ",
-            []>,
-            Requires<[HasV60T,UseHVXSgl]>;
-def VSelectDblPseudo_V6 : VSELInst<(outs VecDblRegs:$dst),
-               (ins PredRegs:$src1, VecDblRegs:$src2, VecDblRegs:$src3),
-               ".error \"should not emit\" ",
-               []>,
-               Requires<[HasV60T,UseHVXSgl]>;
+  def PS_vselect: VSELInst<(outs VectorRegs:$dst),
+        (ins PredRegs:$src1, VectorRegs:$src2, VectorRegs:$src3), "", []>,
+        Requires<[HasV60T,UseHVXSgl]>;
+  def PS_vselect_128B: VSELInst<(outs VectorRegs128B:$dst),
+        (ins PredRegs:$src1, VectorRegs128B:$src2, VectorRegs128B:$src3),
+        "", []>, Requires<[HasV60T,UseHVXDbl]>;
+  def PS_wselect: VSELInst<(outs VecDblRegs:$dst),
+        (ins PredRegs:$src1, VecDblRegs:$src2, VecDblRegs:$src3), "", []>,
+        Requires<[HasV60T,UseHVXSgl]>;
+  def PS_wselect_128B: VSELInst<(outs VecDblRegs128B:$dst),
+        (ins PredRegs:$src1, VecDblRegs128B:$src2, VecDblRegs128B:$src3),
+        "", []>, Requires<[HasV60T,UseHVXDbl]>;
 }
 
-def : Pat <(v16i32 (selectcc (i32 IntRegs:$lhs), (i32 IntRegs:$rhs),
-                             (v16i32 VectorRegs:$tval),
-                             (v16i32 VectorRegs:$fval), SETEQ)),
-      (v16i32 (VSelectPseudo_V6 (i32 (C2_cmpeq (i32 IntRegs:$lhs),
-                                (i32 IntRegs:$rhs))),
-                                (v16i32 VectorRegs:$tval),
-                                (v16i32 VectorRegs:$fval)))>;
+class VSelPat<ValueType VT, RegisterClass RC, InstHexagon MI>
+  : Pat<(selectcc I32:$lhs, I32:$rhs, (VT RC:$tval), (VT RC:$fval), SETEQ),
+        (MI (C2_cmpeq I32:$lhs, I32:$rhs), RC:$tval, RC:$fval)>;
 
+def: VSelPat<v16i32, VectorRegs, PS_vselect>,
+      Requires<[HasV60T,UseHVXSgl]>;
+def: VSelPat<v32i32, VecDblRegs, PS_wselect>,
+      Requires<[HasV60T,UseHVXSgl]>;
+def: VSelPat<v32i32, VectorRegs128B, PS_vselect_128B>,
+      Requires<[HasV60T,UseHVXDbl]>;
+def: VSelPat<v64i32, VecDblRegs128B, PS_wselect_128B>,
+      Requires<[HasV60T,UseHVXDbl]>;
 
 let hasNewValue = 1 in
 class T_vmpy <string asmString, RegisterClass RCout, RegisterClass RCin>
@@ -1654,6 +1662,46 @@ defm V6_vpackob :
 defm V6_vpackoh :
      T_HVX_alu_VV <"$dst.h = vpacko($src1.w,$src2.w)">, V6_vpackoh_enc;
 }
+
+def SDTHexagonVPACK: SDTypeProfile<1, 3, [SDTCisSameAs<1, 2>,
+                                          SDTCisInt<3>]>;
+
+def HexagonVPACK: SDNode<"HexagonISD::VPACK", SDTHexagonVPACK>;
+
+// 0 as the last argument denotes vpacke. 1 denotes vpacko
+def: Pat<(v64i8 (HexagonVPACK (v64i8 VectorRegs:$Vs),
+                              (v64i8 VectorRegs:$Vt), (i32 0))),
+         (V6_vpackeb VectorRegs:$Vs, VectorRegs:$Vt)>,
+         Requires<[UseHVXSgl]>;
+def: Pat<(v64i8 (HexagonVPACK (v64i8 VectorRegs:$Vs),
+                              (v64i8 VectorRegs:$Vt), (i32 1))),
+         (V6_vpackob VectorRegs:$Vs, VectorRegs:$Vt)>,
+         Requires<[UseHVXSgl]>;
+def: Pat<(v32i16 (HexagonVPACK (v32i16 VectorRegs:$Vs),
+                               (v32i16 VectorRegs:$Vt), (i32 0))),
+         (V6_vpackeh VectorRegs:$Vs, VectorRegs:$Vt)>,
+         Requires<[UseHVXSgl]>;
+def: Pat<(v32i16 (HexagonVPACK (v32i16 VectorRegs:$Vs),
+                             (v32i16 VectorRegs:$Vt), (i32 1))),
+         (V6_vpackoh VectorRegs:$Vs, VectorRegs:$Vt)>,
+         Requires<[UseHVXSgl]>;
+
+def: Pat<(v128i8 (HexagonVPACK (v128i8 VecDblRegs:$Vs),
+                             (v128i8 VecDblRegs:$Vt), (i32 0))),
+         (V6_vpackeb_128B VecDblRegs:$Vs, VecDblRegs:$Vt)>,
+         Requires<[UseHVXDbl]>;
+def: Pat<(v128i8 (HexagonVPACK (v128i8 VecDblRegs:$Vs),
+                             (v128i8 VecDblRegs:$Vt), (i32 1))),
+         (V6_vpackob_128B VecDblRegs:$Vs, VecDblRegs:$Vt)>,
+         Requires<[UseHVXDbl]>;
+def: Pat<(v64i16 (HexagonVPACK (v64i16 VecDblRegs:$Vs),
+                             (v64i16 VecDblRegs:$Vt), (i32 0))),
+         (V6_vpackeh_128B VecDblRegs:$Vs, VecDblRegs:$Vt)>,
+         Requires<[UseHVXDbl]>;
+def: Pat<(v64i16 (HexagonVPACK (v64i16 VecDblRegs:$Vs),
+                            (v64i16 VecDblRegs:$Vt), (i32 1))),
+        (V6_vpackoh_128B VecDblRegs:$Vs, VecDblRegs:$Vt)>,
+        Requires<[UseHVXDbl]>;
 
 let hasNewValue = 1, hasSideEffects = 0 in
 class T_HVX_condALU <string asmString, RegisterClass RC1, RegisterClass RC2>

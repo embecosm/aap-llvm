@@ -1,4 +1,4 @@
-; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
+; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
 
 declare i1 @llvm.amdgcn.class.f32(float, i32) #1
 declare i1 @llvm.amdgcn.class.f64(double, i32) #1
@@ -187,7 +187,7 @@ define void @test_class_lit_constant_dynamic_mask_f32(i32 addrspace(1)* %out, i3
 ; SI-DAG: s_load_dword [[SB:s[0-9]+]], s{{\[[0-9]+:[0-9]+\]}}, 0xd
 ; SI-DAG: v_mov_b32_e32 [[VB:v[0-9]+]], [[SB]]
 ; SI: v_cmp_class_f64_e32 vcc, [[SA]], [[VB]]
-; SI-NEXT: v_cndmask_b32_e64 [[RESULT:v[0-9]+]], 0, -1, vcc
+; SI: v_cndmask_b32_e64 [[RESULT:v[0-9]+]], 0, -1, vcc
 ; SI-NEXT: buffer_store_dword [[RESULT]]
 ; SI: s_endpgm
 define void @test_class_f64(i32 addrspace(1)* %out, double %a, i32 %b) #0 {
@@ -202,7 +202,7 @@ define void @test_class_f64(i32 addrspace(1)* %out, double %a, i32 %b) #0 {
 ; SI-DAG: s_load_dword [[SB:s[0-9]+]], s{{\[[0-9]+:[0-9]+\]}}, 0xd
 ; SI-DAG: v_mov_b32_e32 [[VB:v[0-9]+]], [[SB]]
 ; SI: v_cmp_class_f64_e64 [[CMP:s\[[0-9]+:[0-9]+\]]], |[[SA]]|, [[VB]]
-; SI-NEXT: v_cndmask_b32_e64 [[RESULT:v[0-9]+]], 0, -1, [[CMP]]
+; SI: v_cndmask_b32_e64 [[RESULT:v[0-9]+]], 0, -1, [[CMP]]
 ; SI-NEXT: buffer_store_dword [[RESULT]]
 ; SI: s_endpgm
 define void @test_class_fabs_f64(i32 addrspace(1)* %out, double %a, i32 %b) #0 {
@@ -218,7 +218,7 @@ define void @test_class_fabs_f64(i32 addrspace(1)* %out, double %a, i32 %b) #0 {
 ; SI-DAG: s_load_dword [[SB:s[0-9]+]], s{{\[[0-9]+:[0-9]+\]}}, 0xd
 ; SI-DAG: v_mov_b32_e32 [[VB:v[0-9]+]], [[SB]]
 ; SI: v_cmp_class_f64_e64 [[CMP:s\[[0-9]+:[0-9]+\]]], -[[SA]], [[VB]]
-; SI-NEXT: v_cndmask_b32_e64 [[RESULT:v[0-9]+]], 0, -1, [[CMP]]
+; SI: v_cndmask_b32_e64 [[RESULT:v[0-9]+]], 0, -1, [[CMP]]
 ; SI-NEXT: buffer_store_dword [[RESULT]]
 ; SI: s_endpgm
 define void @test_class_fneg_f64(i32 addrspace(1)* %out, double %a, i32 %b) #0 {
@@ -234,7 +234,7 @@ define void @test_class_fneg_f64(i32 addrspace(1)* %out, double %a, i32 %b) #0 {
 ; SI-DAG: s_load_dword [[SB:s[0-9]+]], s{{\[[0-9]+:[0-9]+\]}}, 0xd
 ; SI-DAG: v_mov_b32_e32 [[VB:v[0-9]+]], [[SB]]
 ; SI: v_cmp_class_f64_e64 [[CMP:s\[[0-9]+:[0-9]+\]]], -|[[SA]]|, [[VB]]
-; SI-NEXT: v_cndmask_b32_e64 [[RESULT:v[0-9]+]], 0, -1, [[CMP]]
+; SI: v_cndmask_b32_e64 [[RESULT:v[0-9]+]], 0, -1, [[CMP]]
 ; SI-NEXT: buffer_store_dword [[RESULT]]
 ; SI: s_endpgm
 define void @test_class_fneg_fabs_f64(i32 addrspace(1)* %out, double %a, i32 %b) #0 {
@@ -490,6 +490,18 @@ define void @test_class_0_f32(i32 addrspace(1)* %out, float %a) #0 {
 ; SI: s_endpgm
 define void @test_class_0_f64(i32 addrspace(1)* %out, double %a) #0 {
   %result = call i1 @llvm.amdgcn.class.f64(double %a, i32 0) #1
+  %sext = sext i1 %result to i32
+  store i32 %sext, i32 addrspace(1)* %out, align 4
+  ret void
+}
+
+; FIXME: Why is the extension still here?
+; SI-LABEL: {{^}}test_class_undef_f32:
+; SI-NOT: v_cmp_class
+; SI: v_cndmask_b32_e64 v{{[0-9]+}}, 0, -1,
+; SI: buffer_store_dword
+define void @test_class_undef_f32(i32 addrspace(1)* %out, float %a, i32 %b) #0 {
+  %result = call i1 @llvm.amdgcn.class.f32(float undef, i32 %b) #1
   %sext = sext i1 %result to i32
   store i32 %sext, i32 addrspace(1)* %out, align 4
   ret void

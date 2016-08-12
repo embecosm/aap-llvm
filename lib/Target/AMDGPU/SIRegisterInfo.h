@@ -12,16 +12,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #ifndef LLVM_LIB_TARGET_AMDGPU_SIREGISTERINFO_H
 #define LLVM_LIB_TARGET_AMDGPU_SIREGISTERINFO_H
 
 #include "AMDGPURegisterInfo.h"
-#include "AMDGPUSubtarget.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/Support/Debug.h"
 
 namespace llvm {
+
+class SISubtarget;
+class MachineRegisterInfo;
 
 struct SIRegisterInfo final : public AMDGPURegisterInfo {
 private:
@@ -51,15 +51,39 @@ public:
   unsigned getRegPressureSetLimit(const MachineFunction &MF,
                                   unsigned Idx) const override;
 
+
   bool requiresRegisterScavenging(const MachineFunction &Fn) const override;
 
+
   bool requiresFrameIndexScavenging(const MachineFunction &MF) const override;
+  bool requiresVirtualBaseRegisters(const MachineFunction &Fn) const override;
+  bool trackLivenessAfterRegAlloc(const MachineFunction &MF) const override;
+
+  int64_t getFrameIndexInstrOffset(const MachineInstr *MI,
+                                   int Idx) const override;
+
+  bool needsFrameBaseReg(MachineInstr *MI, int64_t Offset) const override;
+
+  void materializeFrameBaseRegister(MachineBasicBlock *MBB,
+                                    unsigned BaseReg, int FrameIdx,
+                                    int64_t Offset) const override;
+
+  void resolveFrameIndex(MachineInstr &MI, unsigned BaseReg,
+                         int64_t Offset) const override;
+
+  bool isFrameOffsetLegal(const MachineInstr *MI, unsigned BaseReg,
+                          int64_t Offset) const override;
+
+  const TargetRegisterClass *getPointerRegClass(
+    const MachineFunction &MF, unsigned Kind = 0) const override;
 
   void eliminateFrameIndex(MachineBasicBlock::iterator MI, int SPAdj,
                            unsigned FIOperandNum,
                            RegScavenger *RS) const override;
 
-  unsigned getHWRegIndex(unsigned Reg) const override;
+  unsigned getHWRegIndex(unsigned Reg) const {
+    return getEncodingValue(Reg) & 0xff;
+  }
 
   /// \brief Return the 'base' register class for this register.
   /// e.g. SGPR0 => SReg_32, VGPR => VGPR_32 SGPR0_SGPR1 -> SReg_32, etc.
@@ -113,12 +137,6 @@ public:
                             const TargetRegisterClass *SrcRC,
                             unsigned SrcSubReg) const override;
 
-  /// \p Channel This is the register channel (e.g. a value from 0-16), not the
-  ///            SubReg index.
-  /// \returns The sub-register of Reg that is in Channel.
-  unsigned getPhysRegSubReg(unsigned Reg, const TargetRegisterClass *SubRC,
-                            unsigned Channel) const;
-
   /// \returns True if operands defined with this operand type can accept
   /// a literal constant (i.e. any 32-bit immediate).
   bool opCanUseLiteralConstant(unsigned OpType) const;
@@ -158,20 +176,23 @@ public:
 
   /// \brief Give the maximum number of SGPRs that can be used by \p WaveCount
   ///        concurrent waves.
-  unsigned getNumSGPRsAllowed(AMDGPUSubtarget::Generation gen,
-                              unsigned WaveCount) const;
+  unsigned getNumSGPRsAllowed(const SISubtarget &ST, unsigned WaveCount) const;
 
   unsigned findUnusedRegister(const MachineRegisterInfo &MRI,
-                              const TargetRegisterClass *RC) const;
+                              const TargetRegisterClass *RC,
+                              const MachineFunction &MF) const;
 
   unsigned getSGPR32PressureSet() const { return SGPR32SetID; };
   unsigned getVGPR32PressureSet() const { return VGPR32SetID; };
 
+  bool isVGPR(const MachineRegisterInfo &MRI, unsigned Reg) const;
+
 private:
   void buildScratchLoadStore(MachineBasicBlock::iterator MI,
-                             unsigned LoadStoreOp, unsigned Value,
+                             unsigned LoadStoreOp, const MachineOperand *SrcDst,
                              unsigned ScratchRsrcReg, unsigned ScratchOffset,
-                             int64_t Offset) const;
+                             int64_t Offset,
+                             RegScavenger *RS) const;
 };
 
 } // End namespace llvm

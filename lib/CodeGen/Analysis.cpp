@@ -623,7 +623,9 @@ bool llvm::canBeOmittedFromSymbolTable(const GlobalValue *GV) {
   if (!GV->hasLinkOnceODRLinkage())
     return false;
 
-  if (GV->hasUnnamedAddr())
+  // We assume that anyone who sets global unnamed_addr on a non-constant knows
+  // what they're doing.
+  if (GV->hasGlobalUnnamedAddr())
     return true;
 
   // If it is a non constant variable, it needs to be uniqued across shared
@@ -633,21 +635,7 @@ bool llvm::canBeOmittedFromSymbolTable(const GlobalValue *GV) {
       return false;
   }
 
-  // An alias can point to a variable. We could try to resolve the alias to
-  // decide, but for now just don't hide them.
-  if (isa<GlobalAlias>(GV))
-    return false;
-
-  // If we don't see every use, we have to be conservative and assume the value
-  // address is significant.
-  if (GV->getParent()->getMaterializer())
-    return false;
-
-  GlobalStatus GS;
-  if (GlobalStatus::analyzeGlobal(GV, GS))
-    return false;
-
-  return !GS.IsCompared;
+  return GV->hasAtLeastLocalUnnamedAddr();
 }
 
 static void collectFuncletMembers(
@@ -706,9 +694,10 @@ llvm::getFuncletMembership(const MachineFunction &MF) {
     }
 
     MachineBasicBlock::const_iterator MBBI = MBB.getFirstTerminator();
+
     // CatchPads are not funclets for SEH so do not consider CatchRet to
     // transfer control to another funclet.
-    if (MBBI->getOpcode() != TII->getCatchReturnOpcode())
+    if (MBBI == MBB.end() || MBBI->getOpcode() != TII->getCatchReturnOpcode())
       continue;
 
     // FIXME: SEH CatchPads are not necessarily in the parent function:

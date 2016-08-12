@@ -93,7 +93,7 @@ static ModRefInfo GetLocation(const Instruction *Inst, MemoryLocation &Loc,
       Loc = MemoryLocation::get(LI);
       return MRI_Ref;
     }
-    if (LI->getOrdering() == Monotonic) {
+    if (LI->getOrdering() == AtomicOrdering::Monotonic) {
       Loc = MemoryLocation::get(LI);
       return MRI_ModRef;
     }
@@ -106,7 +106,7 @@ static ModRefInfo GetLocation(const Instruction *Inst, MemoryLocation &Loc,
       Loc = MemoryLocation::get(SI);
       return MRI_Mod;
     }
-    if (SI->getOrdering() == Monotonic) {
+    if (SI->getOrdering() == AtomicOrdering::Monotonic) {
       Loc = MemoryLocation::get(SI);
       return MRI_ModRef;
     }
@@ -365,9 +365,8 @@ MemoryDependenceResults::getInvariantGroupPointerDependency(LoadInst *LI,
       continue;
 
     if (auto *BCI = dyn_cast<BitCastInst>(Ptr)) {
-      if (!Seen.count(BCI->getOperand(0))) {
+      if (Seen.insert(BCI->getOperand(0)).second) {
         LoadOperandsQueue.push_back(BCI->getOperand(0));
-        Seen.insert(BCI->getOperand(0));
       }
     }
 
@@ -377,9 +376,8 @@ MemoryDependenceResults::getInvariantGroupPointerDependency(LoadInst *LI,
         continue;
 
       if (auto *BCI = dyn_cast<BitCastInst>(U)) {
-        if (!Seen.count(BCI)) {
+        if (Seen.insert(BCI).second) {
           LoadOperandsQueue.push_back(BCI);
-          Seen.insert(BCI);
         }
         continue;
       }
@@ -404,7 +402,7 @@ MemDepResult MemoryDependenceResults::getSimplePointerDependencyFrom(
   bool isInvariantLoad = false;
 
   // We must be careful with atomic accesses, as they may allow another thread
-  //   to touch this location, cloberring it. We are conservative: if the
+  //   to touch this location, clobbering it. We are conservative: if the
   //   QueryInst is not a simple (non-atomic) memory access, we automatically
   //   return getClobber.
   // If it is simple, we know based on the results of
@@ -425,9 +423,9 @@ MemDepResult MemoryDependenceResults::getSimplePointerDependencyFrom(
   // with synchronization from 1 to 2 and from 3 to 4, resulting in %val
   // being 42. A key property of this program however is that if either
   // 1 or 4 were missing, there would be a race between the store of 42
-  // either the store of 0 or the load (making the whole progam racy).
+  // either the store of 0 or the load (making the whole program racy).
   // The paper mentioned above shows that the same property is respected
-  // by every program that can detect any optimisation of that kind: either
+  // by every program that can detect any optimization of that kind: either
   // it is racy (undefined) or there is a release followed by an acquire
   // between the pair of accesses under consideration.
 
@@ -518,11 +516,11 @@ MemDepResult MemoryDependenceResults::getSimplePointerDependencyFrom(
       // A Monotonic (or higher) load is OK if the query inst is itself not
       // atomic.
       // FIXME: This is overly conservative.
-      if (LI->isAtomic() && LI->getOrdering() > Unordered) {
+      if (LI->isAtomic() && isStrongerThanUnordered(LI->getOrdering())) {
         if (!QueryInst || isNonSimpleLoadOrStore(QueryInst) ||
             isOtherMemAccess(QueryInst))
           return MemDepResult::getClobber(LI);
-        if (LI->getOrdering() != Monotonic)
+        if (LI->getOrdering() != AtomicOrdering::Monotonic)
           return MemDepResult::getClobber(LI);
       }
 
@@ -588,7 +586,7 @@ MemDepResult MemoryDependenceResults::getSimplePointerDependencyFrom(
         if (!QueryInst || isNonSimpleLoadOrStore(QueryInst) ||
             isOtherMemAccess(QueryInst))
           return MemDepResult::getClobber(SI);
-        if (SI->getOrdering() != Monotonic)
+        if (SI->getOrdering() != AtomicOrdering::Monotonic)
           return MemDepResult::getClobber(SI);
       }
 
@@ -644,9 +642,9 @@ MemDepResult MemoryDependenceResults::getSimplePointerDependencyFrom(
     // loads.  DSE uses this to find preceeding stores to delete and thus we
     // can't bypass the fence if the query instruction is a store.
     if (FenceInst *FI = dyn_cast<FenceInst>(Inst))
-      if (isLoad && FI->getOrdering() == Release)
+      if (isLoad && FI->getOrdering() == AtomicOrdering::Release)
         continue;
-    
+
     // See if this instruction (e.g. a call or vaarg) mod/ref's the pointer.
     ModRefInfo MR = AA.getModRefInfo(Inst, MemLoc);
     // If necessary, perform additional analysis.
@@ -1407,7 +1405,7 @@ bool MemoryDependenceResults::getNonLocalPointerDepFromBB(
           NonLocalDepResult(I.getBB(), I.getResult(), Pointer.getAddr()));
       break;
     }
-    (void)foundBlock;
+    (void)foundBlock; (void)GotWorklistLimit;
     assert((foundBlock || GotWorklistLimit) && "Current block not in cache?");
   }
 
@@ -1664,7 +1662,7 @@ void MemoryDependenceResults::verifyRemoved(Instruction *D) const {
 char MemoryDependenceAnalysis::PassID;
 
 MemoryDependenceResults
-MemoryDependenceAnalysis::run(Function &F, AnalysisManager<Function> &AM) {
+MemoryDependenceAnalysis::run(Function &F, FunctionAnalysisManager &AM) {
   auto &AA = AM.getResult<AAManager>(F);
   auto &AC = AM.getResult<AssumptionAnalysis>(F);
   auto &TLI = AM.getResult<TargetLibraryAnalysis>(F);
@@ -1708,4 +1706,3 @@ bool MemoryDependenceWrapperPass::runOnFunction(Function &F) {
   MemDep.emplace(AA, AC, TLI, DT);
   return false;
 }
-

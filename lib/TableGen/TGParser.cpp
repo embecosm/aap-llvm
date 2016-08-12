@@ -15,10 +15,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/TableGen/Record.h"
 #include <algorithm>
-#include <sstream>
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
@@ -662,7 +660,7 @@ RecTy *TGParser::ParseType() {
   switch (Lex.getCode()) {
   default: TokError("Unknown token when expecting a type"); return nullptr;
   case tgtok::String: Lex.Lex(); return StringRecTy::get();
-  case tgtok::Code:   Lex.Lex(); return StringRecTy::get();
+  case tgtok::Code:   Lex.Lex(); return CodeRecTy::get();
   case tgtok::Bit:    Lex.Lex(); return BitRecTy::get();
   case tgtok::Int:    Lex.Lex(); return IntRecTy::get();
   case tgtok::Dag:    Lex.Lex(); return DagRecTy::get();
@@ -1166,7 +1164,7 @@ Init *TGParser::ParseSimpleValue(Record *CurRec, RecTy *ItemType,
     break;
   }
   case tgtok::CodeFragment:
-    R = StringInit::get(Lex.getCurStrVal());
+    R = CodeInit::get(Lex.getCurStrVal());
     Lex.Lex();
     break;
   case tgtok::question:

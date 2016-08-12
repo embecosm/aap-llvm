@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=arm64-linux-gnu -verify-machineinstrs -mcpu=cyclone -aarch64-atomic-cfg-tidy=0 < %s | FileCheck %s
+; RUN: llc -mtriple=arm64-linux-gnu -verify-machineinstrs -mcpu=cyclone -aarch64-enable-atomic-cfg-tidy=0 < %s | FileCheck %s
 
 @lhs = global fp128 zeroinitializer, align 16
 @rhs = global fp128 zeroinitializer, align 16
@@ -174,11 +174,11 @@ define i32 @test_br_cc() {
 iftrue:
   ret i32 42
 ; CHECK-NEXT: BB#
-; CHECK-NEXT: movz w0, #0x2a
+; CHECK-NEXT: mov w0, #42
 ; CHECK: ret
 iffalse:
   ret i32 29
-; CHECK: movz w0, #0x1d
+; CHECK: mov w0, #29
 ; CHECK: ret
 }
 

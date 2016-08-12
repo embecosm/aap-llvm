@@ -26,7 +26,7 @@
 //
 // - Live interval recomputing seems inefficient. This currently only matches
 //   one pair, and recomputes live intervals and moves on to the next pair. It
-//   would be better to compute a list of all merges that need to occur
+//   would be better to compute a list of all merges that need to occur.
 //
 // - With a list of instructions to process, we can also merge more. If a
 //   cluster of loads have offsets that are too large to fit in the 8-bit
@@ -36,6 +36,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AMDGPU.h"
+#include "AMDGPUSubtarget.h"
 #include "SIInstrInfo.h"
 #include "SIRegisterInfo.h"
 #include "llvm/CodeGen/LiveIntervalAnalysis.h"
@@ -61,17 +62,12 @@ private:
   MachineRegisterInfo *MRI;
   LiveIntervals *LIS;
 
-
   static bool offsetsCanBeCombined(unsigned Offset0,
                                    unsigned Offset1,
                                    unsigned EltSize);
 
   MachineBasicBlock::iterator findMatchingDSInst(MachineBasicBlock::iterator I,
                                                  unsigned EltSize);
-
-  void updateRegDefsUses(unsigned SrcReg,
-                         unsigned DstReg,
-                         unsigned SubIdx);
 
   MachineBasicBlock::iterator mergeRead2Pair(
     MachineBasicBlock::iterator I,
@@ -191,17 +187,6 @@ SILoadStoreOptimizer::findMatchingDSInst(MachineBasicBlock::iterator I,
   }
 
   return E;
-}
-
-void SILoadStoreOptimizer::updateRegDefsUses(unsigned SrcReg,
-                                             unsigned DstReg,
-                                             unsigned SubIdx) {
-  for (MachineRegisterInfo::reg_iterator I = MRI->reg_begin(SrcReg),
-         E = MRI->reg_end(); I != E; ) {
-    MachineOperand &O = *I;
-    ++I;
-    O.substVirtReg(DstReg, SubIdx, *TRI);
-  }
 }
 
 MachineBasicBlock::iterator  SILoadStoreOptimizer::mergeRead2Pair(
@@ -423,9 +408,16 @@ bool SILoadStoreOptimizer::optimizeBlock(MachineBasicBlock &MBB) {
 }
 
 bool SILoadStoreOptimizer::runOnMachineFunction(MachineFunction &MF) {
-  const TargetSubtargetInfo &STM = MF.getSubtarget();
-  TRI = static_cast<const SIRegisterInfo *>(STM.getRegisterInfo());
-  TII = static_cast<const SIInstrInfo *>(STM.getInstrInfo());
+  if (skipFunction(*MF.getFunction()))
+    return false;
+
+  const SISubtarget &STM = MF.getSubtarget<SISubtarget>();
+  if (!STM.loadStoreOptEnabled())
+    return false;
+
+  TII = STM.getInstrInfo();
+  TRI = &TII->getRegisterInfo();
+
   MRI = &MF.getRegInfo();
 
   LIS = &getAnalysis<LiveIntervals>();

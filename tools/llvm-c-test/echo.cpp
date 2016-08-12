@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements the --echo commands in llvm-c-test.
+// This file implements the --echo command in llvm-c-test.
 //
 // This command uses the C API to read a module and output an exact copy of it
 // as output. It is used to check that the resulting module matches the input
@@ -212,7 +212,20 @@ static ValueMap clone_params(LLVMValueRef Src, LLVMValueRef Dst) {
   return VMap;
 }
 
-LLVMValueRef clone_constant(LLVMValueRef Cst, LLVMModuleRef M) {
+static void check_value_kind(LLVMValueRef V, LLVMValueKind K) {
+  if (LLVMGetValueKind(V) != K)
+    report_fatal_error("LLVMGetValueKind returned incorrect type");
+}
+
+static LLVMValueRef clone_constant_impl(LLVMValueRef Cst, LLVMModuleRef M);
+
+static LLVMValueRef clone_constant(LLVMValueRef Cst, LLVMModuleRef M) {
+  LLVMValueRef Ret = clone_constant_impl(Cst, M);
+  check_value_kind(Ret, LLVMGetValueKind(Cst));
+  return Ret;
+}
+
+static LLVMValueRef clone_constant_impl(LLVMValueRef Cst, LLVMModuleRef M) {
   if (!LLVMIsAConstant(Cst))
     report_fatal_error("Expected a constant");
 
@@ -222,6 +235,7 @@ LLVMValueRef clone_constant(LLVMValueRef Cst, LLVMModuleRef M) {
 
     // Try function
     if (LLVMIsAFunction(Cst)) {
+      check_value_kind(Cst, LLVMFunctionValueKind);
       LLVMValueRef Dst = LLVMGetNamedFunction(M, Name);
       if (Dst)
         return Dst;
@@ -230,7 +244,8 @@ LLVMValueRef clone_constant(LLVMValueRef Cst, LLVMModuleRef M) {
 
     // Try global variable
     if (LLVMIsAGlobalVariable(Cst)) {
-      LLVMValueRef Dst = LLVMGetNamedGlobal(M, Name);
+      check_value_kind(Cst, LLVMGlobalVariableValueKind);
+      LLVMValueRef Dst  = LLVMGetNamedGlobal(M, Name);
       if (Dst)
         return Dst;
       report_fatal_error("Could not find function");
@@ -241,16 +256,21 @@ LLVMValueRef clone_constant(LLVMValueRef Cst, LLVMModuleRef M) {
   }
 
   // Try integer literal
-  if (LLVMIsAConstantInt(Cst))
+  if (LLVMIsAConstantInt(Cst)) {
+    check_value_kind(Cst, LLVMConstantIntValueKind);
     return LLVMConstInt(TypeCloner(M).Clone(Cst),
                         LLVMConstIntGetZExtValue(Cst), false);
+  }
 
   // Try zeroinitializer
-  if (LLVMIsAConstantAggregateZero(Cst))
+  if (LLVMIsAConstantAggregateZero(Cst)) {
+    check_value_kind(Cst, LLVMConstantAggregateZeroValueKind);
     return LLVMConstNull(TypeCloner(M).Clone(Cst));
+  }
 
   // Try constant array
   if (LLVMIsAConstantArray(Cst)) {
+    check_value_kind(Cst, LLVMConstantArrayValueKind);
     LLVMTypeRef Ty = TypeCloner(M).Clone(Cst);
     unsigned EltCount = LLVMGetArrayLength(Ty);
     SmallVector<LLVMValueRef, 8> Elts;
@@ -261,6 +281,7 @@ LLVMValueRef clone_constant(LLVMValueRef Cst, LLVMModuleRef M) {
 
   // Try contant data array
   if (LLVMIsAConstantDataArray(Cst)) {
+    check_value_kind(Cst, LLVMConstantDataArrayValueKind);
     LLVMTypeRef Ty = TypeCloner(M).Clone(Cst);
     unsigned EltCount = LLVMGetArrayLength(Ty);
     SmallVector<LLVMValueRef, 8> Elts;
@@ -271,6 +292,7 @@ LLVMValueRef clone_constant(LLVMValueRef Cst, LLVMModuleRef M) {
 
   // Try constant struct
   if (LLVMIsAConstantStruct(Cst)) {
+    check_value_kind(Cst, LLVMConstantStructValueKind);
     LLVMTypeRef Ty = TypeCloner(M).Clone(Cst);
     unsigned EltCount = LLVMCountStructElementTypes(Ty);
     SmallVector<LLVMValueRef, 8> Elts;
@@ -283,18 +305,24 @@ LLVMValueRef clone_constant(LLVMValueRef Cst, LLVMModuleRef M) {
   }
 
   // Try undef
-  if (LLVMIsUndef(Cst))
+  if (LLVMIsUndef(Cst)) {
+    check_value_kind(Cst, LLVMUndefValueValueKind);
     return LLVMGetUndef(TypeCloner(M).Clone(Cst));
+  }
 
   // Try float literal
-  if (LLVMIsAConstantFP(Cst))
+  if (LLVMIsAConstantFP(Cst)) {
+    check_value_kind(Cst, LLVMConstantFPValueKind);
     report_fatal_error("ConstantFP is not supported");
+  }
 
   // This kind of constant is not supported
   if (!LLVMIsAConstantExpr(Cst))
     report_fatal_error("Expected a constant expression");
 
   // At this point, it must be a constant expression
+  check_value_kind(Cst, LLVMConstantExprValueKind);
+
   LLVMOpcode Op = LLVMGetConstOpcode(Cst);
   switch(Op) {
     case LLVMBitCast:
@@ -347,10 +375,26 @@ struct FunCloner {
     return Dst;
   }
 
+  void CloneAttrs(LLVMValueRef Src, LLVMValueRef Dst) {
+    auto Ctx = LLVMGetModuleContext(M);
+    int ArgCount = LLVMGetNumArgOperands(Src);
+    for (int i = LLVMAttributeReturnIndex; i <= ArgCount; i++) {
+      for (unsigned k = 0, e = LLVMGetLastEnumAttributeKind(); k < e; ++k) {
+        if (auto SrcA = LLVMGetCallSiteEnumAttribute(Src, i, k)) {
+          auto Val = LLVMGetEnumAttributeValue(SrcA);
+          auto A = LLVMCreateEnumAttribute(Ctx, k, Val);
+          LLVMAddCallSiteAttribute(Dst, i, A);
+        }
+      }
+    }
+  }
+
   LLVMValueRef CloneInstruction(LLVMValueRef Src, LLVMBuilderRef Builder) {
-    const char *Name = LLVMGetValueName(Src);
+    check_value_kind(Src, LLVMInstructionValueKind);
     if (!LLVMIsAInstruction(Src))
       report_fatal_error("Expected an instruction");
+
+    const char *Name = LLVMGetValueName(Src);
 
     // Check if this is something we already computed.
     {
@@ -409,6 +453,7 @@ struct FunCloner {
         LLVMBasicBlockRef Unwind = DeclareBB(LLVMGetUnwindDest(Src));
         Dst = LLVMBuildInvoke(Builder, Fn, Args.data(), ArgCount,
                               Then, Unwind, Name);
+        CloneAttrs(Src, Dst);
         break;
       }
       case LLVMUnreachable:
@@ -569,6 +614,7 @@ struct FunCloner {
         LLVMValueRef Fn = CloneValue(LLVMGetCalledValue(Src));
         Dst = LLVMBuildCall(Builder, Fn, Args.data(), ArgCount, Name);
         LLVMSetTailCall(Dst, LLVMIsTailCall(Src));
+        CloneAttrs(Src, Dst);
         break;
       }
       case LLVMResume: {
@@ -610,6 +656,7 @@ struct FunCloner {
       exit(-1);
     }
 
+    check_value_kind(Dst, LLVMInstructionValueKind);
     return VMap[Src] = Dst;
   }
 
@@ -751,13 +798,28 @@ FunDecl:
     return;
   }
 
+  auto Ctx = LLVMGetModuleContext(M);
+
   Cur = Begin;
   Next = nullptr;
   while (true) {
     const char *Name = LLVMGetValueName(Cur);
     if (LLVMGetNamedFunction(M, Name))
       report_fatal_error("Function already cloned");
-    LLVMAddFunction(M, Name, LLVMGetElementType(TypeCloner(M).Clone(Cur)));
+    auto Ty = LLVMGetElementType(TypeCloner(M).Clone(Cur));
+    auto F = LLVMAddFunction(M, Name, Ty);
+
+    // Copy attributes
+    for (int i = LLVMAttributeFunctionIndex, c = LLVMCountParams(F);
+         i <= c; ++i) {
+      for (unsigned k = 0, e = LLVMGetLastEnumAttributeKind(); k < e; ++k) {
+        if (auto SrcA = LLVMGetEnumAttributeAtIndex(Cur, i, k)) {
+          auto Val = LLVMGetEnumAttributeValue(SrcA);
+          auto DstA = LLVMCreateEnumAttribute(Ctx, k, Val);
+          LLVMAddAttributeAtIndex(F, i, DstA);
+        }
+      }
+    }
 
     Next = LLVMGetNextFunction(Cur);
     if (Next == nullptr) {
@@ -865,9 +927,18 @@ int llvm_echo(void) {
   LLVMEnablePrettyStackTrace();
 
   LLVMModuleRef Src = llvm_load_module(false, true);
-
+  size_t Len;
+  const char *ModuleName = LLVMGetModuleIdentifier(Src, &Len);
   LLVMContextRef Ctx = LLVMContextCreate();
-  LLVMModuleRef M = LLVMModuleCreateWithNameInContext("<stdin>", Ctx);
+  LLVMModuleRef M = LLVMModuleCreateWithNameInContext(ModuleName, Ctx);
+
+  // This whole switcharound is done because the C API has no way to
+  // set the source_filename
+  LLVMSetModuleIdentifier(M, "", 0);
+  LLVMGetModuleIdentifier(M, &Len);
+  if (Len != 0)
+      report_fatal_error("LLVM{Set,Get}ModuleIdentifier failed");
+  LLVMSetModuleIdentifier(M, ModuleName, strlen(ModuleName));
 
   LLVMSetTarget(M, LLVMGetTarget(Src));
   LLVMSetModuleDataLayout(M, LLVMGetModuleDataLayout(Src));

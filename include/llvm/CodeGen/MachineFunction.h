@@ -21,6 +21,7 @@
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
+#include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/Support/Allocator.h"
@@ -105,16 +106,38 @@ public:
   // that the property hold, but not that it does not hold.
 
   // Property descriptions:
-  // IsSSA (currently unused, intended to eventually replace
-  // MachineRegisterInfo::isSSA())
-  // TracksLiveness: (currently unsued, intended to eventually replace
-  // MachineRegisterInfo::tracksLiveness())
+  // IsSSA: True when the machine function is in SSA form and virtual registers
+  //  have a single def.
+  // TracksLiveness: True when tracking register liveness accurately.
+  //  While this property is set, register liveness information in basic block
+  //  live-in lists and machine instruction operands (e.g. kill flags, implicit
+  //  defs) is accurate. This means it can be used to change the code in ways
+  //  that affect the values in registers, for example by the register
+  //  scavenger.
+  //  When this property is clear, liveness is no longer reliable.
   // AllVRegsAllocated: All virtual registers have been allocated; i.e. all
-  // register operands are physical registers.
+  //  register operands are physical registers.
+  // Legalized: In GlobalISel: the MachineLegalizer ran and all pre-isel generic
+  //  instructions have been legalized; i.e., all instructions are now one of:
+  //   - generic and always legal (e.g., COPY)
+  //   - target-specific
+  //   - legal pre-isel generic instructions.
+  // RegBankSelected: In GlobalISel: the RegBankSelect pass ran and all generic
+  //  virtual registers have been assigned to a register bank.
+  // Selected: In GlobalISel: the InstructionSelect pass ran and all pre-isel
+  //  generic instructions have been eliminated; i.e., all instructions are now
+  //  target-specific or non-pre-isel generic instructions (e.g., COPY).
+  //  Since only pre-isel generic instructions can have generic virtual register
+  //  operands, this also means that all generic virtual registers have been
+  //  constrained to virtual registers (assigned to register classes) and that
+  //  all sizes attached to them have been eliminated.
   enum class Property : unsigned {
     IsSSA,
     TracksLiveness,
     AllVRegsAllocated,
+    Legalized,
+    RegBankSelected,
+    Selected,
     LastProperty,
   };
 
@@ -142,6 +165,10 @@ public:
   bool verifyRequiredProperties(const MachineFunctionProperties &V) const {
     return !V.Properties.test(Properties);
   }
+
+  // Print the MachineFunctionProperties in human-readable form. If OnlySet is
+  // true, only print the properties that are set.
+  void print(raw_ostream &ROS, bool OnlySet=false) const;
 
 private:
   BitVector Properties =
@@ -273,8 +300,8 @@ public:
   /// This object contains information about objects allocated on the stack
   /// frame of the current function in an abstract way.
   ///
-  MachineFrameInfo *getFrameInfo() { return FrameInfo; }
-  const MachineFrameInfo *getFrameInfo() const { return FrameInfo; }
+  MachineFrameInfo &getFrameInfo() { return *FrameInfo; }
+  const MachineFrameInfo &getFrameInfo() const { return *FrameInfo; }
 
   /// getJumpTableInfo - Return the jump table info object for the current
   /// function.  This object contains information about jump tables in the
@@ -382,7 +409,7 @@ public:
   /// print - Print out the MachineFunction in a format suitable for debugging
   /// to the specified stream.
   ///
-  void print(raw_ostream &OS, SlotIndexes* = nullptr) const;
+  void print(raw_ostream &OS, const SlotIndexes* = nullptr) const;
 
   /// viewCFG - This function is meant for use from the debugger.  You can just
   /// say 'call F->viewCFG()' and a ghostview window should pop up from the
@@ -493,8 +520,7 @@ public:
   /// CreateMachineInstr - Allocate a new MachineInstr. Use this instead
   /// of `new MachineInstr'.
   ///
-  MachineInstr *CreateMachineInstr(const MCInstrDesc &MCID,
-                                   DebugLoc DL,
+  MachineInstr *CreateMachineInstr(const MCInstrDesc &MCID, const DebugLoc &DL,
                                    bool NoImp = false);
 
   /// CloneMachineInstr - Create a new MachineInstr which is a copy of the
@@ -522,8 +548,8 @@ public:
   /// MachineMemOperands are owned by the MachineFunction and need not be
   /// explicitly deallocated.
   MachineMemOperand *getMachineMemOperand(MachinePointerInfo PtrInfo,
-                                          unsigned f, uint64_t s,
-                                          unsigned base_alignment,
+                                          MachineMemOperand::Flags f,
+                                          uint64_t s, unsigned base_alignment,
                                           const AAMDNodes &AAInfo = AAMDNodes(),
                                           const MDNode *Ranges = nullptr);
 

@@ -77,7 +77,7 @@ char TestModuleAnalysis::PassID;
 struct TestModulePass : PassInfoMixin<TestModulePass> {
   TestModulePass(int &RunCount) : RunCount(RunCount) {}
 
-  PreservedAnalyses run(Module &M) {
+  PreservedAnalyses run(Module &M, ModuleAnalysisManager &) {
     ++RunCount;
     return PreservedAnalyses::none();
   }
@@ -86,7 +86,9 @@ struct TestModulePass : PassInfoMixin<TestModulePass> {
 };
 
 struct TestPreservingModulePass : PassInfoMixin<TestPreservingModulePass> {
-  PreservedAnalyses run(Module &M) { return PreservedAnalyses::all(); }
+  PreservedAnalyses run(Module &M, ModuleAnalysisManager &) {
+    return PreservedAnalyses::all();
+  }
 };
 
 struct TestMinPreservingModulePass
@@ -145,7 +147,7 @@ struct TestInvalidationFunctionPass
     : PassInfoMixin<TestInvalidationFunctionPass> {
   TestInvalidationFunctionPass(StringRef FunctionName) : Name(FunctionName) {}
 
-  PreservedAnalyses run(Function &F) {
+  PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM) {
     return F.getName() == Name ? PreservedAnalyses::none()
                                : PreservedAnalyses::all();
   }
@@ -153,30 +155,30 @@ struct TestInvalidationFunctionPass
   StringRef Name;
 };
 
-std::unique_ptr<Module> parseIR(const char *IR) {
-  LLVMContext &C = getGlobalContext();
+std::unique_ptr<Module> parseIR(LLVMContext &Context, const char *IR) {
   SMDiagnostic Err;
-  return parseAssemblyString(IR, Err, C);
+  return parseAssemblyString(IR, Err, Context);
 }
 
 class PassManagerTest : public ::testing::Test {
 protected:
+  LLVMContext Context;
   std::unique_ptr<Module> M;
 
 public:
   PassManagerTest()
-      : M(parseIR("define void @f() {\n"
-                  "entry:\n"
-                  "  call void @g()\n"
-                  "  call void @h()\n"
-                  "  ret void\n"
-                  "}\n"
-                  "define void @g() {\n"
-                  "  ret void\n"
-                  "}\n"
-                  "define void @h() {\n"
-                  "  ret void\n"
-                  "}\n")) {}
+      : M(parseIR(Context, "define void @f() {\n"
+                           "entry:\n"
+                           "  call void @g()\n"
+                           "  call void @h()\n"
+                           "  ret void\n"
+                           "}\n"
+                           "define void @g() {\n"
+                           "  ret void\n"
+                           "}\n"
+                           "define void @h() {\n"
+                           "  ret void\n"
+                           "}\n")) {}
 };
 
 TEST_F(PassManagerTest, BasicPreservedAnalyses) {
@@ -236,8 +238,8 @@ TEST_F(PassManagerTest, Basic) {
     {
       // Pointless scope to test move assignment.
       FunctionPassManager NestedFPM;
-      NestedFPM.addPass(TestFunctionPass(FunctionPassRunCount1, AnalyzedInstrCount1,
-                                   AnalyzedFunctionCount1));
+      NestedFPM.addPass(TestFunctionPass(
+          FunctionPassRunCount1, AnalyzedInstrCount1, AnalyzedFunctionCount1));
       FPM = std::move(NestedFPM);
     }
     NestedMPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));

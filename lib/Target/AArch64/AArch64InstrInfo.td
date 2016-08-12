@@ -26,6 +26,8 @@ def HasCrypto        : Predicate<"Subtarget->hasCrypto()">,
                                  AssemblerPredicate<"FeatureCrypto", "crypto">;
 def HasCRC           : Predicate<"Subtarget->hasCRC()">,
                                  AssemblerPredicate<"FeatureCRC", "crc">;
+def HasRAS           : Predicate<"Subtarget->hasRAS()">,
+                                 AssemblerPredicate<"FeatureRAS", "ras">;
 def HasPerfMon       : Predicate<"Subtarget->hasPerfMon()">;
 def HasFullFP16      : Predicate<"Subtarget->hasFullFP16()">,
                                  AssemblerPredicate<"FeatureFullFP16", "fullfp16">;
@@ -34,7 +36,8 @@ def HasSPE           : Predicate<"Subtarget->hasSPE()">,
 
 def IsLE             : Predicate<"Subtarget->isLittleEndian()">;
 def IsBE             : Predicate<"!Subtarget->isLittleEndian()">;
-def IsCyclone        : Predicate<"Subtarget->isCyclone()">;
+def UseAlternateSExtLoadCVTF32
+    : Predicate<"Subtarget->useAlternateSExtLoadCVTF32Pattern()">;
 
 //===----------------------------------------------------------------------===//
 // AArch64-specific DAG Nodes.
@@ -283,6 +286,9 @@ def SDT_AArch64mull : SDTypeProfile<1, 2, [SDTCisInt<0>, SDTCisInt<1>,
 def AArch64smull    : SDNode<"AArch64ISD::SMULL", SDT_AArch64mull>;
 def AArch64umull    : SDNode<"AArch64ISD::UMULL", SDT_AArch64mull>;
 
+def AArch64frecpe   : SDNode<"AArch64ISD::FRECPE", SDTFPUnaryOp>;
+def AArch64frsqrte  : SDNode<"AArch64ISD::FRSQRTE", SDTFPUnaryOp>;
+
 def AArch64saddv    : SDNode<"AArch64ISD::SADDV", SDT_AArch64UnaryVec>;
 def AArch64uaddv    : SDNode<"AArch64ISD::UADDV", SDT_AArch64UnaryVec>;
 def AArch64sminv    : SDNode<"AArch64ISD::SMINV", SDT_AArch64UnaryVec>;
@@ -295,9 +301,6 @@ def AArch64umaxv    : SDNode<"AArch64ISD::UMAXV", SDT_AArch64UnaryVec>;
 //===----------------------------------------------------------------------===//
 
 // AArch64 Instruction Predicate Definitions.
-//
-def HasZCZ    : Predicate<"Subtarget->hasZeroCycleZeroing()">;
-def NoZCZ     : Predicate<"!Subtarget->hasZeroCycleZeroing()">;
 def IsDarwin  : Predicate<"Subtarget->isTargetDarwin()">;
 def IsNotDarwin: Predicate<"!Subtarget->isTargetDarwin()">;
 def ForCodeSize   : Predicate<"ForCodeSize">;
@@ -386,6 +389,7 @@ def : InstAlias<"wfe",  (HINT 0b010)>;
 def : InstAlias<"wfi",  (HINT 0b011)>;
 def : InstAlias<"sev",  (HINT 0b100)>;
 def : InstAlias<"sevl", (HINT 0b101)>;
+def : InstAlias<"esb",  (HINT 0b10000)>, Requires<[HasRAS]>;
 
 // v8.2a Statistical Profiling extension
 def : InstAlias<"psb $op",  (HINT psbhint_op:$op)>, Requires<[HasSPE]>;
@@ -2558,15 +2562,11 @@ defm UCVTF : IntegerToFP<1, "ucvtf", uint_to_fp>;
 defm FMOV : UnscaledConversion<"fmov">;
 
 // Add pseudo ops for FMOV 0 so we can mark them as isReMaterializable
-let isReMaterializable = 1, isCodeGenOnly = 1 in {
+let isReMaterializable = 1, isCodeGenOnly = 1, isAsCheapAsAMove = 1 in {
 def FMOVS0 : Pseudo<(outs FPR32:$Rd), (ins), [(set f32:$Rd, (fpimm0))]>,
-    PseudoInstExpansion<(FMOVWSr FPR32:$Rd, WZR)>,
-    Sched<[WriteF]>,
-    Requires<[NoZCZ]>;
+    Sched<[WriteF]>;
 def FMOVD0 : Pseudo<(outs FPR64:$Rd), (ins), [(set f64:$Rd, (fpimm0))]>,
-    PseudoInstExpansion<(FMOVXDr FPR64:$Rd, XZR)>,
-    Sched<[WriteF]>,
-    Requires<[NoZCZ]>;
+    Sched<[WriteF]>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3401,6 +3401,19 @@ def : Pat<(f64 (int_aarch64_neon_frecpe (f64 FPR64:$Rn))),
 def : Pat<(v1f64 (int_aarch64_neon_frecpe (v1f64 FPR64:$Rn))),
           (FRECPEv1i64 FPR64:$Rn)>;
 
+def : Pat<(f32 (AArch64frecpe (f32 FPR32:$Rn))),
+          (FRECPEv1i32 FPR32:$Rn)>;
+def : Pat<(v2f32 (AArch64frecpe (v2f32 V64:$Rn))),
+          (FRECPEv2f32 V64:$Rn)>;
+def : Pat<(v4f32 (AArch64frecpe (v4f32 FPR128:$Rn))),
+          (FRECPEv4f32 FPR128:$Rn)>;
+def : Pat<(f64 (AArch64frecpe (f64 FPR64:$Rn))),
+          (FRECPEv1i64 FPR64:$Rn)>;
+def : Pat<(v1f64 (AArch64frecpe (v1f64 FPR64:$Rn))),
+          (FRECPEv1i64 FPR64:$Rn)>;
+def : Pat<(v2f64 (AArch64frecpe (v2f64 FPR128:$Rn))),
+          (FRECPEv2f64 FPR128:$Rn)>;
+
 def : Pat<(f32 (int_aarch64_neon_frecpx (f32 FPR32:$Rn))),
           (FRECPXv1i32 FPR32:$Rn)>;
 def : Pat<(f64 (int_aarch64_neon_frecpx (f64 FPR64:$Rn))),
@@ -3412,6 +3425,19 @@ def : Pat<(f64 (int_aarch64_neon_frsqrte (f64 FPR64:$Rn))),
           (FRSQRTEv1i64 FPR64:$Rn)>;
 def : Pat<(v1f64 (int_aarch64_neon_frsqrte (v1f64 FPR64:$Rn))),
           (FRSQRTEv1i64 FPR64:$Rn)>;
+
+def : Pat<(f32 (AArch64frsqrte (f32 FPR32:$Rn))),
+          (FRSQRTEv1i32 FPR32:$Rn)>;
+def : Pat<(v2f32 (AArch64frsqrte (v2f32 V64:$Rn))),
+          (FRSQRTEv2f32 V64:$Rn)>;
+def : Pat<(v4f32 (AArch64frsqrte (v4f32 FPR128:$Rn))),
+          (FRSQRTEv4f32 FPR128:$Rn)>;
+def : Pat<(f64 (AArch64frsqrte (f64 FPR64:$Rn))),
+          (FRSQRTEv1i64 FPR64:$Rn)>;
+def : Pat<(v1f64 (AArch64frsqrte (v1f64 FPR64:$Rn))),
+          (FRSQRTEv1i64 FPR64:$Rn)>;
+def : Pat<(v2f64 (AArch64frsqrte (v2f64 FPR128:$Rn))),
+          (FRSQRTEv2f64 FPR128:$Rn)>;
 
 // If an integer is about to be converted to a floating point value,
 // just load it on the floating point unit.
@@ -4402,18 +4428,6 @@ def MOVIv2d_ns   : SIMDModifiedImmVectorNoShift<1, 1, 0, 0b1110, V128,
                                                 "movi", ".2d",
                    [(set (v2i64 V128:$Rd), (AArch64movi_edit imm0_255:$imm8))]>;
 
-
-// Use movi.2d to materialize 0.0 if the HW does zero-cycle zeroing.
-// Complexity is added to break a tie with a plain MOVI.
-let AddedComplexity = 1 in {
-def : Pat<(f32   fpimm0),
-          (f32 (EXTRACT_SUBREG (v2i64 (MOVIv2d_ns (i32 0))), ssub))>,
-      Requires<[HasZCZ]>;
-def : Pat<(f64   fpimm0),
-          (f64 (EXTRACT_SUBREG (v2i64 (MOVIv2d_ns (i32 0))), dsub))>,
-      Requires<[HasZCZ]>;
-}
-
 def : Pat<(v2i64 immAllZerosV), (MOVIv2d_ns (i32 0))>;
 def : Pat<(v4i32 immAllZerosV), (MOVIv2d_ns (i32 0))>;
 def : Pat<(v8i16 immAllZerosV), (MOVIv2d_ns (i32 0))>;
@@ -4928,7 +4942,8 @@ class SExtLoadi8CVTf32Pat<dag addrmode, dag INST>
                                     0),
                                   dsub)),
                                0),
-                             ssub)))>, Requires<[NotForCodeSize, IsCyclone]>;
+                             ssub)))>,
+    Requires<[NotForCodeSize, UseAlternateSExtLoadCVTF32]>;
 
 def : SExtLoadi8CVTf32Pat<(ro8.Wpat GPR64sp:$Rn, GPR32:$Rm, ro8.Wext:$ext),
                           (LDRBroW  GPR64sp:$Rn, GPR32:$Rm, ro8.Wext:$ext)>;
@@ -4981,7 +4996,8 @@ class SExtLoadi16CVTf64Pat<dag addrmode, dag INST>
                                      0),
                                    dsub)),
                                0),
-                             dsub)))>, Requires<[NotForCodeSize, IsCyclone]>;
+                             dsub)))>,
+    Requires<[NotForCodeSize, UseAlternateSExtLoadCVTF32]>;
  
 def : SExtLoadi16CVTf64Pat<(ro16.Wpat GPR64sp:$Rn, GPR32:$Rm, ro16.Wext:$ext),
                            (LDRHroW GPR64sp:$Rn, GPR32:$Rm, ro16.Wext:$ext)>;

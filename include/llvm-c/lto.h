@@ -44,7 +44,8 @@ typedef bool lto_bool_t;
  * @{
  */
 
-#define LTO_API_VERSION 18
+#define LTO_API_VERSION 20
+
 /**
  * \since prior to LTO_API_VERSION=3
  */
@@ -135,12 +136,21 @@ lto_module_is_object_file_for_target(const char* path,
                                      const char* target_triple_prefix);
 
 /**
+ * Return true if \p Buffer contains a bitcode file with ObjC code (category
+ * or class) in it.
+ *
+ * \since LTO_API_VERSION=20
+ */
+extern lto_bool_t
+lto_module_has_objc_category(const void *mem, size_t length);
+
+/**
  * Checks if a buffer is a loadable object file.
  *
  * \since prior to LTO_API_VERSION=3
  */
-extern lto_bool_t
-lto_module_is_object_file_in_memory(const void* mem, size_t length);
+extern lto_bool_t lto_module_is_object_file_in_memory(const void *mem,
+                                                      size_t length);
 
 /**
  * Checks if a buffer is a loadable object compiled for requested target.
@@ -658,6 +668,7 @@ extern lto_bool_t thinlto_codegen_set_pic_model(thinlto_code_gen_t cg,
 
 /**
  * Sets the path to a directory to use as a cache storage for incremental build.
+ * Setting this activates caching.
  *
  * \since LTO_API_VERSION=18
  */
@@ -666,7 +677,8 @@ extern void thinlto_codegen_set_cache_dir(thinlto_code_gen_t cg,
 
 /**
  * Sets the cache pruning interval (in seconds). A negative value disable the
- * pruning (default).
+ * pruning. An unspecified default value will be applied, and a value of 0 will
+ * be ignored.
  *
  * \since LTO_API_VERSION=18
  */
@@ -677,7 +689,8 @@ extern void thinlto_codegen_set_cache_pruning_interval(thinlto_code_gen_t cg,
  * Sets the maximum cache size that can be persistent across build, in terms of
  * percentage of the available space on the the disk. Set to 100 to indicate
  * no limit, 50 to indicate that the cache size will not be left over half the
- * available space. A value over 100 will be reduced to 100.
+ * available space. A value over 100 will be reduced to 100, a value of 0 will
+ * be ignored. An unspecified default value will be applied.
  *
  * The formula looks like:
  *  AvailableSpace = FreeSpace + ExistingCacheSize
@@ -689,7 +702,8 @@ extern void thinlto_codegen_set_final_cache_size_relative_to_available_space(
     thinlto_code_gen_t cg, unsigned percentage);
 
 /**
- * Sets the expiration (in seconds) for an entry in the cache.
+ * Sets the expiration (in seconds) for an entry in the cache. An unspecified
+ * default value will be applied. A value of 0 will be ignored.
  *
  * \since LTO_API_VERSION=18
  */
@@ -716,6 +730,23 @@ extern void thinlto_codegen_set_savetemps_dir(thinlto_code_gen_t cg,
  * \since LTO_API_VERSION=18
  */
 extern void thinlto_codegen_set_cpu(thinlto_code_gen_t cg, const char *cpu);
+
+/**
+ * Disable CodeGen, only run the stages till codegen and stop. The output will
+ * be bitcode.
+ *
+ * \since LTO_API_VERSION=19
+ */
+extern void thinlto_codegen_disable_codegen(thinlto_code_gen_t cg,
+                                            lto_bool_t disable);
+
+/**
+ * Perform CodeGen only: disable all other stages.
+ *
+ * \since LTO_API_VERSION=19
+ */
+extern void thinlto_codegen_set_codegen_only(thinlto_code_gen_t cg,
+                                             lto_bool_t codegen_only);
 
 /**
  * Parse -mllvm style debug options.

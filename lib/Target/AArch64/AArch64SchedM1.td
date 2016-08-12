@@ -19,9 +19,8 @@
 
 def ExynosM1Model : SchedMachineModel {
   let IssueWidth            =  4; // Up to 4 uops per cycle.
-  let MinLatency            =  0; // OoO.
   let MicroOpBufferSize     = 96; // ROB size.
-  let LoopMicroOpBufferSize = 32; // Instruction queue size.
+  let LoopMicroOpBufferSize = 24; // Based on the instruction queue size.
   let LoadLatency           =  4; // Optimistic load cases.
   let MispredictPenalty     = 14; // Minimum branch misprediction penalty.
   let CompleteModel         =  0; // Use the default model otherwise.
@@ -188,6 +187,10 @@ def M1WriteNEONH   : SchedWriteRes<[M1UnitNALU,
                                     M1UnitFST]>    { let Latency = 3; }
 def M1WriteNEONI   : SchedWriteRes<[M1UnitFST,
                                     M1UnitL]>      { let Latency = 9; }
+def M1WriteNEONJ   : SchedWriteRes<[M1UnitNMISC,
+                                    M1UnitFMAC]>   { let Latency = 6; }
+def M1WriteNEONK   : SchedWriteRes<[M1UnitNMISC,
+                                    M1UnitFMAC]>   { let Latency = 7; }
 def M1WriteALU1    : SchedWriteRes<[M1UnitALU]>    { let Latency = 1; }
 def M1WriteB       : SchedWriteRes<[M1UnitB]>      { let Latency = 1; }
 // FIXME: This is the worst case, conditional branch and link.
@@ -306,8 +309,10 @@ def : InstRW<[M1WriteFVAR15], (instregex "FSQRTv.f32")>;
 def : InstRW<[M1WriteFVAR23], (instregex "FSQRTv2f64")>;
 def : InstRW<[M1WriteNMISC1], (instregex "^F(MAX|MIN)(NM)?V?v")>;
 def : InstRW<[M1WriteNMISC2], (instregex "^F(MAX|MIN)(NM)?Pv")>;
-def : InstRW<[M1WriteFMAC4],  (instregex "^FMULX?v")>;
-def : InstRW<[M1WriteFMAC5],  (instregex "^FML[AS]v")>;
+def : InstRW<[M1WriteNEONJ],  (instregex "^FMULX?v.i")>;
+def : InstRW<[M1WriteFMAC4],  (instregex "^FMULX?v.f")>;
+def : InstRW<[M1WriteNEONK],  (instregex "^FML[AS]v.i")>;
+def : InstRW<[M1WriteFMAC5],  (instregex "^FML[AS]v.f")>;
 def : InstRW<[M1WriteFCVT3],  (instregex "^FRINT[AIMNPXZ]v")>;
 
 // ASIMD miscellaneous instructions.
@@ -347,7 +352,10 @@ def : InstRW<[M1WriteNALU1],  (instregex "^ZIP[12]v")>;
 // ASIMD store instructions.
 
 // Cryptography instructions.
-def : InstRW<[M1WriteNCRYPT1], (instregex "^AES")>;
+def M1WriteAES : SchedWriteRes<[M1UnitNCRYPT]> { let Latency = 1; }
+def M1ReadAES  : SchedReadAdvance<1, [M1WriteAES]>;
+def : InstRW<[M1WriteAES, M1ReadAES], (instregex "^AES")>;
+
 def : InstRW<[M1WriteNCRYPT1], (instregex "^PMUL")>;
 def : InstRW<[M1WriteNCRYPT1], (instregex "^SHA1(H|SU)")>;
 def : InstRW<[M1WriteNCRYPT5], (instregex "^SHA1[CMP]")>;

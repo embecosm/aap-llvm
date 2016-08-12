@@ -53,18 +53,6 @@ unsigned MipsFunctionInfo::getGlobalBaseReg() {
   return GlobalBaseReg = MF.getRegInfo().createVirtualRegister(RC);
 }
 
-bool MipsFunctionInfo::mips16SPAliasRegSet() const {
-  return Mips16SPAliasReg;
-}
-unsigned MipsFunctionInfo::getMips16SPAliasReg() {
-  // Return if it has already been initialized.
-  if (Mips16SPAliasReg)
-    return Mips16SPAliasReg;
-
-  const TargetRegisterClass *RC = &Mips::CPU16RegsRegClass;
-  return Mips16SPAliasReg = MF.getRegInfo().createVirtualRegister(RC);
-}
-
 void MipsFunctionInfo::createEhDataRegsFI() {
   for (int I = 0; I < 4; ++I) {
     const TargetRegisterClass *RC =
@@ -72,7 +60,7 @@ void MipsFunctionInfo::createEhDataRegsFI() {
             ? &Mips::GPR64RegClass
             : &Mips::GPR32RegClass;
 
-    EhDataRegFI[I] = MF.getFrameInfo()->CreateStackObject(RC->getSize(),
+    EhDataRegFI[I] = MF.getFrameInfo().CreateStackObject(RC->getSize(),
         RC->getAlignment(), false);
   }
 }
@@ -85,7 +73,7 @@ void MipsFunctionInfo::createISRRegFI() {
   const TargetRegisterClass *RC = &Mips::GPR32RegClass;
 
   for (int I = 0; I < 2; ++I)
-    ISRDataRegFI[I] = MF.getFrameInfo()->CreateStackObject(
+    ISRDataRegFI[I] = MF.getFrameInfo().CreateStackObject(
         RC->getSize(), RC->getAlignment(), false);
 }
 
@@ -107,7 +95,7 @@ MachinePointerInfo MipsFunctionInfo::callPtrInfo(const GlobalValue *GV) {
 
 int MipsFunctionInfo::getMoveF64ViaSpillFI(const TargetRegisterClass *RC) {
   if (MoveF64ViaSpillFI == -1) {
-    MoveF64ViaSpillFI = MF.getFrameInfo()->CreateStackObject(
+    MoveF64ViaSpillFI = MF.getFrameInfo().CreateStackObject(
         RC->getSize(), RC->getAlignment(), false);
   }
   return MoveF64ViaSpillFI;

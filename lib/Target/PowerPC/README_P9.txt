@@ -373,6 +373,13 @@ VSX:
   . Provide builtin?
     (set f128:$vT, (int_ppc_vsx_xsrqpxp f128:$vB))
 
+Fixed Point Facility:
+
+- Exploit cmprb and cmpeqb (perhaps for something like
+  isalpha/isdigit/isupper/islower and isspace respectivelly). This can
+  perhaps be done through a builtin.
+
+- Provide testing for cnttz[dw]
 - Insert Exponent DP/QP: xsiexpdp xsiexpqp
   . Use intrinsic?
   . xsiexpdp:
@@ -390,6 +397,8 @@ VSX:
     (set f128:$vT, (int_ppc_vsx_xsxsigqp f128$vB))  // xsxsigqp
 
 - Vector Insert Word: xxinsertw
+  - Useful for inserting f32/i32 elements into vectors (the element to be
+    inserted needs to be prepared)
   . Note: llvm has insertelem in "Vector Operations"
     ; yields <n x <ty>>
     <result> = insertelement <n x <ty>> <val>, <ty> <elt>, <ty2> <idx>
@@ -402,6 +411,10 @@ VSX:
     (set v1f128:$XT, (int_ppc_vsx_xxinsertw v1f128:$XTi, f128:$XB, i4:$UIMM))
 
 - Vector Extract Unsigned Word: xxextractuw
+  - Not useful for extraction of f32 from v4f32 (the current pattern is better -
+    shift->convert)
+  - It is useful for (uint_to_fp (vector_extract v4i32, N))
+  - Unfortunately, it can't be used for (sint_to_fp (vector_extract v4i32, N))
   . Note: llvm has extractelement in "Vector Operations"
     ; yields <ty>
     <result> = extractelement <n x <ty>> <val>, <ty2> <idx>
@@ -558,3 +571,35 @@ VSX:
 - Load Vector Word & Splat Indexed: lxvwsx
   . Likely needs an intrinsic
   . (set v?:$XT, (int_ppc_vsx_lxvwsx xoaddr:$src))
+
+Atomic operations (l[dw]at, st[dw]at):
+- Provide custom lowering for common atomic operations to use these
+  instructions with the correct Function Code
+- Ensure the operands are in the correct register (i.e. RT+1, RT+2)
+- Provide builtins since not all FC's necessarily have an existing LLVM
+  atomic operation
+
+Load Doubleword Monitored (ldmx):
+- Investigate whether there are any uses for this. It seems to be related to
+  Garbage Collection so it isn't likely to be all that useful for most
+  languages we deal with.
+
+Move to CR from XER Extended (mcrxrx):
+- Is there a use for this in LLVM?
+
+Fixed Point Facility:
+
+- Copy-Paste Facility: copy copy_first cp_abort paste paste. paste_last
+  . Use instrinstics:
+    (int_ppc_copy_first i32:$rA, i32:$rB)
+    (int_ppc_copy i32:$rA, i32:$rB)
+
+    (int_ppc_paste i32:$rA, i32:$rB)
+    (int_ppc_paste_last i32:$rA, i32:$rB)
+
+    (int_cp_abort)
+
+- Message Synchronize: msgsync
+- SLB*: slbieg slbsync
+- stop
+  . No instrinstics

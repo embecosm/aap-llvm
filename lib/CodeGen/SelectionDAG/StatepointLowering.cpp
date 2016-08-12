@@ -70,7 +70,7 @@ SDValue
 StatepointLoweringState::allocateStackSlot(EVT ValueType,
                                            SelectionDAGBuilder &Builder) {
   NumSlotsAllocatedForStatepoints++;
-  auto *MFI = Builder.DAG.getMachineFunction().getFrameInfo();
+  MachineFrameInfo &MFI = Builder.DAG.getMachineFunction().getFrameInfo();
 
   unsigned SpillSize = ValueType.getSizeInBits() / 8;
   assert((SpillSize * 8) == ValueType.getSizeInBits() && "Size not in bytes?");
@@ -90,7 +90,7 @@ StatepointLoweringState::allocateStackSlot(EVT ValueType,
   for (; NextSlotToAllocate < NumSlots; NextSlotToAllocate++) {
     if (!AllocatedStackSlots.test(NextSlotToAllocate)) {
       const int FI = Builder.FuncInfo.StatepointStackSlots[NextSlotToAllocate];
-      if (MFI->getObjectSize(FI) == SpillSize) {
+      if (MFI.getObjectSize(FI) == SpillSize) {
         AllocatedStackSlots.set(NextSlotToAllocate);
         return Builder.DAG.getFrameIndex(FI, ValueType);
       }
@@ -101,7 +101,7 @@ StatepointLoweringState::allocateStackSlot(EVT ValueType,
 
   SDValue SpillSlot = Builder.DAG.CreateStackTemporary(ValueType);
   const unsigned FI = cast<FrameIndexSDNode>(SpillSlot)->getIndex();
-  MFI->markAsStatepointSpillSlotObjectIndex(FI);
+  MFI.markAsStatepointSpillSlotObjectIndex(FI);
 
   Builder.FuncInfo.StatepointStackSlots.push_back(FI);
 
@@ -350,16 +350,15 @@ spillIncomingStatepointValue(SDValue Incoming, SDValue Chain,
     // vary since we spill vectors of pointers too).  At some point we
     // can consider allowing spills of smaller values to larger slots
     // (i.e. change the '==' in the assert below to a '>=').
-    auto *MFI = Builder.DAG.getMachineFunction().getFrameInfo();
-    assert((MFI->getObjectSize(Index) * 8) ==
+    MachineFrameInfo &MFI = Builder.DAG.getMachineFunction().getFrameInfo();
+    assert((MFI.getObjectSize(Index) * 8) ==
                Incoming.getValueType().getSizeInBits() &&
            "Bad spill:  stack slot does not match!");
 #endif
 
     Chain = Builder.DAG.getStore(Chain, Builder.getCurSDLoc(), Incoming, Loc,
                                  MachinePointerInfo::getFixedStack(
-                                     Builder.DAG.getMachineFunction(), Index),
-                                 false, false, 0);
+                                     Builder.DAG.getMachineFunction(), Index));
 
     Builder.StatepointLowering.setLocation(Incoming, Loc);
   }
@@ -788,7 +787,7 @@ SelectionDAGBuilder::LowerStatepoint(ImmutableStatepoint ISP,
   SDValue ReturnValue = LowerAsSTATEPOINT(SI);
 
   // Export the result value if needed
-  const Instruction *GCResult = ISP.getGCResult();
+  const GCResultInst *GCResult = ISP.getGCResult();
   Type *RetTy = ISP.getActualReturnType();
   if (!RetTy->isVoidTy() && GCResult) {
     if (GCResult->getParent() != ISP.getCallSite().getParent()) {
@@ -823,11 +822,13 @@ SelectionDAGBuilder::LowerStatepoint(ImmutableStatepoint ISP,
 
 void SelectionDAGBuilder::LowerCallSiteWithDeoptBundleImpl(
     ImmutableCallSite CS, SDValue Callee, const BasicBlock *EHPadBB,
-    bool VarArgDisallowed) {
+    bool VarArgDisallowed, bool ForceVoidReturnTy) {
   StatepointLoweringInfo SI(DAG);
   unsigned ArgBeginIndex = CS.arg_begin() - CS.getInstruction()->op_begin();
-  populateCallLoweringInfo(SI.CLI, CS, ArgBeginIndex, CS.getNumArgOperands(),
-                           Callee, CS.getType(), false);
+  populateCallLoweringInfo(
+      SI.CLI, CS, ArgBeginIndex, CS.getNumArgOperands(), Callee,
+      ForceVoidReturnTy ? Type::getVoidTy(*DAG.getContext()) : CS.getType(),
+      false);
   if (!VarArgDisallowed)
     SI.CLI.IsVarArg = CS.getFunctionType()->isVarArg();
 
@@ -856,20 +857,20 @@ void SelectionDAGBuilder::LowerCallSiteWithDeoptBundleImpl(
 void SelectionDAGBuilder::LowerCallSiteWithDeoptBundle(
     ImmutableCallSite CS, SDValue Callee, const BasicBlock *EHPadBB) {
   LowerCallSiteWithDeoptBundleImpl(CS, Callee, EHPadBB,
-                                   /* VarArgDisallowed = */ false);
+                                   /* VarArgDisallowed = */ false,
+                                   /* ForceVoidReturnTy  = */ false);
 }
 
-void SelectionDAGBuilder::visitGCResult(const CallInst &CI) {
+void SelectionDAGBuilder::visitGCResult(const GCResultInst &CI) {
   // The result value of the gc_result is simply the result of the actual
   // call.  We've already emitted this, so just grab the value.
-  Instruction *I = cast<Instruction>(CI.getArgOperand(0));
-  assert(isStatepoint(I) && "first argument must be a statepoint token");
+  const Instruction *I = CI.getStatepoint();
 
   if (I->getParent() != CI.getParent()) {
     // Statepoint is in different basic block so we should have stored call
     // result in a virtual register.
     // We can not use default getValue() functionality to copy value from this
-    // register because statepoint and actuall call return types can be
+    // register because statepoint and actual call return types can be
     // different, and getValue() will use CopyFromReg of the wrong type,
     // which is always i32 in our case.
     PointerType *CalleeType = cast<PointerType>(
@@ -925,8 +926,7 @@ void SelectionDAGBuilder::visitGCRelocate(const GCRelocateInst &Relocate) {
   SDValue SpillLoad =
       DAG.getLoad(SpillSlot.getValueType(), getCurSDLoc(), Chain, SpillSlot,
                   MachinePointerInfo::getFixedStack(DAG.getMachineFunction(),
-                                                    *DerivedPtrLocation),
-                  false, false, false, 0);
+                                                    *DerivedPtrLocation));
 
   // Again, be conservative, don't emit pending loads
   DAG.setRoot(SpillLoad.getValue(1));
@@ -941,7 +941,18 @@ void SelectionDAGBuilder::LowerDeoptimizeCall(const CallInst *CI) {
                                          TLI.getPointerTy(DAG.getDataLayout()));
 
   // We don't lower calls to __llvm_deoptimize as varargs, but as a regular
-  // call.
+  // call.  We also do not lower the return value to any virtual register, and
+  // change the immediately following return to a trap instruction.
   LowerCallSiteWithDeoptBundleImpl(CI, Callee, /* EHPadBB = */ nullptr,
-                                   /* VarArgDisallowed = */ true);
+                                   /* VarArgDisallowed = */ true,
+                                   /* ForceVoidReturnTy = */ true);
+}
+
+void SelectionDAGBuilder::LowerDeoptimizingReturn() {
+  // We do not lower the return value from llvm.deoptimize to any virtual
+  // register, and change the immediately following return to a trap
+  // instruction.
+  if (DAG.getTarget().Options.TrapUnreachable)
+    DAG.setRoot(
+        DAG.getNode(ISD::TRAP, getCurSDLoc(), MVT::Other, DAG.getRoot()));
 }

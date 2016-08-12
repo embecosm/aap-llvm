@@ -25,6 +25,7 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/DataTypes.h"
@@ -165,6 +166,14 @@ public:
   /// This overload allows specifying a set of candidate argument values.
   int getCallCost(const Function *F, ArrayRef<const Value *> Arguments) const;
 
+  /// \returns A value by which our inlining threshold should be multiplied.
+  /// This is primarily used to bump up the inlining threshold wholesale on
+  /// targets where calls are unusually expensive.
+  ///
+  /// TODO: This is a rather blunt instrument.  Perhaps altering the costs of
+  /// individual classes of instructions would be better.
+  unsigned getInliningThresholdMultiplier() const;
+
   /// \brief Estimate the cost of an intrinsic when lowered.
   ///
   /// Mirrors the \c getCallCost method but uses an intrinsic identifier.
@@ -260,6 +269,10 @@ public:
     // (set to UINT_MAX to disable). This does not apply in cases where the
     // loop is being fully unrolled.
     unsigned MaxCount;
+    /// Set the maximum unrolling factor for full unrolling. Like MaxCount, but
+    /// applies even if full unrolling is selected. This allows a target to fall
+    /// back to Partial unrolling if full unrolling is above FullUnrollMaxCount.
+    unsigned FullUnrollMaxCount;
     /// Allow partial unrolling (unrolling of loops to expand the size of the
     /// loop body, not only to eliminate small constant-trip-count loops).
     bool Partial;
@@ -267,9 +280,14 @@ public:
     /// loop body even when the number of loop iterations is not known at
     /// compile time).
     bool Runtime;
+    /// Allow generation of a loop remainder (extra iterations after unroll).
+    bool AllowRemainder;
     /// Allow emitting expensive instructions (such as divisions) when computing
     /// the trip count of a loop for runtime unrolling.
     bool AllowExpensiveTripCount;
+    /// Apply loop unroll on any kind of loop
+    /// (mainly to loops that fail runtime unrolling).
+    bool Force;
   };
 
   /// \brief Get target-customized preferences for the generic loop unrolling
@@ -313,8 +331,7 @@ public:
                              unsigned AddrSpace = 0) const;
 
   /// \brief Return true if the target supports masked load/store
-  /// AVX2 and AVX-512 targets allow masks for consecutive load and store for
-  /// 32 and 64 bit elements.
+  /// AVX2 and AVX-512 targets allow masks for consecutive load and store
   bool isLegalMaskedStore(Type *DataType) const;
   bool isLegalMaskedLoad(Type *DataType) const;
 
@@ -362,6 +379,21 @@ public:
   /// \brief Enable matching of interleaved access groups.
   bool enableInterleavedAccessVectorization() const;
 
+  /// \brief Indicate that it is potentially unsafe to automatically vectorize
+  /// floating-point operations because the semantics of vector and scalar
+  /// floating-point semantics may differ. For example, ARM NEON v7 SIMD math
+  /// does not support IEEE-754 denormal numbers, while depending on the
+  /// platform, scalar floating-point math does.
+  /// This applies to floating-point math operations and calls, not memory
+  /// operations, shuffles, or casts.
+  bool isFPVectorizationPotentiallyUnsafe() const;
+
+  /// \brief Determine if the target supports unaligned memory accesses.
+  bool allowsMisalignedMemoryAccesses(LLVMContext &Context,
+                                      unsigned BitWidth, unsigned AddressSpace = 0,
+                                      unsigned Alignment = 1,
+                                      bool *Fast = nullptr) const;
+
   /// \brief Return hardware support for population count.
   PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) const;
 
@@ -383,6 +415,16 @@ public:
                     Type *Ty) const;
   int getIntImmCost(Intrinsic::ID IID, unsigned Idx, const APInt &Imm,
                     Type *Ty) const;
+
+  /// \brief Return the expected cost for the given integer when optimising
+  /// for size. This is different than the other integer immediate cost
+  /// functions in that it is subtarget agnostic. This is useful when you e.g.
+  /// target one ISA such as Aarch32 but smaller encodings could be possible
+  /// with another such as Thumb. This return value is used as a penalty when
+  /// the total costs for a constant is calculated (the bigger the cost, the
+  /// more beneficial constant hoisting is).
+  int getIntImmCodeSizeCost(unsigned Opc, unsigned Idx, const APInt &Imm,
+                            Type *Ty) const;
   /// @}
 
   /// \name Vector Target Information
@@ -415,6 +457,10 @@ public:
 
   /// \return The width of the largest scalar or vector register type.
   unsigned getRegisterBitWidth(bool Vector) const;
+
+  /// \return The bitwidth of the largest vector type that should be used to
+  /// load/store in the given address space.
+  unsigned getLoadStoreVecRegBitWidth(unsigned AddrSpace) const;
 
   /// \return The size of a cache line in bytes.
   unsigned getCacheLineSize() const;
@@ -454,6 +500,11 @@ public:
   /// \return The expected cost of cast instructions, such as bitcast, trunc,
   /// zext, etc.
   int getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src) const;
+
+  /// \return The expected cost of a sign- or zero-extended vector extract. Use
+  /// -1 to indicate that there is no information about the index value.
+  int getExtractWithExtendCost(unsigned Opcode, Type *Dst, VectorType *VecTy,
+                               unsigned Index = -1) const;
 
   /// \return The expected cost of control-flow related instructions such as
   /// Phi, Ret, Br.
@@ -514,11 +565,11 @@ public:
 
   /// \returns The cost of Intrinsic instructions. Types analysis only.
   int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
-                            ArrayRef<Type *> Tys) const;
+                            ArrayRef<Type *> Tys, FastMathFlags FMF) const;
 
   /// \returns The cost of Intrinsic instructions. Analyses the real arguments.
   int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
-                            ArrayRef<Value *> Args) const;
+                            ArrayRef<Value *> Args, FastMathFlags FMF) const;
 
   /// \returns The cost of Call instructions.
   int getCallInstrCost(Function *F, Type *RetTy, ArrayRef<Type *> Tys) const;
@@ -586,6 +637,7 @@ public:
   virtual int getCallCost(const Function *F, int NumArgs) = 0;
   virtual int getCallCost(const Function *F,
                           ArrayRef<const Value *> Arguments) = 0;
+  virtual unsigned getInliningThresholdMultiplier() = 0;
   virtual int getIntrinsicCost(Intrinsic::ID IID, Type *RetTy,
                                ArrayRef<Type *> ParamTys) = 0;
   virtual int getIntrinsicCost(Intrinsic::ID IID, Type *RetTy,
@@ -616,9 +668,17 @@ public:
   virtual bool shouldBuildLookupTables() = 0;
   virtual bool enableAggressiveInterleaving(bool LoopHasReductions) = 0;
   virtual bool enableInterleavedAccessVectorization() = 0;
+  virtual bool isFPVectorizationPotentiallyUnsafe() = 0;
+  virtual bool allowsMisalignedMemoryAccesses(LLVMContext &Context,
+                                              unsigned BitWidth,
+                                              unsigned AddressSpace,
+                                              unsigned Alignment,
+                                              bool *Fast) = 0;
   virtual PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) = 0;
   virtual bool haveFastSqrt(Type *Ty) = 0;
   virtual int getFPOpCost(Type *Ty) = 0;
+  virtual int getIntImmCodeSizeCost(unsigned Opc, unsigned Idx, const APInt &Imm,
+                                    Type *Ty) = 0;
   virtual int getIntImmCost(const APInt &Imm, Type *Ty) = 0;
   virtual int getIntImmCost(unsigned Opc, unsigned Idx, const APInt &Imm,
                             Type *Ty) = 0;
@@ -626,6 +686,7 @@ public:
                             Type *Ty) = 0;
   virtual unsigned getNumberOfRegisters(bool Vector) = 0;
   virtual unsigned getRegisterBitWidth(bool Vector) = 0;
+  virtual unsigned getLoadStoreVecRegBitWidth(unsigned AddrSpace) = 0;
   virtual unsigned getCacheLineSize() = 0;
   virtual unsigned getPrefetchDistance() = 0;
   virtual unsigned getMinPrefetchStride() = 0;
@@ -639,6 +700,8 @@ public:
   virtual int getShuffleCost(ShuffleKind Kind, Type *Tp, int Index,
                              Type *SubTp) = 0;
   virtual int getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src) = 0;
+  virtual int getExtractWithExtendCost(unsigned Opcode, Type *Dst,
+                                       VectorType *VecTy, unsigned Index) = 0;
   virtual int getCFInstrCost(unsigned Opcode) = 0;
   virtual int getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
                                  Type *CondTy) = 0;
@@ -660,9 +723,11 @@ public:
   virtual int getReductionCost(unsigned Opcode, Type *Ty,
                                bool IsPairwiseForm) = 0;
   virtual int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
-                                    ArrayRef<Type *> Tys) = 0;
+                                    ArrayRef<Type *> Tys,
+                                    FastMathFlags FMF) = 0;
   virtual int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
-                                    ArrayRef<Value *> Args) = 0;
+                                    ArrayRef<Value *> Args,
+                                    FastMathFlags FMF) = 0;
   virtual int getCallInstrCost(Function *F, Type *RetTy,
                                ArrayRef<Type *> Tys) = 0;
   virtual unsigned getNumberOfParts(Type *Tp) = 0;
@@ -704,6 +769,9 @@ public:
   int getCallCost(const Function *F,
                   ArrayRef<const Value *> Arguments) override {
     return Impl.getCallCost(F, Arguments);
+  }
+  unsigned getInliningThresholdMultiplier() override {
+    return Impl.getInliningThresholdMultiplier();
   }
   int getIntrinsicCost(Intrinsic::ID IID, Type *RetTy,
                        ArrayRef<Type *> ParamTys) override {
@@ -772,6 +840,15 @@ public:
   bool enableInterleavedAccessVectorization() override {
     return Impl.enableInterleavedAccessVectorization();
   }
+  bool isFPVectorizationPotentiallyUnsafe() override {
+    return Impl.isFPVectorizationPotentiallyUnsafe();
+  }
+  bool allowsMisalignedMemoryAccesses(LLVMContext &Context,
+                                      unsigned BitWidth, unsigned AddressSpace,
+                                      unsigned Alignment, bool *Fast) override {
+    return Impl.allowsMisalignedMemoryAccesses(Context, BitWidth, AddressSpace,
+                                               Alignment, Fast);
+  }
   PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) override {
     return Impl.getPopcntSupport(IntTyWidthInBit);
   }
@@ -779,6 +856,10 @@ public:
 
   int getFPOpCost(Type *Ty) override { return Impl.getFPOpCost(Ty); }
 
+  int getIntImmCodeSizeCost(unsigned Opc, unsigned Idx, const APInt &Imm,
+                            Type *Ty) override {
+    return Impl.getIntImmCodeSizeCost(Opc, Idx, Imm, Ty);
+  }
   int getIntImmCost(const APInt &Imm, Type *Ty) override {
     return Impl.getIntImmCost(Imm, Ty);
   }
@@ -796,6 +877,11 @@ public:
   unsigned getRegisterBitWidth(bool Vector) override {
     return Impl.getRegisterBitWidth(Vector);
   }
+
+  unsigned getLoadStoreVecRegBitWidth(unsigned AddrSpace) override {
+    return Impl.getLoadStoreVecRegBitWidth(AddrSpace);
+  }
+
   unsigned getCacheLineSize() override {
     return Impl.getCacheLineSize();
   }
@@ -823,6 +909,10 @@ public:
   }
   int getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src) override {
     return Impl.getCastInstrCost(Opcode, Dst, Src);
+  }
+  int getExtractWithExtendCost(unsigned Opcode, Type *Dst, VectorType *VecTy,
+                               unsigned Index) override {
+    return Impl.getExtractWithExtendCost(Opcode, Dst, VecTy, Index);
   }
   int getCFInstrCost(unsigned Opcode) override {
     return Impl.getCFInstrCost(Opcode);
@@ -857,13 +947,14 @@ public:
                        bool IsPairwiseForm) override {
     return Impl.getReductionCost(Opcode, Ty, IsPairwiseForm);
   }
-  int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
-                            ArrayRef<Type *> Tys) override {
-    return Impl.getIntrinsicInstrCost(ID, RetTy, Tys);
+  int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy, ArrayRef<Type *> Tys,
+                            FastMathFlags FMF) override {
+    return Impl.getIntrinsicInstrCost(ID, RetTy, Tys, FMF);
   }
   int getIntrinsicInstrCost(Intrinsic::ID ID, Type *RetTy,
-                            ArrayRef<Value *> Args) override {
-    return Impl.getIntrinsicInstrCost(ID, RetTy, Args);
+                            ArrayRef<Value *> Args,
+                            FastMathFlags FMF) override {
+    return Impl.getIntrinsicInstrCost(ID, RetTy, Args, FMF);
   }
   int getCallInstrCost(Function *F, Type *RetTy,
                        ArrayRef<Type *> Tys) override {
@@ -937,7 +1028,7 @@ public:
     return *this;
   }
 
-  Result run(const Function &F);
+  Result run(const Function &F, FunctionAnalysisManager &);
 
 private:
   friend AnalysisInfoMixin<TargetIRAnalysis>;

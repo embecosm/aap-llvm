@@ -186,11 +186,6 @@ namespace X86II {
     /// dllimport linkage on windows.
     MO_DLLIMPORT,
 
-    /// MO_DARWIN_STUB - On a symbol operand "FOO", this indicates that the
-    /// reference is actually to the "FOO$stub" symbol.  This is used for calls
-    /// and jumps to external functions on Tiger and earlier.
-    MO_DARWIN_STUB,
-
     /// MO_DARWIN_NONLAZY - On a symbol operand "FOO", this indicates that the
     /// reference is actually to the "FOO$non_lazy_ptr" symbol, which is a
     /// non-PIC-base-relative reference to a non-hidden dyld lazy pointer stub.
@@ -200,12 +195,6 @@ namespace X86II {
     /// that the reference is actually to "FOO$non_lazy_ptr - PICBASE", which is
     /// a PIC-base-relative reference to a non-hidden dyld lazy pointer stub.
     MO_DARWIN_NONLAZY_PIC_BASE,
-
-    /// MO_DARWIN_HIDDEN_NONLAZY_PIC_BASE - On a symbol operand "FOO", this
-    /// indicates that the reference is actually to "FOO$non_lazy_ptr -PICBASE",
-    /// which is a PIC-base-relative reference to a hidden dyld lazy pointer
-    /// stub.
-    MO_DARWIN_HIDDEN_NONLAZY_PIC_BASE,
 
     /// MO_TLVP - On a symbol operand this indicates that the immediate is
     /// some TLS offset.
@@ -667,7 +656,7 @@ namespace X86II {
   /// is duplicated in the MCInst (e.g. "EAX = addl EAX, [mem]") it is only
   /// counted as one operand.
   ///
-  inline int getMemoryOperandNo(uint64_t TSFlags, unsigned Opcode) {
+  inline int getMemoryOperandNo(uint64_t TSFlags) {
     bool HasVEX_4V = TSFlags & X86II::VEX_4V;
     bool HasMemOp4 = TSFlags & X86II::MemOp4;
     bool HasEVEX_K = TSFlags & X86II::EVEX_K;

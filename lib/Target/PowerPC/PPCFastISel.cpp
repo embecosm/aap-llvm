@@ -16,6 +16,7 @@
 #include "PPC.h"
 #include "MCTargetDesc/PPCPredicates.h"
 #include "PPCCallingConv.h"
+#include "PPCCCState.h"
 #include "PPCISelLowering.h"
 #include "PPCMachineFunctionInfo.h"
 #include "PPCSubtarget.h"
@@ -145,11 +146,11 @@ class PPCFastISel final : public FastISel {
     bool isTypeLegal(Type *Ty, MVT &VT);
     bool isLoadTypeLegal(Type *Ty, MVT &VT);
     bool isValueAvailable(const Value *V) const;
-    bool isVSFRCRegister(unsigned Register) const {
-      return MRI.getRegClass(Register)->getID() == PPC::VSFRCRegClassID;
+    bool isVSFRCRegClass(const TargetRegisterClass *RC) const {
+      return RC->getID() == PPC::VSFRCRegClassID;
     }
-    bool isVSSRCRegister(unsigned Register) const {
-      return MRI.getRegClass(Register)->getID() == PPC::VSSRCRegClassID;
+    bool isVSSRCRegClass(const TargetRegisterClass *RC) const {
+      return RC->getID() == PPC::VSSRCRegClassID;
     }
     bool PPCEmitCmp(const Value *Src1Value, const Value *Src2Value,
                     bool isZExt, unsigned DestReg);
@@ -158,7 +159,7 @@ class PPCFastISel final : public FastISel {
                      unsigned FP64LoadOpc = PPC::LFD);
     bool PPCEmitStore(MVT VT, unsigned SrcReg, Address &Addr);
     bool PPCComputeAddress(const Value *Obj, Address &Addr);
-    void PPCSimplifyAddress(Address &Addr, MVT VT, bool &UseOffset,
+    void PPCSimplifyAddress(Address &Addr, bool &UseOffset,
                             unsigned &IndexReg);
     bool PPCEmitIntExt(MVT SrcVT, unsigned SrcReg, MVT DestVT,
                            unsigned DestReg, bool IsZExt);
@@ -185,7 +186,7 @@ class PPCFastISel final : public FastISel {
                          unsigned &NumBytes,
                          bool IsVarArg);
     bool finishCall(MVT RetVT, CallLoweringInfo &CLI, unsigned &NumBytes);
-    CCAssignFn *usePPC32CCs(unsigned Flag);
+    LLVM_ATTRIBUTE_UNUSED CCAssignFn *usePPC32CCs(unsigned Flag);
 
   private:
   #include "PPCGenFastISel.inc"
@@ -196,7 +197,7 @@ class PPCFastISel final : public FastISel {
 
 #include "PPCGenCallingConv.inc"
 
-// Function whose sole purpose is to kill compiler warnings 
+// Function whose sole purpose is to kill compiler warnings
 // stemming from unused functions included from PPCGenCallingConv.inc.
 CCAssignFn *PPCFastISel::usePPC32CCs(unsigned Flag) {
   if (Flag == 1)
@@ -428,7 +429,7 @@ bool PPCFastISel::PPCComputeAddress(const Value *Obj, Address &Addr) {
 // Fix up some addresses that can't be used directly.  For example, if
 // an offset won't fit in an instruction field, we may need to move it
 // into an index register.
-void PPCFastISel::PPCSimplifyAddress(Address &Addr, MVT VT, bool &UseOffset,
+void PPCFastISel::PPCSimplifyAddress(Address &Addr, bool &UseOffset,
                                      unsigned &IndexReg) {
 
   // Check whether the offset fits in the instruction field.
@@ -447,8 +448,7 @@ void PPCFastISel::PPCSimplifyAddress(Address &Addr, MVT VT, bool &UseOffset,
   }
 
   if (!UseOffset) {
-    IntegerType *OffsetTy = ((VT == MVT::i32) ? Type::getInt32Ty(*Context)
-                             : Type::getInt64Ty(*Context));
+    IntegerType *OffsetTy = Type::getInt64Ty(*Context);
     const ConstantInt *Offset =
       ConstantInt::getSigned(OffsetTy, (int64_t)(Addr.Offset));
     IndexReg = PPCMaterializeInt(Offset, MVT::i64);
@@ -517,14 +517,14 @@ bool PPCFastISel::PPCEmitLoad(MVT VT, unsigned &ResultReg, Address &Addr,
   // If necessary, materialize the offset into a register and use
   // the indexed form.  Also handle stack pointers with special needs.
   unsigned IndexReg = 0;
-  PPCSimplifyAddress(Addr, VT, UseOffset, IndexReg);
+  PPCSimplifyAddress(Addr, UseOffset, IndexReg);
 
   // If this is a potential VSX load with an offset of 0, a VSX indexed load can
   // be used.
-  bool IsVSSRC = (ResultReg != 0) && isVSSRCRegister(ResultReg);
-  bool IsVSFRC = (ResultReg != 0) && isVSFRCRegister(ResultReg);
+  bool IsVSSRC = isVSSRCRegClass(UseRC);
+  bool IsVSFRC = isVSFRCRegClass(UseRC);
   bool Is32VSXLoad = IsVSSRC && Opc == PPC::LFS;
-  bool Is64VSXLoad = IsVSSRC && Opc == PPC::LFD;
+  bool Is64VSXLoad = IsVSFRC && Opc == PPC::LFD;
   if ((Is32VSXLoad || Is64VSXLoad) &&
       (Addr.BaseType != Address::FrameIndexBase) && UseOffset &&
       (Addr.Offset == 0)) {
@@ -579,8 +579,18 @@ bool PPCFastISel::PPCEmitLoad(MVT VT, unsigned &ResultReg, Address &Addr,
       case PPC::LFS:    Opc = IsVSSRC ? PPC::LXSSPX : PPC::LFSX; break;
       case PPC::LFD:    Opc = IsVSFRC ? PPC::LXSDX : PPC::LFDX; break;
     }
-    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(Opc), ResultReg)
-      .addReg(Addr.Base.Reg).addReg(IndexReg);
+
+    auto MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+		       TII.get(Opc), ResultReg);
+
+    // If we have an index register defined we use it in the store inst,
+    // otherwise we use X0 as base as it makes the vector instructions to
+    // use zero in the computation of the effective address regardless the
+    // content of the register.
+    if (IndexReg)
+      MIB.addReg(Addr.Base.Reg).addReg(IndexReg);
+    else
+      MIB.addReg(PPC::ZERO8).addReg(Addr.Base.Reg);
   }
 
   return true;
@@ -653,12 +663,12 @@ bool PPCFastISel::PPCEmitStore(MVT VT, unsigned SrcReg, Address &Addr) {
   // If necessary, materialize the offset into a register and use
   // the indexed form.  Also handle stack pointers with special needs.
   unsigned IndexReg = 0;
-  PPCSimplifyAddress(Addr, VT, UseOffset, IndexReg);
+  PPCSimplifyAddress(Addr, UseOffset, IndexReg);
 
   // If this is a potential VSX store with an offset of 0, a VSX indexed store
   // can be used.
-  bool IsVSSRC = isVSSRCRegister(SrcReg);
-  bool IsVSFRC = isVSFRCRegister(SrcReg);
+  bool IsVSSRC = isVSSRCRegClass(RC);
+  bool IsVSFRC = isVSFRCRegClass(RC);
   bool Is32VSXStore = IsVSSRC && Opc == PPC::STFS;
   bool Is64VSXStore = IsVSFRC && Opc == PPC::STFD;
   if ((Is32VSXStore || Is64VSXStore) &&
@@ -1131,14 +1141,13 @@ bool PPCFastISel::SelectFPToI(const Instruction *I, bool IsSigned) {
     return false;
 
   // Convert f32 to f64 if necessary.  This is just a meaningless copy
-  // to get the register class right.  COPY_TO_REGCLASS is needed since
-  // a COPY from F4RC to F8RC is converted to a F4RC-F4RC copy downstream.
+  // to get the register class right.
   const TargetRegisterClass *InRC = MRI.getRegClass(SrcReg);
   if (InRC == &PPC::F4RCRegClass) {
     unsigned TmpReg = createResultReg(&PPC::F8RCRegClass);
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
-            TII.get(TargetOpcode::COPY_TO_REGCLASS), TmpReg)
-      .addReg(SrcReg).addImm(PPC::F8RCRegClassID);
+            TII.get(TargetOpcode::COPY), TmpReg)
+      .addReg(SrcReg);
     SrcReg = TmpReg;
   }
 
@@ -1599,6 +1608,9 @@ bool PPCFastISel::SelectRet(const Instruction *I) {
   if (!FuncInfo.CanLowerReturn)
     return false;
 
+  if (TLI.supportSplitCSR(FuncInfo.MF))
+    return false;
+
   const ReturnInst *Ret = cast<ReturnInst>(I);
   const Function &F = *I->getParent()->getParent();
 
@@ -1905,7 +1917,9 @@ unsigned PPCFastISel::PPCMaterializeFP(const ConstantFP *CFP, MVT VT) {
   unsigned Align = DL.getPrefTypeAlignment(CFP->getType());
   assert(Align > 0 && "Unexpectedly missing alignment information!");
   unsigned Idx = MCP.getConstantPoolIndex(cast<Constant>(CFP), Align);
-  unsigned DestReg = createResultReg(TLI.getRegClassFor(VT));
+  const TargetRegisterClass *RC =
+    (VT == MVT::f32) ? &PPC::F4RCRegClass : &PPC::F8RCRegClass;
+  unsigned DestReg = createResultReg(RC);
   CodeModel::Model CModel = TM.getCodeModel();
 
   MachineMemOperand *MMO = FuncInfo.MF->getMachineMemOperand(

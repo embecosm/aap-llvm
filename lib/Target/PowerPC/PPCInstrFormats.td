@@ -762,6 +762,44 @@ class XForm_htm3<bits<6> opcode, bits<10> xo, dag OOL, dag IOL, string asmstr,
   let Inst{31}    = RC;
 }
 
+// [PO RT RA RB XO /]
+class X_BF3_L1_RS5_RS5<bits<6> opcode, bits<10> xo, dag OOL, dag IOL,
+                       string asmstr, InstrItinClass itin, list<dag> pattern>
+  : I<opcode, OOL, IOL, asmstr, itin> {
+  bits<3> BF;
+  bits<1> L;
+  bits<5> RA;
+  bits<5> RB;
+
+  let Pattern = pattern;
+
+  let Inst{6-8}   = BF;
+  let Inst{9}     = 0;
+  let Inst{10}    = L;
+  let Inst{11-15} = RA;
+  let Inst{16-20} = RB;
+  let Inst{21-30} = xo;
+  let Inst{31}    = 0;
+}
+
+// Same as XForm_17 but with GPR's and new naming convention
+class X_BF3_RS5_RS5<bits<6> opcode, bits<10> xo, dag OOL, dag IOL,
+                    string asmstr, InstrItinClass itin, list<dag> pattern>
+         : I<opcode, OOL, IOL, asmstr, itin> {
+  bits<3> BF;
+  bits<5> RA;
+  bits<5> RB;
+
+  let Pattern = pattern;
+
+  let Inst{6-8}   = BF;
+  let Inst{9-10}  = 0;
+  let Inst{11-15} = RA;
+  let Inst{16-20} = RB;
+  let Inst{21-30} = xo;
+  let Inst{31}    = 0;
+}
+
 // e.g. [PO VRT XO VRB XO /] or [PO VRT XO VRB XO RO]
 class X_RD5_XO5_RS5<bits<6> opcode, bits<5> xo2, bits<10> xo, dag OOL, dag IOL,
                     string asmstr, InstrItinClass itin, list<dag> pattern>
@@ -798,6 +836,31 @@ class X_RD6_IMM8<bits<6> opcode, bits<10> xo, dag OOL, dag IOL,
   let Inst{13-20} = IMM8;
   let Inst{21-30} = xo;
   let Inst{31}    = XT{5};
+}
+
+// XForm_base_r3xo for instructions such as P9 atomics where we don't want
+// to specify an SDAG pattern for matching.
+class X_RD5_RS5_IM5<bits<6> opcode, bits<10> xo, dag OOL, dag IOL,
+                    string asmstr, InstrItinClass itin>
+  : XForm_base_r3xo<opcode, xo, OOL, IOL, asmstr, itin, []> {
+}
+
+class X_BF3<bits<6> opcode, bits<10> xo, dag OOL, dag IOL, string asmstr,
+            InstrItinClass itin>
+  : XForm_17<opcode, xo, OOL, IOL, asmstr, itin> {
+  let FRA = 0;
+  let FRB = 0;
+}
+
+// [PO /// L RA RB XO /]
+class X_L1_RS5_RS5<bits<6> opcode, bits<10> xo, dag OOL, dag IOL,
+                   string asmstr, InstrItinClass itin, list<dag> pattern>
+  : XForm_16<opcode, xo, OOL, IOL, asmstr, itin> {
+  let BF = 0;
+  let Pattern = pattern;
+
+  bit RC = 0;
+  let Inst{31} = RC;
 }
 
 // XX*-Form (VSX)

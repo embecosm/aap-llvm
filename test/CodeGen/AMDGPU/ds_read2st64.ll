@@ -65,9 +65,9 @@ define void @simple_read2st64_f32_max_offset(float addrspace(1)* %out, float add
 
 ; SI-LABEL: @simple_read2st64_f32_over_max_offset
 ; SI-NOT: ds_read2st64_b32
-; SI: v_add_i32_e32 [[BIGADD:v[0-9]+]], vcc, 0x10000, {{v[0-9]+}}
-; SI: ds_read_b32 {{v[0-9]+}}, {{v[0-9]+}} offset:256
-; SI: ds_read_b32 {{v[0-9]+}}, [[BIGADD]]
+; SI-DAG: v_add_i32_e32 [[BIGADD:v[0-9]+]], vcc, 0x10000, {{v[0-9]+}}
+; SI-DAG: ds_read_b32 {{v[0-9]+}}, {{v[0-9]+}} offset:256
+; SI-DAG: ds_read_b32 {{v[0-9]+}}, [[BIGADD]]{{$}}
 ; SI: s_endpgm
 define void @simple_read2st64_f32_over_max_offset(float addrspace(1)* %out, float addrspace(3)* %lds) #0 {
   %x.i = tail call i32 @llvm.amdgcn.workitem.id.x() #1
@@ -197,8 +197,8 @@ define void @simple_read2st64_f64_max_offset(double addrspace(1)* %out, double a
 
 ; SI-LABEL: @simple_read2st64_f64_over_max_offset
 ; SI-NOT: ds_read2st64_b64
-; SI: v_add_i32_e32 [[BIGADD:v[0-9]+]], vcc, 0x10000, {{v[0-9]+}}
 ; SI: ds_read_b64 {{v\[[0-9]+:[0-9]+\]}}, {{v[0-9]+}} offset:512
+; SI: v_add_i32_e32 [[BIGADD:v[0-9]+]], vcc, 0x10000, {{v[0-9]+}}
 ; SI: ds_read_b64 {{v\[[0-9]+:[0-9]+\]}}, [[BIGADD]]
 ; SI: s_endpgm
 define void @simple_read2st64_f64_over_max_offset(double addrspace(1)* %out, double addrspace(3)* %lds) #0 {
@@ -258,5 +258,5 @@ declare i32 @llvm.amdgcn.workitem.id.x() #1
 ; Function Attrs: nounwind readnone
 declare i32 @llvm.amdgcn.workitem.id.y() #1
 
-attributes #0 = { nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-realign-stack" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }
+attributes #0 = { nounwind }
 attributes #1 = { nounwind readnone }

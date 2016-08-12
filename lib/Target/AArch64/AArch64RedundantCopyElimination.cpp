@@ -39,10 +39,6 @@ using namespace llvm;
 
 STATISTIC(NumCopiesRemoved, "Number of copies removed.");
 
-namespace llvm {
-void initializeAArch64RedundantCopyEliminationPass(PassRegistry &);
-}
-
 namespace {
 class AArch64RedundantCopyElimination : public MachineFunctionPass {
   const MachineRegisterInfo *MRI;
@@ -50,9 +46,16 @@ class AArch64RedundantCopyElimination : public MachineFunctionPass {
 
 public:
   static char ID;
-  AArch64RedundantCopyElimination() : MachineFunctionPass(ID) {}
+  AArch64RedundantCopyElimination() : MachineFunctionPass(ID) {
+    initializeAArch64RedundantCopyEliminationPass(
+        *PassRegistry::getPassRegistry());
+  }
   bool optimizeCopy(MachineBasicBlock *MBB);
   bool runOnMachineFunction(MachineFunction &MF) override;
+  MachineFunctionProperties getRequiredProperties() const override {
+    return MachineFunctionProperties().set(
+        MachineFunctionProperties::Property::AllVRegsAllocated);
+  }
   const char *getPassName() const override {
     return "AArch64 Redundant Copy Elimination";
   }
@@ -149,8 +152,7 @@ bool AArch64RedundantCopyElimination::optimizeCopy(MachineBasicBlock *MBB) {
   // CBZ/CBNZ. Conservatively mark as much as we can live.
   CompBr->clearRegisterKills(SmallestDef, TRI);
 
-  if (std::none_of(TargetRegs.begin(), TargetRegs.end(),
-                   [&](unsigned Reg) { return MBB->isLiveIn(Reg); }))
+  if (none_of(TargetRegs, [&](unsigned Reg) { return MBB->isLiveIn(Reg); }))
     MBB->addLiveIn(TargetReg);
 
   // Clear any kills of TargetReg between CompBr and the last removed COPY.
@@ -163,6 +165,8 @@ bool AArch64RedundantCopyElimination::optimizeCopy(MachineBasicBlock *MBB) {
 
 bool AArch64RedundantCopyElimination::runOnMachineFunction(
     MachineFunction &MF) {
+  if (skipFunction(*MF.getFunction()))
+    return false;
   TRI = MF.getSubtarget().getRegisterInfo();
   MRI = &MF.getRegInfo();
   bool Changed = false;

@@ -98,7 +98,7 @@ namespace llvm {
       Slot_Block,
 
       /// Early-clobber register use/def slot.  A live range defined at
-      /// Slot_EarlyCLobber interferes with normal live ranges killed at
+      /// Slot_EarlyClobber interferes with normal live ranges killed at
       /// Slot_Register.  Also used as the kill slot for live ranges tied to an
       /// early-clobber def.
       Slot_EarlyClobber,
@@ -632,11 +632,12 @@ namespace llvm {
     }
 
     /// ReplaceMachineInstrInMaps - Replacing a machine instr with a new one in
-    /// maps used by register allocator.
-    void replaceMachineInstrInMaps(MachineInstr &MI, MachineInstr &NewMI) {
+    /// maps used by register allocator. \returns the index where the new
+    /// instruction was inserted.
+    SlotIndex replaceMachineInstrInMaps(MachineInstr &MI, MachineInstr &NewMI) {
       Mi2IndexMap::iterator mi2iItr = mi2iMap.find(&MI);
       if (mi2iItr == mi2iMap.end())
-        return;
+        return SlotIndex();
       SlotIndex replaceBaseIndex = mi2iItr->second;
       IndexListEntry *miEntry(replaceBaseIndex.listEntry());
       assert(miEntry->getInstr() == &MI &&
@@ -644,6 +645,7 @@ namespace llvm {
       miEntry->setInstr(&NewMI);
       mi2iMap.erase(mi2iItr);
       mi2iMap.insert(std::make_pair(&NewMI, replaceBaseIndex));
+      return replaceBaseIndex;
     }
 
     /// Add the given MachineBasicBlock into the maps.

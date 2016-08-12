@@ -44,8 +44,18 @@ bool MachineFunctionPass::runOnFunction(Function &F) {
   MachineFunction &MF = getAnalysis<MachineFunctionAnalysis>().getMF();
   MachineFunctionProperties &MFProps = MF.getProperties();
 
-  assert(MFProps.verifyRequiredProperties(RequiredProperties) &&
-         "Properties required by the pass are not met by the function");
+#ifndef NDEBUG
+  if (!MFProps.verifyRequiredProperties(RequiredProperties)) {
+    errs() << "MachineFunctionProperties required by " << getPassName()
+           << " pass are not met by function " << F.getName() << ".\n"
+           << "Required properties: ";
+    RequiredProperties.print(errs(), /*OnlySet=*/true);
+    errs() << "\nCurrent properties: ";
+    MFProps.print(errs());
+    errs() << "\n";
+    llvm_unreachable("MachineFunctionProperties check failed");
+  }
+#endif
 
   bool RV = runOnMachineFunction(MF);
 
@@ -68,7 +78,7 @@ void MachineFunctionPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addPreserved<DominatorTreeWrapperPass>();
   AU.addPreserved<AAResultsWrapperPass>();
   AU.addPreserved<GlobalsAAWrapperPass>();
-  AU.addPreserved<IVUsers>();
+  AU.addPreserved<IVUsersWrapperPass>();
   AU.addPreserved<LoopInfoWrapperPass>();
   AU.addPreserved<MemoryDependenceWrapperPass>();
   AU.addPreserved<ScalarEvolutionWrapperPass>();

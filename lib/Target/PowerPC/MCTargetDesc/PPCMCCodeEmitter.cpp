@@ -105,19 +105,16 @@ public:
   void encodeInstruction(const MCInst &MI, raw_ostream &OS,
                          SmallVectorImpl<MCFixup> &Fixups,
                          const MCSubtargetInfo &STI) const override {
-    // For fast-isel, a float COPY_TO_REGCLASS can survive this long.
-    // It's just a nop to keep the register classes happy, so don't
-    // generate anything.
     unsigned Opcode = MI.getOpcode();
     const MCInstrDesc &Desc = MCII.get(Opcode);
-    if (Opcode == TargetOpcode::COPY_TO_REGCLASS)
-      return;
 
     uint64_t Bits = getBinaryCodeForInstr(MI, Fixups, STI);
 
     // Output the constant in big/little endian byte order.
     unsigned Size = Desc.getSize();
     switch (Size) {
+    case 0:
+      break;
     case 4:
       if (IsLittleEndian) {
         support::endian::Writer<support::little>(OS).write<uint32_t>(Bits);

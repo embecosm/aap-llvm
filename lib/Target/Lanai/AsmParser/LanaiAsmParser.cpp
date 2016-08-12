@@ -195,23 +195,12 @@ public:
       return false;
 
     // Constant case
-    if (const MCConstantExpr *ConstExpr = dyn_cast<MCConstantExpr>(Imm.Value)) {
-      int64_t Value = ConstExpr->getValue();
-      // Check if value fits in 25 bits with 2 least significant bits 0.
-      return isShiftedUInt<23, 2>(static_cast<int32_t>(Value));
-    }
-
-    // Symbolic reference expression
-    if (const LanaiMCExpr *SymbolRefExpr = dyn_cast<LanaiMCExpr>(Imm.Value))
-      return SymbolRefExpr->getKind() == LanaiMCExpr::VK_Lanai_None;
-
-    // Binary expression
-    if (const MCBinaryExpr *BinaryExpr = dyn_cast<MCBinaryExpr>(Imm.Value))
-      if (const LanaiMCExpr *SymbolRefExpr =
-              dyn_cast<LanaiMCExpr>(BinaryExpr->getLHS()))
-        return SymbolRefExpr->getKind() == LanaiMCExpr::VK_Lanai_None;
-
-    return false;
+    const MCConstantExpr *MCE = dyn_cast<MCConstantExpr>(Imm.Value);
+    if (!MCE)
+      return true;
+    int64_t Value = MCE->getValue();
+    // Check if value fits in 25 bits with 2 least significant bits 0.
+    return isShiftedUInt<23, 2>(static_cast<int32_t>(Value));
   }
 
   bool isBrTarget() { return isBrImm() || isToken(); }
@@ -368,6 +357,20 @@ public:
     return isInt<10>(Value);
   }
 
+  bool isCondCode() {
+    if (!isImm())
+      return false;
+
+    const MCConstantExpr *ConstExpr = dyn_cast<MCConstantExpr>(Imm.Value);
+    if (!ConstExpr)
+      return false;
+    uint64_t Value = ConstExpr->getValue();
+    // The condition codes are between 0 (ICC_T) and 15 (ICC_LE). If the
+    // unsigned value of the immediate is less than LPCC::UNKNOWN (16) then
+    // value corresponds to a valid condition code.
+    return Value < LPCC::UNKNOWN;
+  }
+
   void addExpr(MCInst &Inst, const MCExpr *Expr) const {
     // Add as immediates where possible. Null MCExpr = 0
     if (Expr == nullptr)
@@ -395,6 +398,11 @@ public:
   }
 
   void addCallTargetOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    addExpr(Inst, getImm());
+  }
+
+  void addCondCodeOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     addExpr(Inst, getImm());
   }
@@ -619,7 +627,7 @@ public:
   }
 };
 
-bool LanaiAsmParser::ParseDirective(AsmToken DirectiveId) { return true; }
+bool LanaiAsmParser::ParseDirective(AsmToken /*DirectiveId*/) { return true; }
 
 bool LanaiAsmParser::MatchAndEmitInstruction(SMLoc IdLoc, unsigned &Opcode,
                                              OperandVector &Operands,
@@ -632,6 +640,7 @@ bool LanaiAsmParser::MatchAndEmitInstruction(SMLoc IdLoc, unsigned &Opcode,
   switch (MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm)) {
   case Match_Success:
     Out.EmitInstruction(Inst, SubtargetInfo);
+    Opcode = Inst.getOpcode();
     return false;
   case Match_MissingFeature:
     return Error(IdLoc, "Instruction use requires option to be enabled");
@@ -680,10 +689,13 @@ std::unique_ptr<LanaiOperand> LanaiAsmParser::parseRegister() {
 
 bool LanaiAsmParser::ParseRegister(unsigned &RegNum, SMLoc &StartLoc,
                                    SMLoc &EndLoc) {
+  const AsmToken &Tok = getParser().getTok();
+  StartLoc = Tok.getLoc();
+  EndLoc = Tok.getEndLoc();
   std::unique_ptr<LanaiOperand> Op = parseRegister();
-  if (Op != 0)
+  if (Op != nullptr)
     RegNum = Op->getReg();
-  return (Op == 0);
+  return (Op == nullptr);
 }
 
 std::unique_ptr<LanaiOperand> LanaiAsmParser::parseIdentifier() {
@@ -1042,7 +1054,16 @@ StringRef LanaiAsmParser::splitMnemonic(StringRef Name, SMLoc NameLoc,
     LPCC::CondCode CondCode = LPCC::suffixToLanaiCondCode(Mnemonic);
     if (CondCode != LPCC::UNKNOWN) {
       size_t Next = Mnemonic.rfind('.', Name.size());
-      Mnemonic = Mnemonic.substr(0, Next + 1);
+      // 'sel' doesn't use a predicate operand whose printer adds the period,
+      // but instead has the period as part of the identifier (i.e., 'sel.' is
+      // expected by the generated matcher). If the mnemonic starts with 'sel'
+      // then include the period as part of the mnemonic, else don't include it
+      // as part of the mnemonic.
+      if (Mnemonic.startswith("sel")) {
+        Mnemonic = Mnemonic.substr(0, Next + 1);
+      } else {
+        Mnemonic = Mnemonic.substr(0, Next);
+      }
       Operands->push_back(LanaiOperand::CreateToken(Mnemonic, NameLoc));
       Operands->push_back(LanaiOperand::createImm(
           MCConstantExpr::create(CondCode, getContext()), NameLoc, NameLoc));
@@ -1095,7 +1116,28 @@ bool IsMemoryAssignmentError(const OperandVector &Operands) {
              Operands[PossibleDestIdx]->getReg();
 }
 
-bool LanaiAsmParser::ParseInstruction(ParseInstructionInfo &Info,
+static bool IsRegister(const MCParsedAsmOperand &op) {
+  return static_cast<const LanaiOperand &>(op).isReg();
+}
+
+static bool MaybePredicatedInst(const OperandVector &Operands) {
+  if (Operands.size() < 4 || !IsRegister(*Operands[1]) ||
+      !IsRegister(*Operands[2]))
+    return false;
+  return StringSwitch<bool>(
+             static_cast<const LanaiOperand &>(*Operands[0]).getToken())
+      .StartsWith("addc", true)
+      .StartsWith("add", true)
+      .StartsWith("and", true)
+      .StartsWith("sh", true)
+      .StartsWith("subb", true)
+      .StartsWith("sub", true)
+      .StartsWith("or", true)
+      .StartsWith("xor", true)
+      .Default(false);
+}
+
+bool LanaiAsmParser::ParseInstruction(ParseInstructionInfo & /*Info*/,
                                       StringRef Name, SMLoc NameLoc,
                                       OperandVector &Operands) {
   // First operand is token for instruction
@@ -1133,7 +1175,7 @@ bool LanaiAsmParser::ParseInstruction(ParseInstructionInfo &Info,
   // Parse until end of statement, consuming commas between operands
   while (Lexer.isNot(AsmToken::EndOfStatement) && Lexer.is(AsmToken::Comma)) {
     // Consume comma token
-    Lexer.Lex();
+    Lex();
 
     // Parse next operand
     if (parseOperand(&Operands, Mnemonic) != MatchOperand_Success)
@@ -1145,6 +1187,15 @@ bool LanaiAsmParser::ParseInstruction(ParseInstructionInfo &Info,
           "the destination register can't equal the base register in an "
           "instruction that modifies the base register.");
     return true;
+  }
+
+  // Insert always true operand for instruction that may be predicated but
+  // are not. Currently the autogenerated parser always expects a predicate.
+  if (MaybePredicatedInst(Operands)) {
+    Operands.insert(Operands.begin() + 1,
+                    LanaiOperand::createImm(
+                        MCConstantExpr::create(LPCC::ICC_T, getContext()),
+                        NameLoc, NameLoc));
   }
 
   return false;

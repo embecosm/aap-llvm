@@ -42,8 +42,9 @@ public:
     return true;
   }
 
-  void eliminateCallFramePseudoInstr(MachineFunction &MF,
-      MachineBasicBlock &MBB, MachineBasicBlock::iterator I) const override;
+  MachineBasicBlock::iterator
+  eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
+                                MachineBasicBlock::iterator I) const override;
   void processFunctionBeforeFrameFinalized(MachineFunction &MF,
       RegScavenger *RS = nullptr) const override;
   void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
@@ -90,6 +91,9 @@ private:
       const HexagonRegisterInfo &HRI, bool &PrologueStubs) const;
   bool insertCSRRestoresInBlock(MachineBasicBlock &MBB, const CSIVect &CSI,
       const HexagonRegisterInfo &HRI) const;
+  void updateEntryPaths(MachineFunction &MF, MachineBasicBlock &SaveB) const;
+  bool updateExitPaths(MachineBasicBlock &MBB, MachineBasicBlock &RestoreB,
+      BitVector &DoneT, BitVector &DoneF, BitVector &Path) const;
   void insertCFIInstructionsAt(MachineBasicBlock &MBB,
       MachineBasicBlock::iterator At) const;
 
@@ -135,9 +139,12 @@ private:
   void findShrunkPrologEpilog(MachineFunction &MF, MachineBasicBlock *&PrologB,
       MachineBasicBlock *&EpilogB) const;
 
-  bool shouldInlineCSR(llvm::MachineFunction &MF, const CSIVect &CSI) const;
+  void addCalleeSaveRegistersAsImpOperand(MachineInstr *MI, const CSIVect &CSI,
+      bool IsDef, bool IsKill) const;
+  bool shouldInlineCSR(MachineFunction &MF, const CSIVect &CSI) const;
   bool useSpillFunction(MachineFunction &MF, const CSIVect &CSI) const;
   bool useRestoreFunction(MachineFunction &MF, const CSIVect &CSI) const;
+  bool mayOverflowFrameOffset(MachineFunction &MF) const;
 };
 
 } // End llvm namespace

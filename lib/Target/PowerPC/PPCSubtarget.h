@@ -56,6 +56,7 @@ namespace PPC {
     DIR_PWR6X,
     DIR_PWR7,
     DIR_PWR8,
+    DIR_PWR9,
     DIR_64
   };
 }
@@ -130,6 +131,7 @@ protected:
   bool HasHTM;
   bool HasFusion;
   bool HasFloat128;
+  bool IsISA3_0;
 
   POPCNTDKind HasPOPCNTD;
 
@@ -272,6 +274,7 @@ public:
   bool hasHTM() const { return HasHTM; }
   bool hasFusion() const { return HasFusion; }
   bool hasFloat128() const { return HasFloat128; }
+  bool isISA3_0() const { return IsISA3_0; }
 
   POPCNTDKind hasPOPCNTD() const { return HasPOPCNTD; }
 
@@ -284,6 +287,7 @@ public:
 
   bool isTargetELF() const { return TargetTriple.isOSBinFormatELF(); }
   bool isTargetMachO() const { return TargetTriple.isOSBinFormatMachO(); }
+  bool isTargetLinux() const { return TargetTriple.isOSLinux(); }
 
   bool isDarwinABI() const { return isTargetMachO() || isDarwin(); }
   bool isSVR4ABI() const { return !isDarwinABI(); }
@@ -299,8 +303,6 @@ public:
   void getCriticalPathRCs(RegClassVector &CriticalPathRCs) const override;
 
   void overrideSchedPolicy(MachineSchedPolicy &Policy,
-                           MachineInstr *begin,
-                           MachineInstr *end,
                            unsigned NumRegionInstrs) const override;
   bool useAA() const override;
 

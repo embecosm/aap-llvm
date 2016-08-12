@@ -40,14 +40,14 @@ class CallLowering {
  public:
   CallLowering(const TargetLowering *TLI) : TLI(TLI) {}
   virtual ~CallLowering() {}
-  
+
   /// This hook must be implemented to lower outgoing return values, described
   /// by \p Val, into the specified virtual register \p VReg.
   /// This hook is used by GlobalISel.
   ///
   /// \return True if the lowering succeeds, false otherwise.
-  virtual bool LowerReturn(MachineIRBuilder &MIRBuilder, const Value *Val,
-                           unsigned VReg) const {
+  virtual bool lowerReturn(MachineIRBuilder &MIRBuilder,
+                           const Value *Val, unsigned VReg) const {
     return false;
   }
 
@@ -61,9 +61,29 @@ class CallLowering {
   ///
   /// \return True if the lowering succeeded, false otherwise.
   virtual bool
-  LowerFormalArguments(MachineIRBuilder &MIRBuilder,
+  lowerFormalArguments(MachineIRBuilder &MIRBuilder,
                        const Function::ArgumentListType &Args,
-                       const SmallVectorImpl<unsigned> &VRegs) const {
+                       ArrayRef<unsigned> VRegs) const {
+    return false;
+  }
+
+  /// This hook must be implemented to lower the given call instruction,
+  /// including argument and return value marshalling.
+  ///
+  /// \p CalleeReg is a virtual-register containing the destination if
+  /// `CI.getCalledFunction()` returns null (i.e. if the call is indirect);
+  /// otherwise it is 0.
+  ///
+  /// \p ResReg is a register where the call's return value should be stored (or
+  /// 0 if there is no return value).
+  ///
+  /// \p ArgRegs is a list of virtual registers containing each argument that
+  /// needs to be passed.
+  ///
+  /// \return true if the lowering succeeded, false otherwise.
+  virtual bool lowerCall(MachineIRBuilder &MIRBuilder, const CallInst &CI,
+                         unsigned CalleeReg, unsigned ResReg,
+                         ArrayRef<unsigned> ArgRegs) const {
     return false;
   }
 };
