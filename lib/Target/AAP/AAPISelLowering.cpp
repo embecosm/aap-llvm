@@ -132,6 +132,8 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i16, Expand);
   setOperationAction(ISD::CTPOP, MVT::i16, Expand);
 
+  setOperationAction(ISD::FLT_ROUNDS_, MVT::i32, Custom);
+
   // Custom DAGCombine operations
   setTargetDAGCombine(ISD::ADD);
 
@@ -218,6 +220,20 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerVASTART(Op, DAG);
   }
   llvm_unreachable("unimplemented operand");
+}
+
+void AAPTargetLowering::ReplaceNodeResults(SDNode *N,
+                                           SmallVectorImpl<SDValue> &Results,
+                                           SelectionDAG &DAG) const {
+  switch (N->getOpcode()) {
+  case ISD::FLT_ROUNDS_:
+    // FLT_ROUNDS has an i32 result type, and can't be expanded. Just lower
+    // to -1, which corresponds to an unknown default rounding direction.
+    Results.push_back(DAG.getTargetConstant(-1, SDLoc(N), MVT::i32));
+    break;
+  default:
+    llvm_unreachable("Unhandled node in ReplaceNodeResults");
+  }
 }
 
 // Get the AAP specific condition code for a given CondCode DAG node.
