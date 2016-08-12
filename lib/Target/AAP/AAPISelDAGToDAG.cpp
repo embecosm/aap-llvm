@@ -68,7 +68,7 @@ private:
     return static_cast<const AAPTargetMachine &>(TM);
   }
 
-  SDNode *Select(SDNode *N) override;
+  void Select(SDNode *N) override;
 
   // Complex Pattern for address selection.
   bool SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset);
@@ -79,7 +79,7 @@ private:
 
 /// Select instructions not customized! Used for
 /// expanded, promoted and normal instructions
-SDNode *AAPDAGToDAGISel::Select(SDNode *Node) {
+void AAPDAGToDAGISel::Select(SDNode *Node) {
   unsigned Opcode = Node->getOpcode();
   SDLoc dl(Node);
 
@@ -89,7 +89,7 @@ SDNode *AAPDAGToDAGISel::Select(SDNode *Node) {
   // If we have a custom node, we already have selected!
   if (Node->isMachineOpcode()) {
     DEBUG(errs() << "== "; Node->dump(CurDAG); errs() << "\n");
-    return NULL;
+    return;
   }
 
   ///
@@ -104,23 +104,18 @@ SDNode *AAPDAGToDAGISel::Select(SDNode *Node) {
     SDValue TFI = CurDAG->getTargetFrameIndex(FI, MVT::i16);
 
     // Handle single use
-    return CurDAG->getMachineNode(AAP::LEA, dl, MVT::i16, TFI,
-                                  CurDAG->getTargetConstant(0, dl, MVT::i16));
+    SDNode *N =
+        CurDAG->getMachineNode(AAP::LEA, dl, MVT::i16, TFI,
+                               CurDAG->getTargetConstant(0, dl, MVT::i16));
+    ReplaceNode(Node, N);
+    return;
   }
   default:
     break;
   }
 
   // Select the default instruction
-  SDNode *ResNode = SelectCode(Node);
-
-  DEBUG(errs() << "=> ");
-  if (ResNode == NULL || ResNode == Node)
-    DEBUG(Node->dump(CurDAG));
-  else
-    DEBUG(ResNode->dump(CurDAG));
-  DEBUG(errs() << "\n");
-  return ResNode;
+  SelectCode(Node);
 }
 
 bool AAPDAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {

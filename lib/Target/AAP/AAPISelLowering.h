@@ -91,7 +91,7 @@ private:
   SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv,
                                bool isVarArg,
                                const SmallVectorImpl<ISD::InputArg> &Ins,
-                               SDLoc dl, SelectionDAG &DAG,
+                               const SDLoc &dl, SelectionDAG &DAG,
                                SmallVectorImpl<SDValue> &InVals) const override;
 
   SDValue LowerCall(TargetLowering::CallLoweringInfo &CLI,
@@ -102,36 +102,40 @@ private:
                          bool isTailCall,
                          const SmallVectorImpl<ISD::OutputArg> &Outs,
                          const SmallVectorImpl<SDValue> &OutVals,
-                         const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc dl,
+                         const SmallVectorImpl<ISD::InputArg> &Ins,
+                         const SDLoc &dl,
                          SelectionDAG &DAG,
                          SmallVectorImpl<SDValue> &InVals) const;
 
   SDValue LowerCCCArguments(SDValue Chain, CallingConv::ID CallConv,
                             bool isVarArg,
-                            const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc dl,
+                            const SmallVectorImpl<ISD::InputArg> &Ins,
+                            const SDLoc &dl,
                             SelectionDAG &DAG,
                             SmallVectorImpl<SDValue> &InVals) const;
 
   SDValue LowerCallResult(SDValue Chain, SDValue InFlag,
                           CallingConv::ID CallConv, bool isVarArg,
-                          const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc dl,
+                          const SmallVectorImpl<ISD::InputArg> &Ins,
+                          const SDLoc &dl,
                           SelectionDAG &DAG,
                           SmallVectorImpl<SDValue> &InVals) const;
 
   SDValue LowerReturn(SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
                       const SmallVectorImpl<ISD::OutputArg> &Outs,
-                      const SmallVectorImpl<SDValue> &OutVals, SDLoc dl,
+                      const SmallVectorImpl<SDValue> &OutVals,
+                      const SDLoc &dl,
                       SelectionDAG &DAG) const override;
 
 //===---------------- AAP Custom Instruction Emissions -------------------===//
 public:
   MachineBasicBlock *
-  EmitInstrWithCustomInserter(MachineInstr *MI,
+  EmitInstrWithCustomInserter(MachineInstr &MI,
                               MachineBasicBlock *MBB) const override;
 
 private:
-  MachineBasicBlock *emitBrCC(MachineInstr *MI, MachineBasicBlock *MBB) const;
-  MachineBasicBlock *emitSelectCC(MachineInstr *MI,
+  MachineBasicBlock *emitBrCC(MachineInstr &MI, MachineBasicBlock *MBB) const;
+  MachineBasicBlock *emitSelectCC(MachineInstr &MI,
                                   MachineBasicBlock *MBB) const;
 
 //===--------------------- AAP Inline Assembly Support -------------------===//

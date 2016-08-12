@@ -74,9 +74,9 @@ void AAPRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MBBI,
   int FrameIdx = MI.getOperand(i).getIndex();
   unsigned BaseReg = getFrameRegister(MF);
 
-  int Offset = MF.getFrameInfo()->getObjectOffset(FrameIdx);
+  int Offset = MF.getFrameInfo().getObjectOffset(FrameIdx);
   if (!TFI->hasFP(MF)) {
-    Offset += MF.getFrameInfo()->getStackSize();
+    Offset += MF.getFrameInfo().getStackSize();
   }
 
   // fold imm into offset

@@ -310,7 +310,7 @@ SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
 
   // Create a store of the frame index to the location operand
   return DAG.getStore(Op.getOperand(0), SDLoc(Op), FrameIndex, Op.getOperand(1),
-                      MachinePointerInfo(Src), false, false, 0);
+                      MachinePointerInfo(Src));
 }
 
 SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
@@ -349,8 +349,8 @@ static void ParseFunctionArgs(const SmallVectorImpl<ArgT> &Args,
 
 SDValue AAPTargetLowering::LowerFormalArguments(
     SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
-    const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc DL, SelectionDAG &DAG,
-    SmallVectorImpl<SDValue> &InVals) const {
+    const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &DL,
+    SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
 
   switch (CallConv) {
   default:
@@ -391,10 +391,10 @@ SDValue AAPTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 /// generate load operations for arguments places on the stack.
 SDValue AAPTargetLowering::LowerCCCArguments(
     SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
-    const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc DL, SelectionDAG &DAG,
-    SmallVectorImpl<SDValue> &InVals) const {
+    const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &DL,
+    SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
   MachineFunction &MF = DAG.getMachineFunction();
-  MachineFrameInfo *MFI = MF.getFrameInfo();
+  MachineFrameInfo &MFI = MF.getFrameInfo();
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
   AAPMachineFunctionInfo *FuncInfo = MF.getInfo<AAPMachineFunctionInfo>();
 
@@ -407,7 +407,7 @@ SDValue AAPTargetLowering::LowerCCCArguments(
   // Create frame index for the start of the first vararg value
   if (isVarArg) {
     unsigned Offset = CCInfo.getNextStackOffset();
-    FuncInfo->setVarArgsFrameIndex(MFI->CreateFixedObject(1, Offset, true));
+    FuncInfo->setVarArgsFrameIndex(MFI.CreateFixedObject(1, Offset, true));
   }
 
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
@@ -419,7 +419,7 @@ SDValue AAPTargetLowering::LowerCCCArguments(
       default: {
 #ifndef NDEBUG
         errs() << "LowerFormalArguments Unhandled argument type: "
-               << RegVT.getSimpleVT().SimpleTy << "\n";
+               << RegVT.getEVTString() << "\n";
 #endif
         llvm_unreachable(0);
       }
@@ -451,8 +451,8 @@ SDValue AAPTargetLowering::LowerCCCArguments(
       ISD::ArgFlagsTy Flags = Ins[i].Flags;
 
       if (Flags.isByVal()) {
-        int FI = MFI->CreateFixedObject(Flags.getByValSize(),
-                                        VA.getLocMemOffset(), true);
+        int FI = MFI.CreateFixedObject(Flags.getByValSize(),
+                                       VA.getLocMemOffset(), true);
         InVal = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
       } else {
         // Load the argument to a virtual register
@@ -462,14 +462,13 @@ SDValue AAPTargetLowering::LowerCCCArguments(
                  << EVT(VA.getLocVT()).getEVTString() << "\n";
         }
         // Create the frame index object for this incoming parameter...
-        int FI = MFI->CreateFixedObject(ObjSize, VA.getLocMemOffset(), true);
+        int FI = MFI.CreateFixedObject(ObjSize, VA.getLocMemOffset(), true);
 
         // Create the SelectionDAG nodes corresponding to a load
         // from this parameter
         SDValue FIN = DAG.getFrameIndex(FI, MVT::i16);
         InVal = DAG.getLoad(VA.getLocVT(), DL, Chain, FIN,
-                            MachinePointerInfo::getFixedStack(MF, FI), false,
-                            false, false, 0);
+                            MachinePointerInfo::getFixedStack(MF, FI));
       }
 
       InVals.push_back(InVal);
@@ -484,7 +483,7 @@ AAPTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
                                bool isVarArg,
                                const SmallVectorImpl<ISD::OutputArg> &Outs,
                                const SmallVectorImpl<SDValue> &OutVals,
-                               SDLoc DL, SelectionDAG &DAG) const {
+                               const SDLoc &DL, SelectionDAG &DAG) const {
 
   // CCValAssign - represent the assignment of the return value to a location
   SmallVector<CCValAssign, 16> RVLocs;
@@ -537,7 +536,8 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
     SDValue Chain, SDValue Callee, CallingConv::ID CallConv, bool isVarArg,
     bool isTailCall, const SmallVectorImpl<ISD::OutputArg> &Outs,
     const SmallVectorImpl<SDValue> &OutVals,
-    const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc DL, SelectionDAG &DAG,
+    const SmallVectorImpl<ISD::InputArg> &Ins,
+    const SDLoc &DL, SelectionDAG &DAG,
     SmallVectorImpl<SDValue> &InVals) const {
   const DataLayout &TD = DAG.getDataLayout();
 
@@ -608,8 +608,7 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
             /*AlwaysInline*/ true,
             /*isTailCall*/ false, MachinePointerInfo(), MachinePointerInfo());
       } else {
-        MemOp = DAG.getStore(Chain, DL, Arg, PtrOff, MachinePointerInfo(),
-                             false, false, 0);
+        MemOp = DAG.getStore(Chain, DL, Arg, PtrOff, MachinePointerInfo());
       }
 
       MemOpChains.push_back(MemOp);
@@ -684,8 +683,8 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
 ///
 SDValue AAPTargetLowering::LowerCallResult(
     SDValue Chain, SDValue InFlag, CallingConv::ID CallConv, bool isVarArg,
-    const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc DL, SelectionDAG &DAG,
-    SmallVectorImpl<SDValue> &InVals) const {
+    const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &DL,
+    SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
 
   // Assign locations to each value returned by this call.
   SmallVector<CCValAssign, 16> RVLocs;
@@ -710,9 +709,9 @@ SDValue AAPTargetLowering::LowerCallResult(
 //===----------------------------------------------------------------------===//
 
 MachineBasicBlock *
-AAPTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
+AAPTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
                                                MachineBasicBlock *MBB) const {
-  switch (MI->getOpcode()) {
+  switch (MI.getOpcode()) {
   case AAP::BR_CC:
     return emitBrCC(MI, MBB);
   case AAP::SELECT_CC:
@@ -722,31 +721,31 @@ AAPTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
   }
 }
 
-MachineBasicBlock *AAPTargetLowering::emitBrCC(MachineInstr *MI,
+MachineBasicBlock *AAPTargetLowering::emitBrCC(MachineInstr &MI,
                                                MachineBasicBlock *MBB) const {
   const auto &TII = *MBB->getParent()->getSubtarget().getInstrInfo();
-  DebugLoc DL = MI->getDebugLoc();
-  AAPCC::CondCode CC = (AAPCC::CondCode)MI->getOperand(0).getImm();
+  DebugLoc DL = MI.getDebugLoc();
+  AAPCC::CondCode CC = (AAPCC::CondCode)MI.getOperand(0).getImm();
 
-  unsigned LhsReg = MI->getOperand(1).getReg();
-  unsigned RhsReg = MI->getOperand(2).getReg();
-  MachineBasicBlock *TargetMBB = MI->getOperand(3).getMBB();
+  unsigned LhsReg = MI.getOperand(1).getReg();
+  unsigned RhsReg = MI.getOperand(2).getReg();
+  MachineBasicBlock *TargetMBB = MI.getOperand(3).getMBB();
 
   unsigned BranchOp = getBranchOpForCondition(CC);
-  BuildMI(*MBB, MI, DL, TII.get(BranchOp))
+  BuildMI(*MBB, &MI, DL, TII.get(BranchOp))
       .addMBB(TargetMBB)
       .addReg(LhsReg)
       .addReg(RhsReg);
 
-  MI->eraseFromParent();
+  MI.eraseFromParent();
   return MBB;
 }
 
 MachineBasicBlock *
-AAPTargetLowering::emitSelectCC(MachineInstr *MI,
+AAPTargetLowering::emitSelectCC(MachineInstr &MI,
                                 MachineBasicBlock *MBB) const {
   const auto &TII = *MBB->getParent()->getSubtarget().getInstrInfo();
-  DebugLoc DL = MI->getDebugLoc();
+  DebugLoc DL = MI.getDebugLoc();
 
   // insert a diamond control flow pattern to handle the select
   const BasicBlock *BB = MBB->getBasicBlock();
@@ -769,12 +768,12 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
   EntryMBB->addSuccessor(FalseValueMBB);
   EntryMBB->addSuccessor(SinkMBB);
 
-  AAPCC::CondCode CC = (AAPCC::CondCode)MI->getOperand(5).getImm();
+  AAPCC::CondCode CC = (AAPCC::CondCode)MI.getOperand(5).getImm();
   unsigned BranchOp = getBranchOpForCondition(CC);
 
-  unsigned InReg = MI->getOperand(0).getReg();
-  unsigned LhsReg = MI->getOperand(1).getReg();
-  unsigned RhsReg = MI->getOperand(2).getReg();
+  unsigned InReg = MI.getOperand(0).getReg();
+  unsigned LhsReg = MI.getOperand(1).getReg();
+  unsigned RhsReg = MI.getOperand(2).getReg();
   BuildMI(EntryMBB, DL, TII.get(BranchOp))
       .addMBB(SinkMBB)
       .addReg(LhsReg)
@@ -782,15 +781,15 @@ AAPTargetLowering::emitSelectCC(MachineInstr *MI,
 
   FalseValueMBB->addSuccessor(SinkMBB);
 
-  unsigned TrueValueReg = MI->getOperand(3).getReg();
-  unsigned FalseValueReg = MI->getOperand(4).getReg();
+  unsigned TrueValueReg = MI.getOperand(3).getReg();
+  unsigned FalseValueReg = MI.getOperand(4).getReg();
   BuildMI(*SinkMBB, SinkMBB->begin(), DL, TII.get(AAP::PHI), InReg)
       .addReg(TrueValueReg)
       .addMBB(EntryMBB)
       .addReg(FalseValueReg)
       .addMBB(FalseValueMBB);
 
-  MI->eraseFromParent();
+  MI.eraseFromParent();
   return SinkMBB;
 }
 

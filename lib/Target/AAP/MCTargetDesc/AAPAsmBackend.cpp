@@ -131,7 +131,8 @@ public:
     }
   }
 
-  void relaxInstruction(MCInst const &Inst, MCInst &Res) const override {
+  void relaxInstruction(MCInst const &Inst, const MCSubtargetInfo &STI,
+                        MCInst &Res) const override {
     // The only instructions which should require relaxation are short
     // instructions with fixups, and at the moment these instructions should
     // not be selected or parsed
@@ -170,8 +171,10 @@ public:
 
 
 namespace llvm {
-MCAsmBackend *createAAPAsmBackend(Target const &T, MCRegisterInfo const &MRI,
-                                  const Triple &TT, StringRef CPU) {
+MCAsmBackend *createAAPAsmBackend(const Target &T,
+                                  const MCRegisterInfo &MRI,
+                                  const Triple &TT, StringRef CPU,
+                                  const MCTargetOptions &Options) {
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(Triple(TT).getOS());
   return new ELFAAPAsmBackend(T, OSABI);
 }

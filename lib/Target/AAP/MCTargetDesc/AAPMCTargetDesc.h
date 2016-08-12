@@ -23,6 +23,7 @@ class MCContext;
 class MCInstrInfo;
 class MCObjectWriter;
 class MCRegisterInfo;
+class MCTargetOptions;
 class StringRef;
 class Target;
 class Triple;
@@ -34,8 +35,9 @@ MCCodeEmitter *createAAPMCCodeEmitter(MCInstrInfo const &MCII,
                                       MCRegisterInfo const &MRI,
                                       MCContext &Context);
 
-MCAsmBackend *createAAPAsmBackend(Target const &T, MCRegisterInfo const &MRI,
-                                  const Triple &TT, StringRef CPU);
+MCAsmBackend *createAAPAsmBackend(const Target &T, const MCRegisterInfo &MRI,
+                                  const Triple &TT, StringRef CPU,
+                                  const MCTargetOptions &Options);
 
 MCObjectWriter *createAAPELFObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI,
                                          StringRef CPU);

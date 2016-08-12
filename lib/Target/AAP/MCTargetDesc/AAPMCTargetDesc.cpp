@@ -15,7 +15,6 @@
 #include "InstPrinter/AAPInstPrinter.h"
 #include "AAPRegisterInfo.h"
 #include "AAPMCAsmInfo.h"
-#include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -49,12 +48,9 @@ static MCSubtargetInfo *createAAPMCSubtargetInfo(const Triple &TT,
   return createAAPMCSubtargetInfoImpl(TT, CPU, FS);
 }
 
-static MCCodeGenInfo *createAAPMCCodeGenInfo(const Triple &TT, Reloc::Model RM,
-                                             CodeModel::Model CM,
-                                             CodeGenOpt::Level OL) {
-  MCCodeGenInfo *X = new MCCodeGenInfo();
-  X->initMCCodeGenInfo(RM, CM, OL);
-  return X;
+static void adjustCodeGenOpts(const Triple &TT, Reloc::Model RM,
+                              CodeModel::Model &CM) {
+  return;
 }
 
 static MCInstPrinter *createAAPMCInstPrinter(const Triple &T,
@@ -72,7 +68,7 @@ extern "C" void LLVMInitializeAAPTargetMC() {
   RegisterMCAsmInfo<AAPMCAsmInfo> X(TheAAPTarget);
 
   // Register the MC codegen info.
-  TargetRegistry::RegisterMCCodeGenInfo(TheAAPTarget, createAAPMCCodeGenInfo);
+  TargetRegistry::registerMCAdjustCodeGenOpts(TheAAPTarget, adjustCodeGenOpts);
 
   // Register the MC instruction info.
   TargetRegistry::RegisterMCInstrInfo(TheAAPTarget, createAAPMCInstrInfo);

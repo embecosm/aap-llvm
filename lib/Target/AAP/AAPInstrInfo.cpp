@@ -42,7 +42,7 @@ AAPInstrInfo::AAPInstrInfo(AAPSubtarget &STI)
 // Branch Analysis
 //===----------------------------------------------------------------------===//
 
-bool AAPInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
+bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
                                  MachineBasicBlock *&TBB,
                                  MachineBasicBlock *&FBB,
                                  SmallVectorImpl<MachineOperand> &Cond,
@@ -54,14 +54,15 @@ unsigned AAPInstrInfo::InsertBranch(MachineBasicBlock &MBB,
                                     MachineBasicBlock *TBB,
                                     MachineBasicBlock *FBB,
                                     ArrayRef<MachineOperand> Cond,
-                                    DebugLoc DL) const {
+                                    const DebugLoc &DL) const {
   return 0;
 }
 
 unsigned AAPInstrInfo::RemoveBranch(MachineBasicBlock &MBB) const { return 0; }
 
 void AAPInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
-                               MachineBasicBlock::iterator I, DebugLoc DL,
+                               MachineBasicBlock::iterator I,
+                               const DebugLoc &DL,
                                unsigned DestReg, unsigned SrcReg,
                                bool KillSrc) const {
   assert(AAP::GR64RegClass.contains(DestReg) &&
@@ -80,7 +81,7 @@ void AAPInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
                                        const TargetRegisterClass *RC,
                                        const TargetRegisterInfo *TRI) const {
   MachineFunction &MF = *MBB.getParent();
-  MachineFrameInfo &MFrameInfo = *MF.getFrameInfo();
+  MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
 
   DebugLoc DL = MI != MBB.end() ? MI->getDebugLoc() : DebugLoc();
 
@@ -105,7 +106,7 @@ void AAPInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
                                         const TargetRegisterClass *RC,
                                         const TargetRegisterInfo *TRI) const {
   MachineFunction &MF = *MBB.getParent();
-  MachineFrameInfo &MFrameInfo = *MF.getFrameInfo();
+  MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
 
   DebugLoc DL = MI != MBB.end() ? MI->getDebugLoc() : DebugLoc();
 

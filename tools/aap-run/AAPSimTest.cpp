@@ -75,9 +75,9 @@ static void LoadObject(AAPSimulator &Sim, ObjectFile *o) {
 // Load an object
 static void LoadBinary(AAPSimulator &Sim, std::string filename) {
   // Attempt to open the binary.
-  ErrorOr<OwningBinary<Binary>> BinaryOrErr = createBinary(filename);
-  if (std::error_code EC = BinaryOrErr.getError())
-    report_error(filename, EC);
+  Expected<OwningBinary<Binary>> BinaryOrErr = createBinary(filename);
+  if (auto Err = BinaryOrErr.takeError())
+    report_error(filename, errorToErrorCode(std::move(Err)));
   Binary &Binary = *BinaryOrErr.get().getBinary();
   if (ObjectFile *o = dyn_cast<ObjectFile>(&Binary))
     LoadObject(Sim, o);

@@ -39,12 +39,12 @@ AAPFrameLowering::AAPFrameLowering()
 
 bool AAPFrameLowering::hasFP(const MachineFunction &MF) const {
   return MF.getTarget().Options.DisableFramePointerElim(MF) ||
-         MF.getFrameInfo()->hasVarSizedObjects();
+         MF.getFrameInfo().hasVarSizedObjects();
 }
 
 void AAPFrameLowering::emitPrologue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
-  MachineFrameInfo *MFrameInfo = MF.getFrameInfo();
+  MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
   AAPMachineFunctionInfo *MFuncInfo = MF.getInfo<AAPMachineFunctionInfo>();
   const AAPInstrInfo &TII =
       *static_cast<const AAPInstrInfo *>(MF.getSubtarget().getInstrInfo());
@@ -53,7 +53,7 @@ void AAPFrameLowering::emitPrologue(MachineFunction &MF,
   DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
 
   // Get the number of bytes to allocate from the FrameInfo
-  const uint64_t StackSize = MFrameInfo->getStackSize();
+  const uint64_t StackSize = MFrameInfo.getStackSize();
 
   assert(!hasFP(MF) && "Frame pointer unsupported!");
 
@@ -80,7 +80,7 @@ void AAPFrameLowering::emitPrologue(MachineFunction &MF,
 
 void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
-  const MachineFrameInfo *MFrameInfo = MF.getFrameInfo();
+  const MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
   AAPMachineFunctionInfo *MFuncInfo = MF.getInfo<AAPMachineFunctionInfo>();
   const AAPInstrInfo &TII =
       *static_cast<const AAPInstrInfo *>(MF.getSubtarget().getInstrInfo());
@@ -93,7 +93,7 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
          "Epilogue can only be inserted in returning blocks");
 
   // Number of bytes to dealloc from FrameInfo
-  const uint64_t StackSize = MFrameInfo->getStackSize();
+  const uint64_t StackSize = MFrameInfo.getStackSize();
   uint64_t NumBytes = StackSize - MFuncInfo->getCalleeSavedFrameSize();
 
   const unsigned SP = AAPRegisterInfo::getStackPtrRegister();
@@ -120,11 +120,11 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
 
 // This function eliminates ADJCALLSTACKDOWN,
 // ADJCALLSTACKUP pseudo instructions
-void AAPFrameLowering::eliminateCallFramePseudoInstr(
-    MachineFunction &MF, MachineBasicBlock &MBB,
-    MachineBasicBlock::iterator I) const {
+MachineBasicBlock::iterator AAPFrameLowering::
+eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator I) const {
   assert(!hasFP(MF) && "Frame pointer unsupported!");
-  MBB.erase(I);
+  return MBB.erase(I);
 }
 
 void AAPFrameLowering::processFunctionBeforeFrameFinalized(
