@@ -27,8 +27,8 @@ entry:
 define i8 @ldb_global_short_imm_1() {
 entry:
 ;CHECK: ldb_global_short_imm_1:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array  {{.*MOVI_i16}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 2]  {{.*LDB(_short)?}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array+2  {{.*MOVI_i16}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 2
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -38,8 +38,8 @@ entry:
 define i8 @ldb_global_short_imm_2() {
 entry:
 ;CHECK: ldb_global_short_imm_2:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array  {{.*MOVI_i16}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 3]  {{.*LDB(_short)?}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array+3  {{.*MOVI_i16}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 3
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -49,8 +49,8 @@ entry:
 define i8 @ldb_global_short_imm_3() {
 entry:
 ;CHECK: ldb_global_short_imm_3:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array  {{.*MOVI_i16}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 4]  {{.*LDB$}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array+4  {{.*MOVI_i16}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 4
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -61,8 +61,8 @@ entry:
 define i8 @ldb_global_imm_1() {
 entry:
 ;CHECK: ldb_global_imm_1:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array    {{.*MOVI_i16}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 26]   {{.*LDB$}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array+26 {{.*MOVI_i16}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 26
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -73,9 +73,8 @@ entry:
 define i8 @ldb_global_imm_2() {
 entry:
 ;CHECK: ldb_global_imm_2:
-;CHECK: movi ${{r[0-9]+}}, i8_array                     {{.*MOVI_i16}}
-;CHECK-DAG: addi $[[REG2:r[0-9]+]], ${{r[0-9]+}}, 768   {{.*ADDI_i10}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG2]], 0]            {{.*LDB(_short)?}}
+;CHECK: movi $[[REG1:r[0-9]+]], i8_array+768    {{.*MOVI_i16}}
+;CHECK: ldb ${{r[0-9]+}}, [$[[REG1]], 0]        {{.*LDB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 768
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -85,11 +84,8 @@ entry:
 define i8 @ldb_global_big_imm() {
 entry:
 ;CHECK: ldb_global_big_imm:
-;CHECK-DAG: movi ${{r[0-9]+}}, i8_array       {{.*MOVI_i16}}
-;CHECK-DAG: movi ${{r[0-9]+}}, 1234           {{.*MOVI_i16}}
-;CHECK-NOT: BARRIER
-;CHECK-DAG: add $[[REG1:r[0-9]+]], ${{r[0-9]+}}, ${{r[0-9]+}} {{.*ADD_r(_short)?}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]                  {{.*LDB(_short)?}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array+1234 {{.*MOVI_i16}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 1234
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -102,8 +98,8 @@ entry:
 define i8 @ldb_global_short_neg_imm_1() {
 entry:
 ;CHECK: ldb_global_short_neg_imm_1:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array    {{.*MOVI_i16}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], -2]   {{.*LDB(_short)?}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array-2  {{.*MOVI_i16}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -2
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -113,8 +109,8 @@ entry:
 define i8 @ldb_global_short_neg_imm_2() {
 entry:
 ;CHECK: ldb_global_short_neg_imm_2:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array    {{.*MOVI_i16}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], -4]   {{.*LDB(_short)?}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array-4  {{.*MOVI_i16}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -4
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -124,8 +120,8 @@ entry:
 define i8 @ldb_global_short_neg_imm_3() {
 entry:
 ;CHECK: ldb_global_short_neg_imm_3:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array    {{.*MOVI_i16}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], -5]   {{.*LDB$}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array-5  {{.*MOVI_i16}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB$}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -5
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -136,8 +132,8 @@ entry:
 define i8 @ldb_global_neg_imm_1() {
 entry:
 ;CHECK: ldb_global_neg_imm_1:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array    {{.*MOVI_i16}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], -26]  {{.*LDB$}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array-26 {{.*MOVI_i16}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB$}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -26
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -148,9 +144,8 @@ entry:
 define i8 @ldb_global_neg_imm_2() {
 entry:
 ;CHECK: ldb_global_neg_imm_2:
-;CHECK: movi ${{r[0-9]+}}, i8_array                     {{.*MOVI_i16}}
-;CHECK-DAG: subi $[[REG2:r[0-9]+]], ${{r[0-9]+}}, 755   {{.*SUBI_i10}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG2]], 0]            {{.*LDB(_short)?}}
+;CHECK: movi $[[REG1:r[0-9]+]], i8_array-755    {{.*MOVI_i16}}
+;CHECK: ldb ${{r[0-9]+}}, [$[[REG1]], 0]        {{.*LDB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -755
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -160,11 +155,8 @@ entry:
 define i8 @ldb_global_big_neg_imm() {
 entry:
 ;CHECK: ldb_global_big_neg_imm:
-;CHECK-DAG: movi ${{r[0-9]+}}, i8_array {{.*MOVI_i16}}
-;CHECK-DAG: movi ${{r[0-9]+}}, 1234     {{.*MOVI_i16}}
-;CHECK-NOT: BARRIER
-;CHECK-DAG: sub $[[REG1:r[0-9]+]], ${{r[0-9]+}}, ${{r[0-9]+}}   {{.*SUB_r(_short)?}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]                    {{.*LDB(_short)?}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array-1234 {{.*MOVI_i16}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -1234
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -284,8 +276,8 @@ entry:
 define i16 @ldw_global_short_imm() {
 entry:
 ;CHECK: ldw_global_short_imm:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i16_array {{.*MOVI_i16}}
-;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 2]  {{.*LDW(_short)?}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i16_array+2 {{.*MOVI_i16}}
+;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDW(_short)?}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 1
   %1 = load i16, i16* %0
   ret i16 %1 ;CHECK: jmp   {{.*JMP}}
@@ -296,8 +288,8 @@ entry:
 define i16 @ldw_global_imm() {
 entry:
 ;CHECK: ldw_global_imm:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i16_array   {{.*MOVI_i16}}
-;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 424]  {{.*LDW$}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i16_array+424 {{.*MOVI_i16}}
+;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDW(_short)?}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 212
   %1 = load i16, i16* %0
   ret i16 %1 ;CHECK: jmp   {{.*JMP}}
@@ -307,11 +299,8 @@ entry:
 define i16 @ldw_global_big_imm() {
 entry:
 ;CHECK: ldw_global_big_imm:
-;CHECK-DAG: movi ${{r[0-9]+}}, i16_array      {{.*MOVI_i16}}
-;CHECK-DAG: movi ${{r[0-9]+}}, 2468           {{.*MOVI_i16}}
-;CHECK-NOT: BARRIER
-;CHECK-DAG: add $[[REG1:r[0-9]+]], ${{r[0-9]+}}, ${{r[0-9]+}} {{.*ADD_r(_short)?}}
-;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 0]                  {{.*LDW(_short)?}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i16_array+2468  {{.*MOVI_i16}}
+;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 0]        {{.*LDW(_short)?}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 1234
   %1 = load i16, i16* %0
   ret i16 %1 ;CHECK: jmp   {{.*JMP}}
@@ -324,8 +313,8 @@ entry:
 define i16 @ldw_global_short_neg_imm() {
 entry:
 ;CHECK: ldw_global_short_neg_imm:
-;CHECK-DAG: movi $[[REG1:r[0-9]+]], i16_array   {{.*MOVI_i16}}
-;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], -4]   {{.*LDW(_short)?}}
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], i16_array-4 {{.*MOVI_i16}}
+;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDW(_short)?}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 -2
   %1 = load i16, i16* %0
   ret i16 %1 ;CHECK: jmp   {{.*JMP}}
@@ -336,9 +325,8 @@ entry:
 define i16 @ldw_global_neg_imm() {
 entry:
 ;CHECK: ldw_global_neg_imm:
-;CHECK: movi ${{r[0-9]+}}, i16_array                    {{.*MOVI_i16}}
-;CHECK-DAG: subi $[[REG2:r[0-9]+]], ${{r[0-9]+}}, 634   {{.*SUBI_i10}}
-;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG2]], 0]            {{.*LDW(_short)?}}
+;CHECK: movi $[[REG1:r[0-9]+]], i16_array-634   {{.*MOVI_i16}}
+;CHECK: ldw ${{r[0-9]+}}, [$[[REG1]], 0]        {{.*LDW(_short)?}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 -317
   %1 = load i16, i16* %0
   ret i16 %1 ;CHECK: jmp   {{.*JMP}}
