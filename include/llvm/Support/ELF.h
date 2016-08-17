@@ -318,6 +318,9 @@ enum {
   // allocated, this enum will be updated to use it.
   EM_WEBASSEMBLY   = 0x4157, // WebAssembly architecture
 
+  // A request has been made to the maintainer of the official registry for
+  // such numbers for an official value for AAP. As soon as one is allocated,
+  // this enum will be updated to use it.
   EM_AAP           = 0x5343 // AAP
 };
 
