@@ -47,9 +47,16 @@ public:
   void printOperand(const MachineInstr *MI, int OpNum, raw_ostream &O,
                     const char *Modifier = nullptr);
 
+  void printMemOffOperand(const MachineInstr *MI, int OpNum,
+                          raw_ostream &O, const char *Modifier = nullptr);
+
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
                        unsigned AsmVariant, const char *ExtraCode,
                        raw_ostream &O) override;
+
+  bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
+                             unsigned AsmVariant, const char *ExtraCode,
+                             raw_ostream &O) override;
 
   void EmitInstruction(const MachineInstr *MI) override;
 };
@@ -77,10 +84,25 @@ void AAPAsmPrinter::printOperand(const MachineInstr *MI, int OpNum,
   }
 }
 
+void AAPAsmPrinter::printMemOffOperand(const MachineInstr *MI, int OpNum,
+                                       raw_ostream &O, const char *Modifier) {
+  printOperand(MI, OpNum, O);
+  O << ',' << ' ';
+  printOperand(MI, OpNum+1, O);
+}
+
 bool AAPAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
                                     unsigned AsmVariant, const char *ExtraCode,
                                     raw_ostream &O) {
   printOperand(MI, OpNo, O);
+  return false;
+}
+
+bool AAPAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
+                                          unsigned AsmVariant,
+                                          const char *ExtraCode,
+                                          raw_ostream &O) {
+  printMemOffOperand(MI, OpNo, O);
   return false;
 }
 
