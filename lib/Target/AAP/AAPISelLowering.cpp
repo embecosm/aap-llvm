@@ -64,8 +64,10 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setLoadExtAction(ISD::SEXTLOAD, MVT::i16, MVT::i1,  Expand);
   setLoadExtAction(ISD::SEXTLOAD, MVT::i16, MVT::i8,  Expand);
 
+  setOperationAction(ISD::GlobalAddress,  MVT::i16,    Custom);
+  setOperationAction(ISD::ExternalSymbol, MVT::i16,    Custom);
+  setOperationAction(ISD::BlockAddress,   MVT::i16,    Custom);
 
-  setOperationAction(ISD::GlobalAddress, MVT::i16,    Custom);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8, Expand);
 
@@ -212,6 +214,10 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   case ISD::GlobalAddress:
     return LowerGlobalAddress(Op, DAG);
+  case ISD::ExternalSymbol:
+    return LowerExternalSymbol(Op, DAG);
+  case ISD::BlockAddress:
+    return LowerBlockAddress(Op, DAG);
   case ISD::BR_CC:
     return LowerBR_CC(Op, DAG);
   case ISD::SELECT_CC:
@@ -334,10 +340,24 @@ SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
   const DataLayout DL = DAG.getDataLayout();
   const GlobalValue *GV = cast<GlobalAddressSDNode>(Op)->getGlobal();
   int64_t Offset = cast<GlobalAddressSDNode>(Op)->getOffset();
+  SDValue Result = DAG.getTargetGlobalAddress(GV, SDLoc(Op), getPointerTy(DL),
+                                              Offset);
+  return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), getPointerTy(DL), Result);
+}
 
-  // Create the TargetGlobalAddress node, folding in the constant offset.
-  SDValue Result =
-      DAG.getTargetGlobalAddress(GV, SDLoc(Op), getPointerTy(DL), Offset);
+SDValue AAPTargetLowering::LowerExternalSymbol(SDValue Op,
+                                               SelectionDAG &DAG) const {
+  const DataLayout DL = DAG.getDataLayout();
+  const char *Sym = cast<ExternalSymbolSDNode>(Op)->getSymbol();
+  SDValue Result = DAG.getTargetExternalSymbol(Sym, getPointerTy(DL));
+  return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), getPointerTy(DL), Result);
+}
+
+SDValue AAPTargetLowering::LowerBlockAddress(SDValue Op,
+                                             SelectionDAG &DAG) const {
+  const DataLayout DL = DAG.getDataLayout();
+  const BlockAddress *BA = cast<BlockAddressSDNode>(Op)->getBlockAddress();
+  SDValue Result = DAG.getTargetBlockAddress(BA, getPointerTy(DL));
   return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), getPointerTy(DL), Result);
 }
 
