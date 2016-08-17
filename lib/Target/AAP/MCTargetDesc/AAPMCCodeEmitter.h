@@ -47,8 +47,7 @@ public:
 
   unsigned encodeImmN(const MCInst &MI, unsigned Op,
                       SmallVectorImpl<MCFixup> &Fixups,
-                      MCSubtargetInfo const &STI,
-                      MCFixupKind FixupKind) const;
+                      MCSubtargetInfo const &STI, MCFixupKind FixupKind) const;
   unsigned encodeImm3(const MCInst &MI, unsigned Op,
                       SmallVectorImpl<MCFixup> &Fixups,
                       MCSubtargetInfo const &STI) const;

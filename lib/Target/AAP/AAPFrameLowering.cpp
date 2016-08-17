@@ -120,9 +120,9 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
 
 // This function eliminates ADJCALLSTACKDOWN,
 // ADJCALLSTACKUP pseudo instructions
-MachineBasicBlock::iterator AAPFrameLowering::
-eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
-                              MachineBasicBlock::iterator I) const {
+MachineBasicBlock::iterator AAPFrameLowering::eliminateCallFramePseudoInstr(
+    MachineFunction &MF, MachineBasicBlock &MBB,
+    MachineBasicBlock::iterator I) const {
   assert(!hasFP(MF) && "Frame pointer unsupported!");
   return MBB.erase(I);
 }

@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AAP.h"
 #include "AAPDisassembler.h"
+#include "AAP.h"
 #include "AAPRegisterInfo.h"
 #include "AAPSubtarget.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
@@ -54,8 +54,8 @@ DecodeStatus DecodeGR64RegisterClass(MCInst &Inst, unsigned RegNo,
 DecodeStatus decodeMemSrcOperand(MCInst &Inst, unsigned Operand,
                                  uint64_t Address, const void *Decoder);
 
-DecodeStatus decodeShiftOperand(MCInst &Inst, unsigned RegNo,
-                                uint64_t Address, const void *Decoder);
+DecodeStatus decodeShiftOperand(MCInst &Inst, unsigned RegNo, uint64_t Address,
+                                const void *Decoder);
 
 #include "AAPGenDisassemblerTables.inc"
 
@@ -108,7 +108,7 @@ static const unsigned AAPRegs64[] = {
 
 template <std::size_t N>
 static DecodeStatus decodeRegisterClass(MCInst &Inst, uint64_t RegNo,
-                                        const unsigned(&Regs)[N]) {
+                                        const unsigned (&Regs)[N]) {
   if (RegNo >= N)
     return MCDisassembler::Fail;
   Inst.addOperand(MCOperand::createReg(Regs[RegNo]));

@@ -7,9 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MCTargetDesc/AAPMCCodeEmitter.h"
 #include "AAP.h"
 #include "MCTargetDesc/AAPFixupKinds.h"
-#include "MCTargetDesc/AAPMCCodeEmitter.h"
 #include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/MC/MCCodeEmitter.h"
@@ -102,8 +102,7 @@ static const unsigned BRCCOpcodes[] = {
     AAP::BLES_,      AAP::BLTU_,      AAP::BLEU_,
 
     AAP::BEQ_short,  AAP::BNE_short,  AAP::BLTS_short,
-    AAP::BLES_short, AAP::BLTU_short, AAP::BLEU_short
-};
+    AAP::BLES_short, AAP::BLTU_short, AAP::BLEU_short};
 
 static bool findOpcode(unsigned Op, ArrayRef<unsigned> Opcodes) {
   for (auto It = Opcodes.begin(); It != Opcodes.end(); It++) {
@@ -278,6 +277,5 @@ unsigned AAPMCCodeEmitter::encodeShiftImm6(const MCInst &MI, unsigned Op,
   Fixups.push_back(MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind)));
   return 0;
 }
-
 
 #include "AAPGenMCCodeEmitter.inc"

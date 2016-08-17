@@ -16,10 +16,10 @@
 #include "AAP.h"
 #include "AAPRegisterInfo.h"
 #include "AAPTargetMachine.h"
-#include "llvm/CodeGen/MachineInstr.h"
-#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
+#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/Support/Debug.h"
 
 using namespace llvm;

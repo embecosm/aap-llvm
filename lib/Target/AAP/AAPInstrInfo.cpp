@@ -37,7 +37,6 @@ void AAPInstrInfo::anchor() {}
 AAPInstrInfo::AAPInstrInfo(AAPSubtarget &STI)
     : AAPGenInstrInfo(AAP::ADJCALLSTACKDOWN, AAP::ADJCALLSTACKUP), TRI() {}
 
-
 //===----------------------------------------------------------------------===//
 // Branch Analysis
 //===----------------------------------------------------------------------===//
@@ -62,9 +61,8 @@ unsigned AAPInstrInfo::RemoveBranch(MachineBasicBlock &MBB) const { return 0; }
 
 void AAPInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                MachineBasicBlock::iterator I,
-                               const DebugLoc &DL,
-                               unsigned DestReg, unsigned SrcReg,
-                               bool KillSrc) const {
+                               const DebugLoc &DL, unsigned DestReg,
+                               unsigned SrcReg, bool KillSrc) const {
   assert(AAP::GR64RegClass.contains(DestReg) &&
          AAP::GR64RegClass.contains(DestReg) &&
          "Impossible register-register copy");

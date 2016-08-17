@@ -9,17 +9,17 @@
 
 #include "AAP.h"
 #include "MCTargetDesc/AAPMCTargetDesc.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringSwitch.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCExpr.h"
+#include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCParser/MCAsmLexer.h"
 #include "llvm/MC/MCParser/MCParsedAsmOperand.h"
 #include "llvm/MC/MCParser/MCTargetAsmParser.h"
-#include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
-#include "llvm/MC/MCExpr.h"
-#include "llvm/MC/MCInst.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/TargetRegistry.h"
 
 using namespace llvm;
@@ -274,14 +274,14 @@ public:
   bool isConst3() const { return isImm() && isConst3(getImm()); }
   bool isConst6() const { return isImm() && isConst6(getImm()); }
 
-  bool  isImm6() const { return isImm() &&  isImm6(getImm()); }
-  bool  isImm9() const { return isImm() &&  isImm9(getImm()); }
+  bool isImm6() const { return isImm() && isImm6(getImm()); }
+  bool isImm9() const { return isImm() && isImm9(getImm()); }
   bool isImm10() const { return isImm() && isImm10(getImm()); }
   bool isImm12() const { return isImm() && isImm12(getImm()); }
 
   bool isField16() const { return isImm() && isField16(getImm()); }
 
-  bool  isOff3() const { return isImm() &&  isOff3(getImm()); }
+  bool isOff3() const { return isImm() && isOff3(getImm()); }
   bool isOff10() const { return isImm() && isOff10(getImm()); }
 
   bool isShiftConst3() const { return isImm() && isShiftConst3(getImm()); }

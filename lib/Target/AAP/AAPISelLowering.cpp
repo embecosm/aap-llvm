@@ -54,19 +54,19 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
 
   // Only basic load with zero extension i8 -> i16 is supported
   // Note: EXTLOAD promotion will trigger an assertion
-  setLoadExtAction(ISD::EXTLOAD,  MVT::i8,  MVT::i1,  Promote);
-  setLoadExtAction(ISD::EXTLOAD,  MVT::i16, MVT::i1,  Promote);
+  setLoadExtAction(ISD::EXTLOAD, MVT::i8,  MVT::i1, Promote);
+  setLoadExtAction(ISD::EXTLOAD, MVT::i16, MVT::i1, Promote);
 
-  setLoadExtAction(ISD::ZEXTLOAD, MVT::i8,  MVT::i1,  Expand);
-  setLoadExtAction(ISD::ZEXTLOAD, MVT::i16, MVT::i1,  Expand);
+  setLoadExtAction(ISD::ZEXTLOAD, MVT::i8,  MVT::i1, Expand);
+  setLoadExtAction(ISD::ZEXTLOAD, MVT::i16, MVT::i1, Expand);
 
-  setLoadExtAction(ISD::SEXTLOAD, MVT::i8,  MVT::i1,  Expand);
-  setLoadExtAction(ISD::SEXTLOAD, MVT::i16, MVT::i1,  Expand);
-  setLoadExtAction(ISD::SEXTLOAD, MVT::i16, MVT::i8,  Expand);
+  setLoadExtAction(ISD::SEXTLOAD, MVT::i8,  MVT::i1, Expand);
+  setLoadExtAction(ISD::SEXTLOAD, MVT::i16, MVT::i1, Expand);
+  setLoadExtAction(ISD::SEXTLOAD, MVT::i16, MVT::i8, Expand);
 
-  setOperationAction(ISD::GlobalAddress,  MVT::i16,    Custom);
-  setOperationAction(ISD::ExternalSymbol, MVT::i16,    Custom);
-  setOperationAction(ISD::BlockAddress,   MVT::i16,    Custom);
+  setOperationAction(ISD::GlobalAddress,  MVT::i16, Custom);
+  setOperationAction(ISD::ExternalSymbol, MVT::i16, Custom);
+  setOperationAction(ISD::BlockAddress,   MVT::i16, Custom);
 
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8, Expand);
@@ -75,13 +75,13 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::BRCOND, MVT::i16,   Expand);
   setOperationAction(ISD::BRCOND, MVT::Other, Expand);
 
-  setOperationAction(ISD::SELECT, MVT::i16,   Expand);
+  setOperationAction(ISD::SELECT, MVT::i16, Expand);
 
-  setOperationAction(ISD::SETCC, MVT::i16,    Expand);
-  setOperationAction(ISD::SETCC, MVT::Other,  Expand);
+  setOperationAction(ISD::SETCC, MVT::i16,   Expand);
+  setOperationAction(ISD::SETCC, MVT::Other, Expand);
 
-  setOperationAction(ISD::SELECT_CC, MVT::i16,  Custom);
-  setOperationAction(ISD::BR_CC,     MVT::i16,  Custom);
+  setOperationAction(ISD::SELECT_CC, MVT::i16, Custom);
+  setOperationAction(ISD::BR_CC, MVT::i16,     Custom);
 
   // Expand some condition codes which are not natively supported
   setCondCodeAction(ISD::SETGT,  MVT::i16, Expand);
@@ -90,27 +90,27 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setCondCodeAction(ISD::SETUGE, MVT::i16, Expand);
 
   // Currently no support for indirect branches
-  setOperationAction(ISD::BRIND,     MVT::Other,  Expand);
+  setOperationAction(ISD::BRIND, MVT::Other, Expand);
 
   // No support for jump tables
   setOperationAction(ISD::JumpTable, MVT::i16, Expand);
-  setOperationAction(ISD::BR_JT, MVT::Other,   Expand);
+  setOperationAction(ISD::BR_JT, MVT::Other, Expand);
 
   // vaarg
   setOperationAction(ISD::VASTART, MVT::Other, Custom);
-  setOperationAction(ISD::VAARG,   MVT::Other, Expand);
-  setOperationAction(ISD::VAEND,   MVT::Other, Expand);
-  setOperationAction(ISD::VACOPY,  MVT::Other, Expand);
+  setOperationAction(ISD::VAARG, MVT::Other,  Expand);
+  setOperationAction(ISD::VAEND, MVT::Other,  Expand);
+  setOperationAction(ISD::VACOPY, MVT::Other, Expand);
 
   // ALU operations unsupported by the architecture
-  setOperationAction(ISD::SDIV,    MVT::i16, Expand);
-  setOperationAction(ISD::UDIV,    MVT::i16, Expand);
-  setOperationAction(ISD::UREM,    MVT::i16, Expand);
-  setOperationAction(ISD::SREM,    MVT::i16, Expand);
+  setOperationAction(ISD::SDIV, MVT::i16, Expand);
+  setOperationAction(ISD::UDIV, MVT::i16, Expand);
+  setOperationAction(ISD::UREM, MVT::i16, Expand);
+  setOperationAction(ISD::SREM, MVT::i16, Expand);
   setOperationAction(ISD::SDIVREM, MVT::i16, Expand);
   setOperationAction(ISD::UDIVREM, MVT::i16, Expand);
 
-  setOperationAction(ISD::MUL, MVT::i16,   Expand);
+  setOperationAction(ISD::MUL, MVT::i16, Expand);
   setOperationAction(ISD::MULHS, MVT::i16, Expand);
   setOperationAction(ISD::MULHU, MVT::i16, Expand);
   setOperationAction(ISD::SMUL_LOHI, MVT::i16, Expand);
@@ -298,8 +298,8 @@ SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
   // get equivalent AAP condition code
   AAPCC::CondCode TargetCC = getAAPCondCode(CC);
 
-  SDValue Ops[] = { Chain, DAG.getConstant(TargetCC, DL, MVT::i16),
-                    LHS, RHS, BranchTarget };
+  SDValue Ops[] = {Chain, DAG.getConstant(TargetCC, DL, MVT::i16), LHS, RHS,
+                   BranchTarget};
   return DAG.getNode(AAPISD::BR_CC, DL, Op.getValueType(), Ops);
 }
 
@@ -315,8 +315,8 @@ SDValue AAPTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
   // get equivalent AAP condition code
   AAPCC::CondCode TargetCC = getAAPCondCode(CC);
 
-  SDValue Ops[] = { LHS, RHS, TrueValue, FalseValue,
-                    DAG.getConstant(TargetCC, DL, MVT::i16) };
+  SDValue Ops[] = {LHS, RHS, TrueValue, FalseValue,
+                   DAG.getConstant(TargetCC, DL, MVT::i16)};
   return DAG.getNode(AAPISD::SELECT_CC, DL, Op.getValueType(), Ops);
 }
 
@@ -340,8 +340,8 @@ SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
   const DataLayout DL = DAG.getDataLayout();
   const GlobalValue *GV = cast<GlobalAddressSDNode>(Op)->getGlobal();
   int64_t Offset = cast<GlobalAddressSDNode>(Op)->getOffset();
-  SDValue Result = DAG.getTargetGlobalAddress(GV, SDLoc(Op), getPointerTy(DL),
-                                              Offset);
+  SDValue Result =
+      DAG.getTargetGlobalAddress(GV, SDLoc(Op), getPointerTy(DL), Offset);
   return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), getPointerTy(DL), Result);
 }
 
@@ -572,9 +572,8 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
     SDValue Chain, SDValue Callee, CallingConv::ID CallConv, bool isVarArg,
     bool isTailCall, const SmallVectorImpl<ISD::OutputArg> &Outs,
     const SmallVectorImpl<SDValue> &OutVals,
-    const SmallVectorImpl<ISD::InputArg> &Ins,
-    const SDLoc &DL, SelectionDAG &DAG,
-    SmallVectorImpl<SDValue> &InVals) const {
+    const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &DL,
+    SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
   const DataLayout &TD = DAG.getDataLayout();
 
   // Analyze operands of the call, assigning locations to each operand.
@@ -732,7 +731,8 @@ SDValue AAPTargetLowering::LowerCallResult(
   // Copy all of the result registers out of their specified physreg.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
     Chain = DAG.getCopyFromReg(Chain, DL, RVLocs[i].getLocReg(),
-                               RVLocs[i].getValVT(), InFlag).getValue(1);
+                               RVLocs[i].getValVT(), InFlag)
+                .getValue(1);
     InFlag = Chain.getValue(2);
     InVals.push_back(Chain.getValue(0));
   }

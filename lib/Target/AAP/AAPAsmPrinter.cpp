@@ -13,10 +13,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "AAP.h"
-#include "InstPrinter/AAPInstPrinter.h"
 #include "AAPInstrInfo.h"
 #include "AAPMCInstLower.h"
 #include "AAPTargetMachine.h"
+#include "InstPrinter/AAPInstPrinter.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
@@ -47,8 +47,8 @@ public:
   void printOperand(const MachineInstr *MI, int OpNum, raw_ostream &O,
                     const char *Modifier = nullptr);
 
-  void printMemOffOperand(const MachineInstr *MI, int OpNum,
-                          raw_ostream &O, const char *Modifier = nullptr);
+  void printMemOffOperand(const MachineInstr *MI, int OpNum, raw_ostream &O,
+                          const char *Modifier = nullptr);
 
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
                        unsigned AsmVariant, const char *ExtraCode,
@@ -88,7 +88,7 @@ void AAPAsmPrinter::printMemOffOperand(const MachineInstr *MI, int OpNum,
                                        raw_ostream &O, const char *Modifier) {
   printOperand(MI, OpNum, O);
   O << ',' << ' ';
-  printOperand(MI, OpNum+1, O);
+  printOperand(MI, OpNum + 1, O);
 }
 
 bool AAPAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,

@@ -14,8 +14,8 @@
 #ifndef LLVM_LIB_TARGET_AAP_MCTARGETDESC_AAPMCASMINFO_H
 #define LLVM_LIB_TARGET_AAP_MCTARGETDESC_AAPMCASMINFO_H
 
-#include "llvm/MC/MCAsmInfoELF.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/MC/MCAsmInfoELF.h"
 
 namespace llvm {
 class StringRef;

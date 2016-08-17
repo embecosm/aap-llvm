@@ -10,9 +10,9 @@
 #include "AAPMCTargetDesc.h"
 #include "MCTargetDesc/AAPFixupKinds.h"
 #include "llvm/MC/MCAsmBackend.h"
-#include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCFixupKindInfo.h"
+#include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCObjectWriter.h"
 
 using namespace llvm;
@@ -60,9 +60,7 @@ public:
     return Infos[Kind - FirstTargetFixupKind];
   }
 
-
 //===-------------------------- Fixup processing --------------------------===//
-
 
   void applyFixup(MCFixup const &Fixup, char *Data, unsigned DataSize,
                   uint64_t Value, bool IsPCRel) const override {
@@ -72,10 +70,18 @@ public:
     // need to be resolved before they reach the linker.
     unsigned Size = 0;
     switch ((unsigned)Fixup.getKind()) {
-    case FK_Data_1:   Size = 1;   break;
-    case FK_Data_2:   Size = 2;   break;
-    case FK_Data_4:   Size = 4;   break;
-    case FK_Data_8:   Size = 8;   break;
+    case FK_Data_1:
+      Size = 1;
+      break;
+    case FK_Data_2:
+      Size = 2;
+      break;
+    case FK_Data_4:
+      Size = 4;
+      break;
+    case FK_Data_8:
+      Size = 8;
+      break;
     default:
       return;
     }
@@ -85,12 +91,9 @@ public:
     return;
   }
 
-  void processFixupValue(const MCAssembler &Asm,
-                         const MCAsmLayout &Layout,
-                         const MCFixup &Fixup,
-                         const MCFragment *DF,
-                         const MCValue &Target,
-                         uint64_t &Value,
+  void processFixupValue(const MCAssembler &Asm, const MCAsmLayout &Layout,
+                         const MCFixup &Fixup, const MCFragment *DF,
+                         const MCValue &Target, uint64_t &Value,
                          bool &isResolved) override {
     // No AAP specific fixups are processed in the backend.
     switch ((unsigned)Fixup.getKind()) {
@@ -105,9 +108,7 @@ public:
     isResolved = false;
   }
 
-
 //===------------------------ Relaxation interface ------------------------===//
-
 
   bool mayNeedRelaxation(MCInst const &Inst) const override {
     // We already generate the longest instruction necessary, so there is
@@ -153,7 +154,6 @@ public:
 };
 } // end anonymous namespace
 
-
 namespace {
 class ELFAAPAsmBackend : public AAPAsmBackend {
   uint8_t OSABI;
@@ -169,10 +169,8 @@ public:
 };
 } // end anonymous namespace
 
-
 namespace llvm {
-MCAsmBackend *createAAPAsmBackend(const Target &T,
-                                  const MCRegisterInfo &MRI,
+MCAsmBackend *createAAPAsmBackend(const Target &T, const MCRegisterInfo &MRI,
                                   const Triple &TT, StringRef CPU,
                                   const MCTargetOptions &Options) {
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(Triple(TT).getOS());

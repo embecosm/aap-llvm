@@ -80,19 +80,17 @@ private:
 };
 } // end anonymous namespace
 
-
-bool AAPDAGToDAGISel::
-SelectInlineAsmMemoryOperand(const SDValue &Op, unsigned ConstraintID,
-                             std::vector<SDValue> &OutOps) {
+bool AAPDAGToDAGISel::SelectInlineAsmMemoryOperand(
+    const SDValue &Op, unsigned ConstraintID, std::vector<SDValue> &OutOps) {
   switch (ConstraintID) {
   default:
     return true;
   case InlineAsm::Constraint_m:
     SDLoc DL(Op);
-    SDValue RC = CurDAG->getTargetConstant(AAP::GR64RegClass.getID(), DL,
-                                           MVT::i16);
-    SDNode *N = CurDAG->getMachineNode(TargetOpcode::COPY_TO_REGCLASS,
-                                       DL, Op.getValueType(), Op, RC);
+    SDValue RC =
+        CurDAG->getTargetConstant(AAP::GR64RegClass.getID(), DL, MVT::i16);
+    SDNode *N = CurDAG->getMachineNode(TargetOpcode::COPY_TO_REGCLASS, DL,
+                                       Op.getValueType(), Op, RC);
     SDValue Zero = CurDAG->getTargetConstant(0, DL, MVT::i16);
     OutOps.push_back(SDValue(N, 0));
     OutOps.push_back(Zero);

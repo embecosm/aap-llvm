@@ -12,9 +12,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "AAPMCTargetDesc.h"
-#include "InstPrinter/AAPInstPrinter.h"
-#include "AAPRegisterInfo.h"
 #include "AAPMCAsmInfo.h"
+#include "AAPRegisterInfo.h"
+#include "InstPrinter/AAPInstPrinter.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
