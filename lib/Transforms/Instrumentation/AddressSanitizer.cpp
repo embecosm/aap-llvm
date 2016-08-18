@@ -2079,7 +2079,10 @@ void FunctionStackPoisoner::poisonStack() {
   for (AllocaInst *AI : AllocaVec) {
     ASanStackVariableDescription D = {AI->getName().data(),
                                       ASan.getAllocaSizeInBytes(*AI),
-                                      AI->getAlignment(), AI, 0};
+                                      0,
+                                      AI->getAlignment(),
+                                      AI,
+                                      0};
     SVD.push_back(D);
   }
   // Minimal header size (left redzone) is 4 pointers,
@@ -2186,12 +2189,13 @@ void FunctionStackPoisoner::poisonStack() {
   poisonRedZones(L.ShadowBytes, IRB, ShadowBase, true);
 
   auto UnpoisonStack = [&](IRBuilder<> &IRB) {
+    // Do this always as poisonAlloca can be disabled with
+    // detect_stack_use_after_scope=0.
+    poisonRedZones(L.ShadowBytes, IRB, ShadowBase, false);
     if (HavePoisonedStaticAllocas) {
       // If we poisoned some allocas in llvm.lifetime analysis,
       // unpoison whole stack frame now.
       poisonAlloca(LocalStackBase, LocalStackSize, IRB, false);
-    } else {
-      poisonRedZones(L.ShadowBytes, IRB, ShadowBase, false);
     }
   };
 

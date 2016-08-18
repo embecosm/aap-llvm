@@ -2271,7 +2271,7 @@ std::error_code BitcodeReader::parseMetadata(bool ModuleLevel) {
     }
     case bitc::METADATA_DISTINCT_NODE:
       IsDistinct = true;
-      // fallthrough...
+      LLVM_FALLTHROUGH;
     case bitc::METADATA_NODE: {
       SmallVector<Metadata *, 8> Elts;
       Elts.reserve(Record.size());
@@ -3355,7 +3355,7 @@ std::error_code BitcodeReader::parseUseLists() {
       break;
     case bitc::USELIST_CODE_BB:
       IsBB = true;
-      // fallthrough
+      LLVM_FALLTHROUGH;
     case bitc::USELIST_CODE_DEFAULT: {
       unsigned RecordLength = Record.size();
       if (RecordLength < 3)
@@ -3682,7 +3682,9 @@ std::error_code BitcodeReader::parseModule(uint64_t ResumeBit,
         // have been seen yet. In this case, just finish the parse now.
         if (SeenValueSymbolTable) {
           NextUnreadBit = Stream.GetCurrentBitNo();
-          return std::error_code();
+          // After the VST has been parsed, we need to make sure intrinsic name
+          // are auto-upgraded.
+          return globalCleanup();
         }
         break;
       case bitc::USELIST_BLOCK_ID:
