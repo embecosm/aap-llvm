@@ -19,5 +19,5 @@
 type = Library
 name = AAPDisassembler
 parent = AAP
-required_libraries = Support AAPInfo MCDisassembler AAPDesc
+required_libraries = MCDisassembler Support AAPInfo AAPDesc
 add_to_library_groups = AAP
