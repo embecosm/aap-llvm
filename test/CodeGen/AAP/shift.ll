@@ -25,7 +25,7 @@ entry:
 define i16 @asr_reg(i16 %x, i16 %y) {
 entry:
 ;CHECK: asr_reg:
-;CHECK: asr ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ASR_r(_short)?}}
+;CHECK: asr ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ASR_r}}
   %0 = ashr i16 %x, %y
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -52,7 +52,7 @@ entry:
 define i16 @lsl_reg(i16 %x, i16 %y) {
 entry:
 ;CHECK: lsl_reg:
-;CHECK: lsl ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*LSL_r(_short)?}}
+;CHECK: lsl ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*LSL_r}}
   %0 = shl i16 %x, %y
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -79,7 +79,7 @@ entry:
 define i16 @lsr_reg(i16 %x, i16 %y) {
 entry:
 ;CHECK: lsr_reg:
-;CHECK: lsr ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*LSR_r(_short)?}}
+;CHECK: lsr ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*LSR_r}}
   %0 = lshr i16 %x, %y
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }

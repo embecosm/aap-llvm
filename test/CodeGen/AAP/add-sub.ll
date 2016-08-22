@@ -29,7 +29,7 @@ define i16 @add_big_imm(i16 %x) {
 entry:
 ;CHECK: add_big_imm:
 ;CHECK: movi ${{r[0-9]+}}, 21345                        {{.*MOVI_i16}}
-;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r(_short)?}}
+;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r}}
   %0 = add i16 %x, 21345
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -37,7 +37,7 @@ entry:
 define i16 @add_reg(i16 %x, i16 %y) {
 entry:
 ;CHECK: add_reg:
-;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r(_short)?}}
+;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r}}
   %0 = add i16 %x, %y
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -47,7 +47,7 @@ define i16 @add_global(i16 %x) {
 entry:
 ;CHECK: add_global:
 ;CHECK: movi ${{r[0-9]+}}, i16_glob                     {{.*MOVI_i16}}
-;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r(_short)?}}
+;CHECK: add ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*ADD_r}}
   %0 = add i16 %x, ptrtoint (i16* @i16_glob to i16)
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -76,7 +76,7 @@ define i16 @sub_big_imm(i16 %x) {
 entry:
 ;CHECK: sub_big_imm:
 ;CHECK: movi ${{r[0-9]+}}, 12345                        {{.*MOVI_i16}}
-;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r(_short)?}}
+;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r}}
   %0 = sub i16 %x, 12345
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -84,7 +84,7 @@ entry:
 define i16 @sub_reg(i16 %x, i16 %y) {
 entry:
 ;CHECK: sub_reg:
-;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r(_short)?}}
+;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r}}
   %0 = sub i16 %x, %y
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -94,7 +94,7 @@ define i16 @sub_global(i16 %x) {
 entry:
 ;CHECK: sub_global:
 ;CHECK: movi ${{r[0-9]+}}, i16_glob                     {{.*MOVI_i16}}
-;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r(_short)?}}
+;CHECK: sub ${{r[0-9]+}}, ${{r[0-9]+}}, ${{r[0-9]+}}    {{.*SUB_r}}
   %0 = sub i16 %x, ptrtoint (i16* @i16_glob to i16)
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
