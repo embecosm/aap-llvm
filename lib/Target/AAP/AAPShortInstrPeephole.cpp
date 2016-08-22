@@ -13,9 +13,9 @@
 
 #define DEBUG_TYPE "short-instr-peephole"
 
-#include "AAP.h"
 #include "AAPRegisterInfo.h"
 #include "AAPTargetMachine.h"
+#include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"

@@ -12,10 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "AAPFrameLowering.h"
-#include "AAP.h"
 #include "AAPInstrInfo.h"
 #include "AAPMachineFunctionInfo.h"
 #include "AAPSubtarget.h"
+#include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"

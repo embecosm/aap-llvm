@@ -12,11 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AAP.h"
 #include "AAPInstrInfo.h"
 #include "AAPMCInstLower.h"
-#include "AAPTargetMachine.h"
 #include "InstPrinter/AAPInstPrinter.h"
+#include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"

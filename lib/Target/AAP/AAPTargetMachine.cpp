@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AAPTargetMachine.h"
-#include "AAP.h"
+#include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"

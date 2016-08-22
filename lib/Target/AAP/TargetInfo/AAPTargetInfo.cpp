@@ -7,12 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AAP.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetRegistry.h"
+
 using namespace llvm;
 
-Target llvm::TheAAPTarget;
+namespace llvm {
+Target TheAAPTarget;
+}
 
 extern "C" void LLVMInitializeAAPTargetInfo() {
   RegisterTarget<Triple::aap> X(TheAAPTarget, "aap", "AAP [experimental]");

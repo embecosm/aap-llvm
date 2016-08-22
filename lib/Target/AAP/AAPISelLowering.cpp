@@ -12,11 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "AAPISelLowering.h"
-#include "AAP.h"
 #include "AAPMachineFunctionInfo.h"
 #include "AAPRegisterInfo.h"
 #include "AAPSubtarget.h"
-#include "AAPTargetMachine.h"
+#include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"

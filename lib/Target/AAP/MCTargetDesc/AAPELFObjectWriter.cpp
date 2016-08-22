@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AAP.h"
+#include "AAPMCTargetDesc.h"
 #include "MCTargetDesc/AAPFixupKinds.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCELFObjectWriter.h"

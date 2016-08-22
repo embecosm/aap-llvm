@@ -13,8 +13,8 @@
 
 #include "AAPMCTargetDesc.h"
 #include "AAPMCAsmInfo.h"
-#include "AAPRegisterInfo.h"
 #include "InstPrinter/AAPInstPrinter.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"

@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "AAPRegisterInfo.h"
-#include "AAP.h"
 #include "AAPSubtarget.h"
+#include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"

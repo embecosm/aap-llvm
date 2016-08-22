@@ -15,7 +15,6 @@
 #ifndef TARGET_AAP_H
 #define TARGET_AAP_H
 
-#include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Target/TargetMachine.h"
 
@@ -33,8 +32,9 @@ enum CondCode {
 } // end namespace AAP
 
 namespace llvm {
-extern Target TheAAPTarget;
+
 class AAPTargetMachine;
+class FunctionPass;
 
 FunctionPass *createAAPISelDag(AAPTargetMachine &TM,
                                CodeGenOpt::Level OptLevel);

@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "AAPInstrInfo.h"
-#include "AAP.h"
 #include "AAPMachineFunctionInfo.h"
+#include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"

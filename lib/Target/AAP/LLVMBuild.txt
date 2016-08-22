@@ -24,11 +24,11 @@ name = AAP
 parent = Target
 has_asmprinter = 1
 has_asmparser = 1
-has_diassembler = 1
+has_disassembler = 1
 
 [component_1]
 type = Library
 name = AAPCodeGen
 parent = AAP
-required_libraries = CodeGen Core Support Target SelectionDAG TransformUtils AAPInfo AsmPrinter AAPAsmPrinter AAPDesc MC
+required_libraries = AsmPrinter CodeGen Core MC SelectionDAG Support Target AAPAsmPrinter AAPDesc AAPInfo
 add_to_library_groups = AAP
