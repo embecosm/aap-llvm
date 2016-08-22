@@ -35,7 +35,7 @@ define void @truncstore_i16_i8_global_reg(i16 %x) {
 entry:
 ;CHECK: truncstore_i16_i8_global_reg:
 ;CHECK: movi $[[REG2:r[0-9]+]], c           {{.*MOVI_i16}}
-;CHECK: stb [$[[REG2]], 0], ${{r[0-9]+}}    {{.*STB(_short)?}}
+;CHECK: stb [$[[REG2]], 0], ${{r[0-9]+}}    {{.*STB}}
   %0 = trunc i16 %x to i8
   store i8 %0, i8* @c, align 1
   ret void ;CHECK: jmp    {{.*JMP}}
@@ -46,7 +46,7 @@ entry:
 ;CHECK: truncstore_i16_i8_imm_global:
 ;CHECK-DAG: movi $[[REG1:r[0-9]+]], c       {{.*MOVI_i16}}
 ;CHECK-DAG: movi $[[REG2:r[0-9]+]], 1234    {{.*MOVI_i16}}
-;CHECK: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB(_short)?}}
+;CHECK: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB}}
   %0 = ptrtoint i8* @c to i16
   %1 = trunc i16 %0 to i8
   %2 = inttoptr i16 1234 to i8*

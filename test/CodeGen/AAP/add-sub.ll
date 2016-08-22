@@ -12,7 +12,7 @@
 define i16 @add_short_imm(i16 %x) {
 entry:
 ;CHECK: add_short_imm:
-;CHECK: addi ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*ADDI_i3_short}}
+;CHECK: addi ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*ADDI_i(3|10)}}
   %0 = add i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -58,7 +58,7 @@ entry:
 define i16 @sub_short_imm(i16 %x) {
 entry:
 ;CHECK: sub_short_imm:
-;CHECK: subi ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*SUBI_i3_short}}
+;CHECK: subi ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*SUBI_i(3|10)}}
   %0 = sub i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }

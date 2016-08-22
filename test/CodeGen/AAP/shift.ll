@@ -9,7 +9,7 @@
 define i16 @asr_small_imm(i16 %x) {
 entry:
 ;CHECK: asr_small_imm:
-;CHECK: asri ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*ASRI_i3_short}}
+;CHECK: asri ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*ASRI_i(3|6)}}
   %0 = ashr i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -36,7 +36,7 @@ entry:
 define i16 @lsl_small_imm(i16 %x) {
 entry:
 ;CHECK: lsl_small_imm:
-;CHECK: lsli ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*LSLI_i3_short}}
+;CHECK: lsli ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*LSLI_i(3|6)}}
   %0 = shl i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
@@ -63,7 +63,7 @@ entry:
 define i16 @lsr_small_imm(i16 %x) {
 entry:
 ;CHECK: lsr_small_imm:
-;CHECK: lsri ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*LSRI_i3_short}}
+;CHECK: lsri ${{r[0-9]+}}, ${{r[0-9]+}}, 3              {{.*LSRI_i(3|6)}}
   %0 = lshr i16 %x, 3
   ret i16 %0 ;CHECK: jmp  {{.*JMP}}
 }
