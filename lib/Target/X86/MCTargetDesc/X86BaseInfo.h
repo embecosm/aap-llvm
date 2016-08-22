@@ -403,12 +403,13 @@ namespace X86II {
     ImmMask    = 15 << ImmShift,
     Imm8       = 1 << ImmShift,
     Imm8PCRel  = 2 << ImmShift,
-    Imm16      = 3 << ImmShift,
-    Imm16PCRel = 4 << ImmShift,
-    Imm32      = 5 << ImmShift,
-    Imm32PCRel = 6 << ImmShift,
-    Imm32S     = 7 << ImmShift,
-    Imm64      = 8 << ImmShift,
+    Imm8Reg    = 3 << ImmShift,
+    Imm16      = 4 << ImmShift,
+    Imm16PCRel = 5 << ImmShift,
+    Imm32      = 6 << ImmShift,
+    Imm32PCRel = 7 << ImmShift,
+    Imm32S     = 8 << ImmShift,
+    Imm64      = 9 << ImmShift,
 
     //===------------------------------------------------------------------===//
     // FP Instruction Classification...  Zero is non-fp instruction.
@@ -493,34 +494,15 @@ namespace X86II {
     VEX_4VOp3Shift = VEX_4VShift + 1,
     VEX_4VOp3   = 1ULL << VEX_4VOp3Shift,
 
-    /// VEX_I8IMM - Specifies that the last register used in a AVX instruction,
-    /// must be encoded in the i8 immediate field. This usually happens in
-    /// instructions with 4 operands.
-    VEX_I8IMMShift = VEX_4VOp3Shift + 1,
-    VEX_I8IMM   = 1ULL << VEX_I8IMMShift,
-
     /// VEX_L - Stands for a bit in the VEX opcode prefix meaning the current
     /// instruction uses 256-bit wide registers. This is usually auto detected
     /// if a VR256 register is used, but some AVX instructions also have this
     /// field marked when using a f256 memory references.
-    VEX_LShift = VEX_I8IMMShift + 1,
+    VEX_LShift = VEX_4VOp3Shift + 1,
     VEX_L       = 1ULL << VEX_LShift,
 
-    // VEX_LIG - Specifies that this instruction ignores the L-bit in the VEX
-    // prefix. Usually used for scalar instructions. Needed by disassembler.
-    VEX_LIGShift = VEX_LShift + 1,
-    VEX_LIG     = 1ULL << VEX_LIGShift,
-
-    // TODO: we should combine VEX_L and VEX_LIG together to form a 2-bit field
-    // with following encoding:
-    // - 00 V128
-    // - 01 V256
-    // - 10 V512
-    // - 11 LIG (but, in insn encoding, leave VEX.L and EVEX.L in zeros.
-    // this will save 1 tsflag bit
-
     // EVEX_K - Set if this instruction requires masking
-    EVEX_KShift = VEX_LIGShift + 1,
+    EVEX_KShift = VEX_LShift + 1,
     EVEX_K      = 1ULL << EVEX_KShift,
 
     // EVEX_Z - Set if this instruction has EVEX.Z field set.
@@ -575,7 +557,8 @@ namespace X86II {
     switch (TSFlags & X86II::ImmMask) {
     default: llvm_unreachable("Unknown immediate size");
     case X86II::Imm8:
-    case X86II::Imm8PCRel:  return 1;
+    case X86II::Imm8PCRel:
+    case X86II::Imm8Reg:    return 1;
     case X86II::Imm16:
     case X86II::Imm16PCRel: return 2;
     case X86II::Imm32:
@@ -595,6 +578,7 @@ namespace X86II {
     case X86II::Imm32PCRel:
       return true;
     case X86II::Imm8:
+    case X86II::Imm8Reg:
     case X86II::Imm16:
     case X86II::Imm32:
     case X86II::Imm32S:
@@ -612,6 +596,7 @@ namespace X86II {
       return true;
     case X86II::Imm8:
     case X86II::Imm8PCRel:
+    case X86II::Imm8Reg:
     case X86II::Imm16:
     case X86II::Imm16PCRel:
     case X86II::Imm32:

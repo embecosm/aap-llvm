@@ -8762,63 +8762,85 @@ static bool matchVectorShuffleAsInsertPS(SDValue &V1, SDValue &V2,
   assert(V1.getSimpleValueType().is128BitVector() && "Bad operand type!");
   assert(V2.getSimpleValueType().is128BitVector() && "Bad operand type!");
   assert(Mask.size() == 4 && "Unexpected mask size for v4 shuffle!");
-  unsigned ZMask = 0;
-  int V1DstIndex = -1;
-  int V2DstIndex = -1;
-  bool V1UsedInPlace = false;
 
-  for (int i = 0; i < 4; ++i) {
-    // Synthesize a zero mask from the zeroable elements (includes undefs).
-    if (Zeroable[i]) {
-      ZMask |= 1 << i;
-      continue;
+  // Attempt to match INSERTPS with one element from VA or VB being
+  // inserted into VA (or undef). If successful, V1, V2 and InsertPSMask
+  // are updated.
+  auto matchAsInsertPS = [&](SDValue VA, SDValue VB,
+                             ArrayRef<int> CandidateMask) {
+    unsigned ZMask = 0;
+    int VADstIndex = -1;
+    int VBDstIndex = -1;
+    bool VAUsedInPlace = false;
+
+    for (int i = 0; i < 4; ++i) {
+      // Synthesize a zero mask from the zeroable elements (includes undefs).
+      if (Zeroable[i]) {
+        ZMask |= 1 << i;
+        continue;
+      }
+
+      // Flag if we use any VA inputs in place.
+      if (i == CandidateMask[i]) {
+        VAUsedInPlace = true;
+        continue;
+      }
+
+      // We can only insert a single non-zeroable element.
+      if (VADstIndex >= 0 || VBDstIndex >= 0)
+        return false;
+
+      if (CandidateMask[i] < 4) {
+        // VA input out of place for insertion.
+        VADstIndex = i;
+      } else {
+        // VB input for insertion.
+        VBDstIndex = i;
+      }
     }
 
-    // Flag if we use any V1 inputs in place.
-    if (i == Mask[i]) {
-      V1UsedInPlace = true;
-      continue;
-    }
-
-    // We can only insert a single non-zeroable element.
-    if (V1DstIndex >= 0 || V2DstIndex >= 0)
+    // Don't bother if we have no (non-zeroable) element for insertion.
+    if (VADstIndex < 0 && VBDstIndex < 0)
       return false;
 
-    if (Mask[i] < 4) {
-      // V1 input out of place for insertion.
-      V1DstIndex = i;
+    // Determine element insertion src/dst indices. The src index is from the
+    // start of the inserted vector, not the start of the concatenated vector.
+    unsigned VBSrcIndex = 0;
+    if (VADstIndex >= 0) {
+      // If we have a VA input out of place, we use VA as the V2 element
+      // insertion and don't use the original V2 at all.
+      VBSrcIndex = CandidateMask[VADstIndex];
+      VBDstIndex = VADstIndex;
+      VB = VA;
     } else {
-      // V2 input for insertion.
-      V2DstIndex = i;
+      VBSrcIndex = CandidateMask[VBDstIndex] - 4;
     }
-  }
 
-  // Don't bother if we have no (non-zeroable) element for insertion.
-  if (V1DstIndex < 0 && V2DstIndex < 0)
-    return false;
+    // If no V1 inputs are used in place, then the result is created only from
+    // the zero mask and the V2 insertion - so remove V1 dependency.
+    if (!VAUsedInPlace)
+      VA = DAG.getUNDEF(MVT::v4f32);
 
-  // Determine element insertion src/dst indices. The src index is from the
-  // start of the inserted vector, not the start of the concatenated vector.
-  unsigned V2SrcIndex = 0;
-  if (V1DstIndex >= 0) {
-    // If we have a V1 input out of place, we use V1 as the V2 element insertion
-    // and don't use the original V2 at all.
-    V2SrcIndex = Mask[V1DstIndex];
-    V2DstIndex = V1DstIndex;
-    V2 = V1;
-  } else {
-    V2SrcIndex = Mask[V2DstIndex] - 4;
-  }
+    // Update V1, V2 and InsertPSMask accordingly.
+    V1 = VA;
+    V2 = VB;
 
-  // If no V1 inputs are used in place, then the result is created only from
-  // the zero mask and the V2 insertion - so remove V1 dependency.
-  if (!V1UsedInPlace)
-    V1 = DAG.getUNDEF(MVT::v4f32);
+    // Insert the V2 element into the desired position.
+    InsertPSMask = VBSrcIndex << 6 | VBDstIndex << 4 | ZMask;
+    assert((InsertPSMask & ~0xFFu) == 0 && "Invalid mask!");
+    return true;
+  };
 
-  // Insert the V2 element into the desired position.
-  InsertPSMask = V2SrcIndex << 6 | V2DstIndex << 4 | ZMask;
-  assert((InsertPSMask & ~0xFFu) == 0 && "Invalid mask!");
-  return true;
+  if (matchAsInsertPS(V1, V2, Mask))
+    return true;
+
+  // Commute and try again.
+  SmallVector<int, 4> CommutedMask(Mask.begin(), Mask.end());
+  ShuffleVectorSDNode::commuteMask(CommutedMask);
+  if (matchAsInsertPS(V2, V1, CommutedMask))
+    return true;
+
+  return false;
 }
 
 static SDValue lowerVectorShuffleAsInsertPS(const SDLoc &DL, SDValue V1,
@@ -24801,97 +24823,23 @@ bool X86TargetLowering::isGAPlusOffset(SDNode *N,
   return TargetLowering::isGAPlusOffset(N, GA, Offset);
 }
 
-/// Performs shuffle combines for 256-bit vectors.
-/// FIXME: This could be expanded to support 512 bit vectors as well.
-static SDValue combineShuffle256(SDNode *N, SelectionDAG &DAG,
-                                 TargetLowering::DAGCombinerInfo &DCI,
-                                 const X86Subtarget &Subtarget) {
-  SDLoc dl(N);
-  ShuffleVectorSDNode *SVOp = cast<ShuffleVectorSDNode>(N);
-  SDValue V1 = SVOp->getOperand(0);
-  SDValue V2 = SVOp->getOperand(1);
-  MVT VT = SVOp->getSimpleValueType(0);
-  unsigned NumElems = VT.getVectorNumElements();
-
-  if (V1.getOpcode() == ISD::CONCAT_VECTORS &&
-      V2.getOpcode() == ISD::CONCAT_VECTORS) {
-    //
-    //                   0,0,0,...
-    //                      |
-    //    V      UNDEF    BUILD_VECTOR    UNDEF
-    //     \      /           \           /
-    //  CONCAT_VECTOR         CONCAT_VECTOR
-    //         \                  /
-    //          \                /
-    //          RESULT: V + zero extended
-    //
-    if (V2.getOperand(0).getOpcode() != ISD::BUILD_VECTOR ||
-        !V2.getOperand(1).isUndef() || !V1.getOperand(1).isUndef())
-      return SDValue();
-
-    if (!ISD::isBuildVectorAllZeros(V2.getOperand(0).getNode()))
-      return SDValue();
-
-    // To match the shuffle mask, the first half of the mask should
-    // be exactly the first vector, and all the rest a splat with the
-    // first element of the second one.
-    for (unsigned i = 0; i != NumElems/2; ++i)
-      if (!isUndefOrEqual(SVOp->getMaskElt(i), i) ||
-          !isUndefOrEqual(SVOp->getMaskElt(i+NumElems/2), NumElems))
-        return SDValue();
-
-    // If V1 is coming from a vector load then just fold to a VZEXT_LOAD.
-    if (LoadSDNode *Ld = dyn_cast<LoadSDNode>(V1.getOperand(0))) {
-      if (Ld->hasNUsesOfValue(1, 0)) {
-        SDVTList Tys = DAG.getVTList(MVT::v4i64, MVT::Other);
-        SDValue Ops[] = { Ld->getChain(), Ld->getBasePtr() };
-        SDValue ResNode =
-          DAG.getMemIntrinsicNode(X86ISD::VZEXT_LOAD, dl, Tys, Ops,
-                                  Ld->getMemoryVT(),
-                                  Ld->getPointerInfo(),
-                                  Ld->getAlignment(),
-                                  false/*isVolatile*/, true/*ReadMem*/,
-                                  false/*WriteMem*/);
-
-        // Make sure the newly-created LOAD is in the same position as Ld in
-        // terms of dependency. We create a TokenFactor for Ld and ResNode,
-        // and update uses of Ld's output chain to use the TokenFactor.
-        if (Ld->hasAnyUseOfValue(1)) {
-          SDValue NewChain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
-                             SDValue(Ld, 1), SDValue(ResNode.getNode(), 1));
-          DAG.ReplaceAllUsesOfValueWith(SDValue(Ld, 1), NewChain);
-          DAG.UpdateNodeOperands(NewChain.getNode(), SDValue(Ld, 1),
-                                 SDValue(ResNode.getNode(), 1));
-        }
-
-        return DAG.getBitcast(VT, ResNode);
-      }
-    }
-
-    // Emit a zeroed vector and insert the desired subvector on its
-    // first half.
-    SDValue Zeros = getZeroVector(VT, Subtarget, DAG, dl);
-    SDValue InsV = insert128BitVector(Zeros, V1.getOperand(0), 0, DAG, dl);
-    return DCI.CombineTo(N, InsV);
-  }
-
-  return SDValue();
-}
-
 // Attempt to match a combined shuffle mask against supported unary shuffle
 // instructions.
 // TODO: Investigate sharing more of this with shuffle lowering.
 static bool matchUnaryVectorShuffle(MVT MaskVT, ArrayRef<int> Mask,
                                     const X86Subtarget &Subtarget,
                                     unsigned &Shuffle, MVT &ShuffleVT) {
+  unsigned NumMaskElts = Mask.size();
   bool FloatDomain = MaskVT.isFloatingPoint() ||
                      (!Subtarget.hasAVX2() && MaskVT.is256BitVector());
 
-  // Match a 128-bit vector against a VZEXT_MOVL instruction.
-  if (MaskVT.is128BitVector() && Subtarget.hasSSE2() &&
-      isTargetShuffleEquivalent(Mask, {0, SM_SentinelZero})) {
+  // Match against a VZEXT_MOVL instruction, SSE1 only supports 32-bits (MOVSS).
+  if (((MaskVT.getScalarSizeInBits() == 32) ||
+       (MaskVT.getScalarSizeInBits() == 64 && Subtarget.hasSSE2())) &&
+      isUndefOrEqual(Mask[0], 0) &&
+      isUndefOrZeroInRange(Mask, 1, NumMaskElts - 1)) {
     Shuffle = X86ISD::VZEXT_MOVL;
-    ShuffleVT = MaskVT;
+    ShuffleVT = !Subtarget.hasSSE2() ? MVT::v4f32 : MaskVT;
     return true;
   }
 
@@ -24959,8 +24907,7 @@ static bool matchUnaryVectorShuffle(MVT MaskVT, ArrayRef<int> Mask,
 
   // Attempt to match against broadcast-from-vector.
   if (Subtarget.hasAVX2()) {
-    unsigned NumElts = Mask.size();
-    SmallVector<int, 64> BroadcastMask(NumElts, 0);
+    SmallVector<int, 64> BroadcastMask(NumMaskElts, 0);
     if (isTargetShuffleEquivalent(Mask, BroadcastMask)) {
       ShuffleVT = MaskVT;
       Shuffle = X86ISD::VBROADCAST;
@@ -26386,11 +26333,6 @@ static SDValue combineShuffle(SDNode *N, SelectionDAG &DAG,
   if (TLI.isTypeLegal(VT))
     if (SDValue AddSub = combineShuffleToAddSub(N, Subtarget, DAG))
       return AddSub;
-
-  // Combine 256-bit vector shuffles. This is only profitable when in AVX mode
-  if (TLI.isTypeLegal(VT) && Subtarget.hasFp256() && VT.is256BitVector() &&
-      N->getOpcode() == ISD::VECTOR_SHUFFLE)
-    return combineShuffle256(N, DAG, DCI, Subtarget);
 
   // During Type Legalization, when promoting illegal vector types,
   // the backend might introduce new shuffle dag nodes and bitcasts.
