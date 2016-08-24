@@ -196,6 +196,7 @@ ScalarEnumerationTraits<ELFYAML::ELF_EM>::enumeration(IO &IO,
   ECase(EM_AMDGPU)
   ECase(EM_LANAI)
   ECase(EM_BPF)
+  ECase(EM_AAP)
 #undef ECase
 }
 
