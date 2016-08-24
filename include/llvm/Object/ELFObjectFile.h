@@ -908,6 +908,8 @@ unsigned ELFObjectFile<ELFT>::getArch() const {
     return Triple::x86;
   case ELF::EM_X86_64:
     return Triple::x86_64;
+  case ELF::EM_AAP:
+    return Triple::aap;
   case ELF::EM_AARCH64:
     return Triple::aarch64;
   case ELF::EM_ARM:
