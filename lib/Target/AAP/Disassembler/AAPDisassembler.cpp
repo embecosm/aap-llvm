@@ -50,8 +50,15 @@ DecodeStatus DecodeGR8RegisterClass(MCInst &Inst, unsigned RegNo,
 DecodeStatus DecodeGR64RegisterClass(MCInst &Inst, unsigned RegNo,
                                      uint64_t Address, const void *Decoder);
 
-DecodeStatus decodeMemSrcOperand(MCInst &Inst, unsigned Operand,
-                                 uint64_t Address, const void *Decoder);
+DecodeStatus decodeMemSrc3Operand(MCInst &Inst, unsigned Operand,
+                                  uint64_t Address, const void *Decoder);
+DecodeStatus decodeMemSrc10Operand(MCInst &Inst, unsigned Operand,
+                                   uint64_t Address, const void *Decoder);
+
+DecodeStatus decodeOff3Operand(MCInst &Inst, unsigned Operand,
+                               uint64_t Address, const void *Decoder);
+DecodeStatus decodeOff10Operand(MCInst &Inst, unsigned Operand,
+                                uint64_t Address, const void *Decoder);
 
 DecodeStatus decodeShiftOperand(MCInst &Inst, unsigned RegNo, uint64_t Address,
                                 const void *Decoder);
@@ -123,16 +130,39 @@ DecodeStatus DecodeGR64RegisterClass(MCInst &Inst, unsigned RegNo,
   return decodeRegisterClass(Inst, RegNo, AAPRegs64);
 }
 
-DecodeStatus decodeMemSrcOperand(MCInst &Inst, unsigned Operand,
-                                 uint64_t Address, const void *Decoder) {
-  unsigned Reg = (Operand >> 16) & 0x3f;
-  unsigned Offset = Operand & 0xffff;
+DecodeStatus decodeMemSrc3Operand(MCInst &Inst, unsigned Operand,
+                                  uint64_t Address, const void *Decoder) {
+  unsigned Reg = (Operand >> 16) & 0x7;
+  int32_t Offset = SignExtend32<3>(Operand & 0xffff);
 
-  if (decodeRegisterClass(Inst, Reg, AAPRegs64) == MCDisassembler::Fail) {
+  if (decodeRegisterClass(Inst, Reg, AAPRegs8) == MCDisassembler::Fail)
     return MCDisassembler::Fail;
-  }
 
-  Inst.addOperand(MCOperand::createImm(SignExtend32<16>(Offset)));
+  Inst.addOperand(MCOperand::createImm(Offset));
+  return MCDisassembler::Success;
+}
+
+DecodeStatus decodeMemSrc10Operand(MCInst &Inst, unsigned Operand,
+                                   uint64_t Address, const void *Decoder) {
+  unsigned Reg = (Operand >> 16) & 0x3f;
+  int32_t Offset = SignExtend32<10>(Operand & 0xffff);
+
+  if (decodeRegisterClass(Inst, Reg, AAPRegs64) == MCDisassembler::Fail)
+    return MCDisassembler::Fail;
+
+  Inst.addOperand(MCOperand::createImm(Offset));
+  return MCDisassembler::Success;
+}
+
+DecodeStatus decodeOff3Operand(MCInst &Inst, unsigned Operand,
+                               uint64_t Address, const void *Decoder) {
+  Inst.addOperand(MCOperand::createImm(SignExtend32<3>(Operand)));
+  return MCDisassembler::Success;
+}
+
+DecodeStatus decodeOff10Operand(MCInst &Inst, unsigned Operand,
+                                uint64_t Address, const void *Decoder) {
+  Inst.addOperand(MCOperand::createImm(SignExtend32<10>(Operand)));
   return MCDisassembler::Success;
 }
 

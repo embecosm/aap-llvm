@@ -146,12 +146,14 @@ def off10 : Operand<i16>, ImmLeaf<i16, [{
   return AAP::isOff10(Imm);
 }]> {
   let EncoderMethod = "encodeOff10";
+  let DecoderMethod = "decodeOff10";
   let ParserMatchClass = off10AsmOperand;
 }
 def off3 : Operand<i16>, ImmLeaf<i16, [{
   return AAP::isOff3(Imm);
 }]> {
   let EncoderMethod = "encodeOff3";
+  let DecoderMethod = "decodeOff3";
   let ParserMatchClass = off3AsmOperand;
 }
 
@@ -212,7 +214,7 @@ def memsrc3PreDecAsmOperand  : AsmOperandClass {
 }
 
 let EncoderMethod = "encodeMemSrcOperand",
-    DecoderMethod = "decodeMemSrcOperand" in {
+    DecoderMethod = "decodeMemSrc10Operand" in {
   def memsrc10 : Operand<i16> {
     let PrintMethod = "printMemSrcOperand";
     let ParserMatchClass = memsrc10AsmOperand;
@@ -228,6 +230,9 @@ let EncoderMethod = "encodeMemSrcOperand",
     let ParserMatchClass = memsrc10PreDecAsmOperand;
     let MIOperandInfo = (ops GR64, off10);
   }
+}
+let EncoderMethod = "encodeMemSrcOperand",
+    DecoderMethod = "decodeMemSrc3Operand" in {
   def memsrc3 : Operand<i16> {
     let PrintMethod = "printMemSrcOperand";
     let ParserMatchClass = memsrc3AsmOperand;
