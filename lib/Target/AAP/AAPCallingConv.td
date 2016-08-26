@@ -39,7 +39,7 @@ def CC_AAP : CallingConv<[
 // two-third are callee-saved even when the number of registers is restricted.
 //
 // R1 is reserved as the stack pointer
-def CSR : CalleeSavedRegs<
-  (add R0,  R2,  R3,  R4,  R5,  R6,  R7,  R8,  R9,  R11, R12, R14, R15, R17,
-       R18, R20, R21, R23, R24, R26, R27, R29, R30, R32, R34, R36, R38, R40,
-       R42, R44, R46, R48, R50, R52, R54, R56, R58, R60, R62)>;
+def CSR : CalleeSavedRegs<(add R0, R2, R3, R4, R5, R6, R7, R8, R9, R11, R12,
+                           R14, R15, R17, R18, R20, R21, R23, R24, R26, R27,
+                           R29, R30, R32, R34, R36, R38, R40, R42, R44, R46,
+                           R48, R50, R52, R54, R56, R58, R60, R62)>;

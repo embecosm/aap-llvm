@@ -12,40 +12,38 @@
 //===----------------------------------------------------------------------===//
 
 // Call
-def sdt_call         : SDTypeProfile<0, -1, [SDTCisVT<1, iPTR>, SDTCisVT<1, i16>]>;
-def sdt_ret          : SDTypeProfile<0,  1, [SDTCisVT<0, i16>]>;
-def callflag         : SDNode<"AAPISD::CALL", sdt_call,
+def sdt_call : SDTypeProfile<0, -1, [SDTCisVT<1, iPTR>, SDTCisVT<1, i16>]>;
+def sdt_ret  : SDTypeProfile<0,  1, [SDTCisVT<0, i16>]>;
+def callflag : SDNode<"AAPISD::CALL", sdt_call,
                       [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue, SDNPVariadic]>;
-def retflag          : SDNode<"AAPISD::RET_FLAG", sdt_ret,
-                      [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+def retflag : SDNode<"AAPISD::RET_FLAG", sdt_ret,
+                     [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
 def sdt_callseqstart : SDCallSeqStart<[SDTCisVT<0, i16>]>;
 def sdt_callseqend   : SDCallSeqEnd<[SDTCisVT<0, i16>, SDTCisVT<1, i16>]>;
-def callseq_start    : SDNode<"ISD::CALLSEQ_START", sdt_callseqstart,
-                              [SDNPHasChain, SDNPOutGlue]>;
-def callseq_end      : SDNode<"ISD::CALLSEQ_END",   sdt_callseqend,
-                              [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
-def sdt_wrapper      : SDTypeProfile<1, 1, [SDTCisSameAs<0, 1>,
-                                            SDTCisPtrTy<0>]>;
+def callseq_start : SDNode<"ISD::CALLSEQ_START", sdt_callseqstart,
+                           [SDNPHasChain, SDNPOutGlue]>;
+def callseq_end   : SDNode<"ISD::CALLSEQ_END", sdt_callseqend,
+                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
+
+def sdt_wrapper : SDTypeProfile<1, 1, [SDTCisSameAs<0, 1>, SDTCisPtrTy<0>]>;
 def aapwrapper : SDNode<"AAPISD::Wrapper", sdt_wrapper>;
 
-def sdt_selectcc     : SDTypeProfile<1, 5, [SDTCisSameAs<0, 3>,
-                                            SDTCisSameAs<1, 2>,
-                                            SDTCisSameAs<3, 4>,
-                                            SDTCisVT<5, i16>]>;
-def sdt_brcc         : SDTypeProfile<0, 4, [SDTCisVT<0, i16>,
-                                            SDTCisSameAs<1, 2>,
-                                            SDTCisVT<3, OtherVT>]>;
+def sdt_selectcc : SDTypeProfile<1, 5, [SDTCisSameAs<0, 3>,
+                                        SDTCisSameAs<1, 2>,
+                                        SDTCisSameAs<3, 4>,
+                                        SDTCisVT<5, i16>]>;
+def sdt_brcc     : SDTypeProfile<0, 4, [SDTCisVT<0, i16>,
+                                        SDTCisSameAs<1, 2>,
+                                        SDTCisVT<3, OtherVT>]>;
 def AAPselectcc : SDNode<"AAPISD::SELECT_CC", sdt_selectcc>;
-def AAPbrcc     : SDNode<"AAPISD::BR_CC",     sdt_brcc,
-                         [SDNPHasChain]>;
-
+def AAPbrcc : SDNode<"AAPISD::BR_CC", sdt_brcc, [SDNPHasChain]>;
 
 // Branch Operands
 def brtarget : Operand<OtherVT> {
-  let PrintMethod   = "printPCRelImmOperand";
+  let PrintMethod = "printPCRelImmOperand";
   let EncoderMethod = "encodePCRelImmOperand";
 }
-
 
 // Immediate operands. Smaller operands are subclasses of larger ones so they
 // are correctly prioritized when disassembling.
@@ -57,101 +55,94 @@ def brtarget : Operand<OtherVT> {
 // an absolute value.
 let RenderMethod = "addImmOperands" in {
   def field16AsmOperand : AsmOperandClass {
-    let Name = "Field16"; let SuperClasses = [ImmAsmOperand];
+    let Name = "Field16";
+    let SuperClasses = [ImmAsmOperand];
   }
   def imm12AsmOperand : AsmOperandClass {
-    let Name = "Imm12"; let SuperClasses = [field16AsmOperand];
+    let Name = "Imm12";
+    let SuperClasses = [field16AsmOperand];
   }
   def imm10AsmOperand : AsmOperandClass {
-    let Name = "Imm10"; let SuperClasses = [imm12AsmOperand];
+    let Name = "Imm10";
+    let SuperClasses = [imm12AsmOperand];
   }
-  def imm9AsmOperand  : AsmOperandClass {
-    let Name = "Imm9"; let SuperClasses = [imm10AsmOperand];
+  def imm9AsmOperand : AsmOperandClass {
+    let Name = "Imm9";
+    let SuperClasses = [imm10AsmOperand];
   }
-  def const6AsmOperand  : AsmOperandClass {
-    let Name = "Const6"; let SuperClasses = [imm9AsmOperand];
+  def const6AsmOperand : AsmOperandClass {
+    let Name = "Const6";
+    let SuperClasses = [imm9AsmOperand];
   }
-  def imm6AsmOperand  : AsmOperandClass {
-    let Name = "Imm6"; let SuperClasses = [const6AsmOperand];
+  def imm6AsmOperand : AsmOperandClass {
+    let Name = "Imm6";
+    let SuperClasses = [const6AsmOperand];
   }
-  def const3AsmOperand  : AsmOperandClass {
-    let Name = "Const3"; let SuperClasses = [imm6AsmOperand];
+  def const3AsmOperand : AsmOperandClass {
+    let Name = "Const3";
+    let SuperClasses = [imm6AsmOperand];
   }
 
   // Offsets are signed immediates used for load and store operands
   def off10AsmOperand : AsmOperandClass {
-    let Name = "Off10"; let SuperClasses = [ImmAsmOperand];
+    let Name = "Off10";
+    let SuperClasses = [ImmAsmOperand];
   }
   def off3AsmOperand : AsmOperandClass {
-    let Name = "Off3"; let SuperClasses = [off10AsmOperand];
+    let Name = "Off3";
+    let SuperClasses = [off10AsmOperand];
   }
 
   // Shift operands are unsigned immediates or constants who range
   // begins at 1, rather than 0. The encoding is done with the shift amount
   // -1.
   def shiftImm6AsmOperand : AsmOperandClass {
-    let Name = "ShiftImm6"; let SuperClasses = [imm9AsmOperand];
+    let Name = "ShiftImm6";
+    let SuperClasses = [imm9AsmOperand];
   }
   def shiftConst3AsmOperand : AsmOperandClass {
-    let Name = "ShiftConst3"; let SuperClasses = [shiftImm6AsmOperand];
+    let Name = "ShiftConst3";
+    let SuperClasses = [shiftImm6AsmOperand];
   }
 }
 
 // The various AAP functions called in ImmLeaf here are defined in AAP.h
-def field16 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isField16(Imm);
-}]> {
+def field16 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isField16(Imm); }]> {
   let EncoderMethod = "encodeField16";
   let ParserMatchClass = field16AsmOperand;
 }
-def imm12 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isImm12(Imm);
-}]> {
+def imm12 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm12(Imm); }]> {
   let EncoderMethod = "encodeImm12";
   let ParserMatchClass = imm12AsmOperand;
 }
-def imm10 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isImm10(Imm);
-}]> {
+def imm10 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm10(Imm); }]> {
   let EncoderMethod = "encodeImm10";
   let ParserMatchClass = imm10AsmOperand;
 }
-def imm9 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isImm9(Imm);
-}]> {
+def imm9 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm9(Imm); }]> {
   let EncoderMethod = "encodeImm9";
   let ParserMatchClass = imm9AsmOperand;
 }
-def const6 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isImm6(Imm);
-}]> {
+def const6 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm6(Imm); }]> {
   let EncoderMethod = "encodeImm6";
   let ParserMatchClass = const6AsmOperand;
 }
-def imm6 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isImm6(Imm);
-}]> {
+def imm6 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm6(Imm); }]> {
   let EncoderMethod = "encodeImm6";
   let ParserMatchClass = imm6AsmOperand;
 }
-def const3 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isImm3(Imm);
-}]> {
+def const3 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm3(Imm); }]> {
   let EncoderMethod = "encodeImm3";
   let ParserMatchClass = const3AsmOperand;
 }
 
 // Offset operands
-def off10 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isOff10(Imm);
-}]> {
+def off10 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isOff10(Imm); }]> {
   let EncoderMethod = "encodeOff10";
   let DecoderMethod = "decodeOff10";
   let ParserMatchClass = off10AsmOperand;
 }
-def off3 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isOff3(Imm);
-}]> {
+def off3 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isOff3(Imm); }]> {
   let EncoderMethod = "encodeOff3";
   let DecoderMethod = "decodeOff3";
   let ParserMatchClass = off3AsmOperand;
@@ -159,26 +150,22 @@ def off3 : Operand<i16>, ImmLeaf<i16, [{
 
 // Shift operands, these have custom encoding/decoding to handle the bias
 // applied to the value.
-def shift_imm6 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isShiftImm6(Imm);
-}]> {
+def shift_imm6 : Operand<i16>,
+                 ImmLeaf<i16, [{ return AAP::isShiftImm6(Imm); }]> {
   let EncoderMethod = "encodeShiftImm6";
   let DecoderMethod = "decodeShiftOperand";
   let ParserMatchClass = shiftImm6AsmOperand;
 }
-def shift_const3 : Operand<i16>, ImmLeaf<i16, [{
-  return AAP::isShiftImm3(Imm);
-}]> {
+def shift_const3 : Operand<i16>,
+                   ImmLeaf<i16, [{ return AAP::isShiftImm3(Imm); }]> {
   let EncoderMethod = "encodeShiftConst3";
   let DecoderMethod = "decodeShiftOperand";
   let ParserMatchClass = shiftConst3AsmOperand;
 }
 
-
 // Memory offsets consist of a 3 or 10 bit offset and a register operand
-def addr_MO3  : ComplexPattern<iPTR, 2, "SelectAddr_MO3",  [], []>;
+def addr_MO3 : ComplexPattern<iPTR, 2, "SelectAddr_MO3", [], []>;
 def addr_MO10 : ComplexPattern<iPTR, 2, "SelectAddr_MO10", [], []>;
-
 
 // Memsrc operand encodings consist of a 16-bit immediate field in the low
 // bits, and a 3 or 6 bit register field in the high bits. The encoding
@@ -195,7 +182,7 @@ def memsrc10PostIncAsmOperand : AsmOperandClass {
   let Name = "MemSrc10PostInc";
   let SuperClasses = [memsrc10AsmOperand];
 }
-def memsrc10PreDecAsmOperand  : AsmOperandClass {
+def memsrc10PreDecAsmOperand : AsmOperandClass {
   let Name = "MemSrc10PreDec";
   let SuperClasses = [memsrc10PostIncAsmOperand];
 }
@@ -208,7 +195,7 @@ def memsrc3PostIncAsmOperand : AsmOperandClass {
   let Name = "MemSrc3PostInc";
   let SuperClasses = [memsrc3AsmOperand];
 }
-def memsrc3PreDecAsmOperand  : AsmOperandClass {
+def memsrc3PreDecAsmOperand : AsmOperandClass {
   let Name = "MemSrc3PreDec";
   let SuperClasses = [memsrc3PostIncAsmOperand];
 }
@@ -249,7 +236,6 @@ let EncoderMethod = "encodeMemSrcOperand",
     let MIOperandInfo = (ops GR8, off3);
   }
 }
-
 
 //===----------------------------------------------------------------------===//
 // MOV Operations
@@ -296,68 +282,65 @@ multiclass ALU_r<bits<8> opcode, string opname, SDNode OpNode> {
       !strconcat(opname, "\t$rD, $rA, $rB"), []>;
 }
 
-
 let isCommutable = 1 in {
-let Defs = [PSW] in
-  defm ADD : ALU_r<0x1, "add", add>;
-defm AND : ALU_r<0x3, "and", and>;
-defm OR  : ALU_r<0x4, "or",  or>;
-defm XOR : ALU_r<0x5, "xor", xor>;
+  let Defs = [PSW] in {
+    defm ADD : ALU_r<0x1, "add", add>;
+  }
+  defm AND : ALU_r<0x3, "and", and>;
+  defm OR  : ALU_r<0x4, "or",  or>;
+  defm XOR : ALU_r<0x5, "xor", xor>;
 }
 
-let Defs = [PSW] in
+let Defs = [PSW] in {
   defm SUB : ALU_r<0x2, "sub", sub>;
+}
 defm ASR : ALU_r<0x6, "asr", sra>;
 defm LSL : ALU_r<0x7, "lsl", shl>;
 defm LSR : ALU_r<0x8, "lsr", srl>;
 
 
 let Uses = [PSW], Defs = [PSW] in {
-def ADDC_r : Inst_rrr
-  <0x0, 0x11, (outs GR64:$rD), (ins GR64:$rA, GR64:$rB),
-    "addc\t$rD, $rA, $rB",
-    [(set GR64:$rD, (adde GR64:$rA, GR64:$rB))]>;
+  def ADDC_r : Inst_rrr
+    <0x0, 0x11, (outs GR64:$rD), (ins GR64:$rA, GR64:$rB),
+      "addc\t$rD, $rA, $rB",
+      [(set GR64:$rD, (adde GR64:$rA, GR64:$rB))]>;
 
-def SUBC_r : Inst_rrr
-  <0x0, 0x12, (outs GR64:$rD), (ins GR64:$rA, GR64:$rB),
-    "subc\t$rD, $rA, $rB",
-    [(set GR64:$rD, (sube GR64:$rA, GR64:$rB))]>;
+  def SUBC_r : Inst_rrr
+    <0x0, 0x12, (outs GR64:$rD), (ins GR64:$rA, GR64:$rB),
+      "subc\t$rD, $rA, $rB",
+      [(set GR64:$rD, (sube GR64:$rA, GR64:$rB))]>;
 }
-
 
 // ALU ops with immediates
 let Defs = [PSW] in {
+  // LEA Pseudo operation, expanded to ADD_i10 or SUB_i10 during frame index
+  // elimination depending on the sign of the immediate.
+  def LEA : Pseudo<(outs GR64:$rD), (ins GR64:$rA, i16imm:$imm), "#LEA", []>;
 
-// LEA Pseudo operation, expanded to ADD_i10 or SUB_i10 during frame index
-// elimination depending on the sign of the immediate.
-def LEA : Pseudo<(outs GR64:$rD), (ins GR64:$rA, i16imm:$imm), "#LEA", []>;
+  // Select over MOVI_i16 + ADD_r
+  // May expand to ADDI_i3_short in peephole
+  let AddedComplexity = 1 in {
+    def ADDI_i10 : Inst_rr_i10
+      <0x0, 0xa, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
+        "addi\t$rD, $rA, $imm",
+        [(set GR64:$rD, (add GR64:$rA, (i16 imm10:$imm)))]>;
+  }
+  def ADDI_i3_short : Inst_rr_i3_short
+    <0x0, 0xa, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
+      "addi\t$rD, $rA, $imm", []>;
 
-// Select over MOVI_i16 + ADD_r
-// May expand to ADDI_i3_short in peephole
-let AddedComplexity = 1 in {
-  def ADDI_i10 : Inst_rr_i10
-    <0x0, 0xa, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
-      "addi\t$rD, $rA, $imm",
-      [(set GR64:$rD, (add GR64:$rA, (i16 imm10:$imm)))]>;
+  // Select over MOVI_i16 + SUB_r
+  // May expand to SUBI_i3_short in peephole
+  let AddedComplexity = 1 in {
+    def SUBI_i10 : Inst_rr_i10
+      <0x0, 0xb, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
+        "subi\t$rD, $rA, $imm",
+        [(set GR64:$rD, (sub GR64:$rA, (i16 imm10:$imm)))]>;
+  }
+  def SUBI_i3_short : Inst_rr_i3_short
+    <0x0, 0xb, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
+      "subi\t$rD, $rA, $imm", []>;
 }
-def ADDI_i3_short : Inst_rr_i3_short
-  <0x0, 0xa, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
-    "addi\t$rD, $rA, $imm", []>;
-
-// Select over MOVI_i16 + SUB_r
-// May expand to SUBI_i3_short in peephole
-let AddedComplexity = 1 in {
-  def SUBI_i10 : Inst_rr_i10
-    <0x0, 0xb, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
-      "subi\t$rD, $rA, $imm",
-      [(set GR64:$rD, (sub GR64:$rA, (i16 imm10:$imm)))]>;
-}
-def SUBI_i3_short : Inst_rr_i3_short
-  <0x0, 0xb, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
-    "subi\t$rD, $rA, $imm", []>;
-
-} // end of Defs
-
 
 multiclass SHIFT_i<bits<8> opcode, string opname, SDNode OpNode> {
   // Select over MOVI_i16 + SHIFT_r
@@ -376,21 +359,19 @@ defm ASRI : SHIFT_i<0xc, "asri", sra>;
 defm LSLI : SHIFT_i<0xd, "lsli", shl>;
 defm LSRI : SHIFT_i<0xe, "lsri", srl>;
 
-
 // Logical operations with immediate
 // Select over MOVI_i16 + LOG_r
 let AddedComplexity = 1 in {
-class LOG_i9<bits<5> opcode, string opname, SDNode OpNode>
-    : Inst_rr_i9
-      <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, imm9:$imm),
-        !strconcat(opname, "\t$rD, $rA, $imm"),
-        [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm9:$imm)))]>;
-} // end of AddedComplexity
+  class LOG_i9<bits<5> opcode, string opname, SDNode OpNode>
+      : Inst_rr_i9
+        <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, imm9:$imm),
+          !strconcat(opname, "\t$rD, $rA, $imm"),
+          [(set GR64:$rD, (OpNode GR64:$rA, (i16 imm9:$imm)))]>;
+}
 
 def ANDI_i9 : LOG_i9<0x13, "andi", and>;
 def ORI_i9  : LOG_i9<0x14, "ori",  or>;
 def XORI_i9 : LOG_i9<0x15, "xori", xor>;
-
 
 //===----------------------------------------------------------------------===//
 // Load/Store Operations
@@ -401,8 +382,7 @@ def XORI_i9 : LOG_i9<0x15, "xori", xor>;
 // end up defining a lot of the fields themselves.
 
 class LOAD<bits<8> opcode, string opname, dag outs, dag ins>
-    : InstAAP
-      <0x1, opcode, outs, ins, !strconcat(opname, "\t$rD, [$src]"), []> {
+    : InstAAP<0x1, opcode, outs, ins, !strconcat(opname, "\t$rD, [$src]"), []> {
   bits<6> rD;
   bits<22> src; // 6-bit reg field, 16 bit imm field
 
@@ -417,8 +397,8 @@ class LOAD<bits<8> opcode, string opname, dag outs, dag ins>
 }
 
 class LOAD_short<bits<4> opcode, string opname, dag outs, dag ins>
-    : InstAAP_short
-      <0x1, opcode, outs, ins, !strconcat(opname, "\t$rD, [$src]"), []> {
+    : InstAAP_short<0x1, opcode, outs, ins, !strconcat(opname, "\t$rD, [$src]"),
+                    []> {
   bits<3> rD;
   bits<19> src; // 3-bit reg field, 16 bit imm field
 
@@ -428,8 +408,7 @@ class LOAD_short<bits<4> opcode, string opname, dag outs, dag ins>
 }
 
 class STORE<bits<8> opcode, string opname, dag outs, dag ins>
-    : InstAAP
-      <0x1, opcode, outs, ins, !strconcat(opname, "\t[$dst], $rA"), []> {
+    : InstAAP<0x1, opcode, outs, ins, !strconcat(opname, "\t[$dst], $rA"), []> {
   bits<22> dst; // 6-bit reg field, 16 bit imm field
   bits<6> rA;
 
@@ -444,8 +423,8 @@ class STORE<bits<8> opcode, string opname, dag outs, dag ins>
 }
 
 class STORE_short<bits<4> opcode, string opname, dag outs, dag ins>
-    : InstAAP_short
-      <0x1, opcode, outs, ins, !strconcat(opname, "\t[$dst], $rA"), []> {
+    : InstAAP_short<0x1, opcode, outs, ins, !strconcat(opname, "\t[$dst], $rA"),
+                    []> {
   bits<19> dst; // 3-bit reg field, 16 bit imm field
   bits<3> rA;
 
@@ -454,58 +433,80 @@ class STORE_short<bits<4> opcode, string opname, dag outs, dag ins>
   let Inst{5-3} = rA;
 }
 
-
 // Short load/store instructions use the memsrc3 operand type, which uses a
 // different fixup when encoding and a different matching class when parsing
 // assembly.
 
 // Load instruction may expand to short equivalents in peephole
 let mayLoad = 1 in {
-def LDB : LOAD<0x0,  "ldb", (outs GR64:$rD), (ins memsrc10:$src)>;
-def LDW : LOAD<0x4,  "ldw", (outs GR64:$rD), (ins memsrc10:$src)>;
-def LDB_postinc : LOAD<0x1,  "ldb", (outs GR64:$rD), (ins memsrc10_postinc:$src)>;
-def LDW_postinc : LOAD<0x5,  "ldw", (outs GR64:$rD), (ins memsrc10_postinc:$src)>;
-def LDB_predec  : LOAD<0x2,  "ldb", (outs GR64:$rD), (ins memsrc10_predec:$src)>;
-def LDW_predec  : LOAD<0x6,  "ldw", (outs GR64:$rD), (ins memsrc10_predec:$src)>;
-} // end of mayLoad
+  def LDB : LOAD
+    <0x0,  "ldb", (outs GR64:$rD), (ins memsrc10:$src)>;
+  def LDW : LOAD
+    <0x4,  "ldw", (outs GR64:$rD), (ins memsrc10:$src)>;
+  def LDB_postinc : LOAD
+    <0x1,  "ldb", (outs GR64:$rD), (ins memsrc10_postinc:$src)>;
+  def LDW_postinc : LOAD
+    <0x5,  "ldw", (outs GR64:$rD), (ins memsrc10_postinc:$src)>;
+  def LDB_predec : LOAD
+    <0x2,  "ldb", (outs GR64:$rD), (ins memsrc10_predec:$src)>;
+  def LDW_predec : LOAD
+    <0x6,  "ldw", (outs GR64:$rD), (ins memsrc10_predec:$src)>;
+}
 
 let mayLoad = 1 in {
-def LDB_short : LOAD_short<0x0, "ldb", (outs GR8:$rD), (ins memsrc3:$src)>;
-def LDW_short : LOAD_short<0x4, "ldw", (outs GR8:$rD), (ins memsrc3:$src)>;
-def LDB_postinc_short : LOAD_short<0x1, "ldb", (outs GR8:$rD), (ins memsrc3_postinc:$src)>;
-def LDW_postinc_short : LOAD_short<0x5, "ldw", (outs GR8:$rD), (ins memsrc3_postinc:$src)>;
-def LDB_predec_short  : LOAD_short<0x2, "ldb", (outs GR8:$rD), (ins memsrc3_predec:$src)>;
-def LDW_predec_short  : LOAD_short<0x6, "ldw", (outs GR8:$rD), (ins memsrc3_predec:$src)>;
-} // end of mayLoad
+  def LDB_short : LOAD_short
+    <0x0, "ldb", (outs GR8:$rD), (ins memsrc3:$src)>;
+  def LDW_short : LOAD_short
+    <0x4, "ldw", (outs GR8:$rD), (ins memsrc3:$src)>;
+  def LDB_postinc_short : LOAD_short
+    <0x1, "ldb", (outs GR8:$rD), (ins memsrc3_postinc:$src)>;
+  def LDW_postinc_short : LOAD_short
+    <0x5, "ldw", (outs GR8:$rD), (ins memsrc3_postinc:$src)>;
+  def LDB_predec_short  : LOAD_short
+    <0x2, "ldb", (outs GR8:$rD), (ins memsrc3_predec:$src)>;
+  def LDW_predec_short  : LOAD_short
+    <0x6, "ldw", (outs GR8:$rD), (ins memsrc3_predec:$src)>;
+}
 
 // Load patterns
-def : Pat<(i16 (zextloadi8 GR64:$src)), (LDB GR64:$src, (i16 0))>;
-def : Pat<(i16 (zextloadi8 addr_MO10:$src)), (LDB addr_MO10:$src)>;
+def : Pat<(i16(zextloadi8 GR64:$src)), (LDB GR64:$src, (i16 0))>;
+def : Pat<(i16(zextloadi8 addr_MO10:$src)), (LDB addr_MO10:$src)>;
 
-def : Pat<(i16 (extloadi8 GR64:$src)), (LDB GR64:$src, (i16 0))>;
-def : Pat<(i16 (extloadi8 addr_MO10:$src)), (LDB addr_MO10:$src)>;
+def : Pat<(i16(extloadi8 GR64:$src)), (LDB GR64:$src, (i16 0))>;
+def : Pat<(i16(extloadi8 addr_MO10:$src)), (LDB addr_MO10:$src)>;
 
-def : Pat<(i16 (load GR64:$src)), (LDW GR64:$src, (i16 0))>;
-def : Pat<(i16 (load addr_MO10:$src)), (LDW addr_MO10:$src)>;
-
+def : Pat<(i16(load GR64:$src)), (LDW GR64:$src, (i16 0))>;
+def : Pat<(i16(load addr_MO10:$src)), (LDW addr_MO10:$src)>;
 
 // Store instruction may expand to short equivalents in peephole
 let mayStore = 1 in {
-def STB : STORE<0x8,  "stb", (outs), (ins memsrc10:$dst, GR64:$rA)>;
-def STW : STORE<0xc,  "stw", (outs), (ins memsrc10:$dst, GR64:$rA)>;
-def STB_postinc : STORE<0x9,  "stb", (outs), (ins memsrc10_postinc:$dst, GR64:$rA)>;
-def STW_postinc : STORE<0xd,  "stw", (outs), (ins memsrc10_postinc:$dst, GR64:$rA)>;
-def STB_predec  : STORE<0xa,  "stb", (outs), (ins memsrc10_predec:$dst, GR64:$rA)>;
-def STW_predec  : STORE<0xe,  "stw", (outs), (ins memsrc10_predec:$dst, GR64:$rA)>;
-} // end of mayStore
+  def STB : STORE
+    <0x8,  "stb", (outs), (ins memsrc10:$dst, GR64:$rA)>;
+  def STW : STORE
+    <0xc,  "stw", (outs), (ins memsrc10:$dst, GR64:$rA)>;
+  def STB_postinc : STORE
+    <0x9,  "stb", (outs), (ins memsrc10_postinc:$dst, GR64:$rA)>;
+  def STW_postinc : STORE
+    <0xd,  "stw", (outs), (ins memsrc10_postinc:$dst, GR64:$rA)>;
+  def STB_predec : STORE
+    <0xa,  "stb", (outs), (ins memsrc10_predec:$dst, GR64:$rA)>;
+  def STW_predec : STORE
+    <0xe,  "stw", (outs), (ins memsrc10_predec:$dst, GR64:$rA)>;
+}
 
 let mayStore = 1 in {
-def STB_short : STORE_short<0x8, "stb", (outs), (ins memsrc3:$dst, GR8:$rA)>;
-def STW_short : STORE_short<0xc, "stw", (outs), (ins memsrc3:$dst, GR8:$rA)>;
-def STB_postinc_short : STORE_short<0x9, "stb", (outs), (ins memsrc3_postinc:$dst, GR8:$rA)>;
-def STW_postinc_short : STORE_short<0xd, "stw", (outs), (ins memsrc3_postinc:$dst, GR8:$rA)>;
-def STB_predec_short  : STORE_short<0xa, "stb", (outs), (ins memsrc3_predec:$dst, GR8:$rA)>;
-def STW_predec_short  : STORE_short<0xe, "stw", (outs), (ins memsrc3_predec:$dst, GR8:$rA)>;
+  def STB_short : STORE_short
+    <0x8, "stb", (outs), (ins memsrc3:$dst, GR8:$rA)>;
+  def STW_short : STORE_short
+    <0xc, "stw", (outs), (ins memsrc3:$dst, GR8:$rA)>;
+  def STB_postinc_short : STORE_short
+    <0x9, "stb", (outs), (ins memsrc3_postinc:$dst, GR8:$rA)>;
+  def STW_postinc_short : STORE_short
+    <0xd, "stw", (outs), (ins memsrc3_postinc:$dst, GR8:$rA)>;
+  def STB_predec_short  : STORE_short
+    <0xa, "stb", (outs), (ins memsrc3_predec:$dst, GR8:$rA)>;
+  def STW_predec_short  : STORE_short
+    <0xe, "stw", (outs), (ins memsrc3_predec:$dst, GR8:$rA)>;
 } // end of mayStore
 
 // Store patterns
@@ -534,12 +535,12 @@ multiclass BRCC<bits<4> cc, string opname> {
 }
 
 let isBranch = 1, isTerminator = 1, isBarrier = 1 in {
-  defm BEQ   : BRCC<0x2, "beq">;
-  defm BNE   : BRCC<0x3, "bne">;
-  defm BLTS  : BRCC<0x4, "blts">;
-  defm BLES  : BRCC<0x5, "bles">;
-  defm BLTU  : BRCC<0x6, "bltu">;
-  defm BLEU  : BRCC<0x7, "bleu">;
+  defm BEQ  : BRCC<0x2, "beq">;
+  defm BNE  : BRCC<0x3, "bne">;
+  defm BLTS : BRCC<0x4, "blts">;
+  defm BLES : BRCC<0x5, "bles">;
+  defm BLTU : BRCC<0x6, "bltu">;
+  defm BLEU : BRCC<0x7, "bleu">;
 
   // BRA may expand to short equivalent in the peephole
   def BRA : Inst_i22
@@ -561,13 +562,11 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, usesCustomInserter = 1 in {
 // Implements the SELECT_CC DAG node. Expanded into a branch sequence
 let usesCustomInserter = 1 in {
   def SELECT_CC : Pseudo
-    <(outs GR64:$dst),
-      (ins GR64:$lhs, GR64:$rhs, GR64:$T, GR64:$F, i16imm:$cc),
+    <(outs GR64:$dst), (ins GR64:$lhs, GR64:$rhs, GR64:$T, GR64:$F, i16imm:$cc),
       "#SELECT_CC",
       [(set GR64:$dst,
         (AAPselectcc GR64:$lhs, GR64:$rhs, GR64:$T, GR64:$F, imm:$cc))]>;
 }
-
 
 //===----------------------------------------------------------------------===//
 // Calls and returns
@@ -575,38 +574,35 @@ let usesCustomInserter = 1 in {
 
 // Mark R0 as a def as it is the link register
 let isCall = 1, Uses = [R1], Defs = [R0] in {
+  // Never assemble short branches
+  let isCodeGenOnly = 1 in {
+    def BAL_short : Inst_i6_r_short
+      <0x2, 0x1, (outs), (ins i16imm:$imm, GR8:$rB), "bal\t$imm, $rB", []>;
+  }
 
-// Never assemble short branches
-let isCodeGenOnly = 1 in {
-  def BAL_short : Inst_i6_r_short
-    <0x2, 0x1, (outs), (ins i16imm:$imm, GR8:$rB), "bal\t$imm, $rB", []>;
+  // BAL may expand to BAL_short in peephole
+  def BAL : Inst_i16_r
+    <0x2, 0x1, (outs), (ins i16imm:$imm, GR64:$rB), "bal\t$imm, $rB", []>;
+
+  def JAL_short : Inst_rrr_short
+    <0x2, 0x9, (outs), (ins GR8:$rD, GR64:$rB), "jal\t$rD, $rB", []> {
+      let rA = 0;
+  }
+
+  // JAL may expand to JAL_short in peephole
+  def JAL : Inst_rrr
+    <0x2, 0x9, (outs), (ins GR64:$rD, GR64:$rB), "jal\t$rD, $rB", []> {
+      let rA = 0;
+  }
 }
 
-// BAL may expand to BAL_short in peephole
-def BAL : Inst_i16_r
-  <0x2, 0x1, (outs), (ins i16imm:$imm, GR64:$rB), "bal\t$imm, $rB", []>;
-
-def JAL_short : Inst_rrr_short
-  <0x2, 0x9, (outs), (ins GR8:$rD, GR64:$rB), "jal\t$rD, $rB", []> {
-    let rA = 0;
-  }
-
-// JAL may expand to JAL_short in peephole
-def JAL : Inst_rrr
-  <0x2, 0x9, (outs), (ins GR64:$rD, GR64:$rB), "jal\t$rD, $rB", []> {
-    let rA = 0;
-  }
-} // End of isCall, Uses, Defs
-
-// Calls are encoded as a branch through the link register
-/*def : Pat<(callflag (i16 imm:$imm), GR64:$rB), (BAL imm:$imm, GR64:$rB)>;*/
-
-
 let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
-// May expand to JMP_short in peephole
-def JMP : Inst_r<0x2, 0x8, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
-def JMP_short : Inst_r_short<0x2, 0x8, (outs), (ins GR8:$rD), "jmp\t$rD", []>;
-} // end of isReturn, isTerminator, isBarrier
+  // May expand to JMP_short in peephole
+  def JMP :
+    Inst_r<0x2, 0x8, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
+  def JMP_short :
+    Inst_r_short<0x2, 0x8, (outs), (ins GR8:$rD), "jmp\t$rD", []>;
+}
 
 // Indirect calls are a jump through a register
 def : Pat<(callflag GR64:$rD, GR64:$rB), (JAL GR64:$rD, GR64:$rB)>;
@@ -614,21 +610,22 @@ def : Pat<(callflag GR64:$rD, GR64:$rB), (JAL GR64:$rD, GR64:$rB)>;
 // Returns are encoded as a jump through the link register
 def : Pat<(retflag GR64:$rD), (JMP GR64:$rD)>;
 
-
 // Stack adjustment
 let Defs = [R1], Uses = [R1] in {
-def ADJCALLSTACKDOWN : Pseudo
-  <(outs), (ins i16imm:$amt), "#ADJCALLSTACKDOWN",
-    [(callseq_start timm:$amt)]>;
+  def ADJCALLSTACKDOWN : Pseudo
+    <(outs), (ins i16imm:$amt), "#ADJCALLSTACKDOWN",
+      [(callseq_start timm:$amt)]>;
 
-def ADJCALLSTACKUP : Pseudo
-  <(outs), (ins i16imm:$amt1, i16imm:$amt2), "#ADJCALLSTACKUP",
-    [(callseq_end timm:$amt1, timm:$amt2)]>;
+  def ADJCALLSTACKUP : Pseudo
+    <(outs), (ins i16imm:$amt1, i16imm:$amt2), "#ADJCALLSTACKUP",
+      [(callseq_end timm:$amt1, timm:$amt2)]>;
 }
 
 // Call patterns
-def : Pat<(callflag (i16 tglobaladdr:$dst), GR64:$rA),  (BAL tglobaladdr:$dst, GR64:$rA)>;
-def : Pat<(callflag (i16 texternalsym:$dst), GR64:$rA), (BAL texternalsym:$dst, GR64:$rA)>;
+def : Pat<(callflag (i16 tglobaladdr:$dst), GR64:$rA),
+            (BAL tglobaladdr:$dst, GR64:$rA)>;
+def : Pat<(callflag (i16 texternalsym:$dst), GR64:$rA),
+            (BAL texternalsym:$dst, GR64:$rA)>;
 
 
 //===----------------------------------------------------------------------===//

@@ -29,7 +29,6 @@ def R#I : Ri<I, "r"#I>, DwarfRegNum<[I]>;
 // PSW holds the carry flag
 def PSW : AAPReg<"psw">, DwarfRegNum<[64]>;
 
-
 // Register classes.
 def GR8  : RegisterClass<"AAP", [i16], 16, (add (sequence "R%u", 0,  7))>;
 def GR64 : RegisterClass<"AAP", [i16], 16, (add (sequence "R%u", 0, 63))>;
