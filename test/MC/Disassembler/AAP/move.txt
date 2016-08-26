@@ -1,4 +1,4 @@
-#RUN: llvm-mc -triple=aap -disassemble -show-encoding < %s  FileCheck %s
+#RUN: llvm-mc -triple=aap -disassemble -show-encoding < %s | FileCheck %s
 
 # short encodings
 #CHECK: mov $r0, $r5 ; encoding: [0x28,0x12]
