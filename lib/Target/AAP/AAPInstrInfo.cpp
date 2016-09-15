@@ -49,15 +49,19 @@ bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
   return true;
 }
 
-unsigned AAPInstrInfo::InsertBranch(MachineBasicBlock &MBB,
+unsigned AAPInstrInfo::insertBranch(MachineBasicBlock &MBB,
                                     MachineBasicBlock *TBB,
                                     MachineBasicBlock *FBB,
                                     ArrayRef<MachineOperand> Cond,
-                                    const DebugLoc &DL) const {
+                                    const DebugLoc &DL,
+                                    int *BytesAdded) const {
   return 0;
 }
 
-unsigned AAPInstrInfo::RemoveBranch(MachineBasicBlock &MBB) const { return 0; }
+unsigned AAPInstrInfo::removeBranch(MachineBasicBlock &MBB,
+                                    int *BytesRemoved) const {
+  return 0;
+}
 
 void AAPInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                MachineBasicBlock::iterator I,
@@ -124,7 +128,7 @@ void AAPInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
 
 /// ReverseBranchCondition - Return the inverse opcode of the
 /// specified Branch instruction.
-bool AAPInstrInfo::ReverseBranchCondition(
+bool AAPInstrInfo::reverseBranchCondition(
     SmallVectorImpl<MachineOperand> &Cond) const {
   return false;
 }
