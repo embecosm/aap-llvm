@@ -337,9 +337,7 @@ static void PrintCallingConv(unsigned cc, raw_ostream &Out) {
   }
 }
 
-// PrintEscapedString - Print each character of the specified string, escaping
-// it if it is not printable or if it is an escape char.
-static void PrintEscapedString(StringRef Name, raw_ostream &Out) {
+void llvm::PrintEscapedString(StringRef Name, raw_ostream &Out) {
   for (unsigned i = 0, e = Name.size(); i != e; ++i) {
     unsigned char C = Name[i];
     if (isprint(C) && C != '\\' && C != '"')
@@ -1409,8 +1407,8 @@ struct MDFieldPrinter {
                      bool ShouldSkipNull = true);
   template <class IntTy>
   void printInt(StringRef Name, IntTy Int, bool ShouldSkipZero = true);
-  void printBool(StringRef Name, bool Value);
-  void printDIFlags(StringRef Name, unsigned Flags);
+  void printBool(StringRef Name, bool Value, Optional<bool> Default = None);
+  void printDIFlags(StringRef Name, DINode::DIFlags Flags);
   template <class IntTy, class Stringifier>
   void printDwarfEnum(StringRef Name, IntTy Value, Stringifier toString,
                       bool ShouldSkipZero = true);
@@ -1472,21 +1470,24 @@ void MDFieldPrinter::printInt(StringRef Name, IntTy Int, bool ShouldSkipZero) {
   Out << FS << Name << ": " << Int;
 }
 
-void MDFieldPrinter::printBool(StringRef Name, bool Value) {
+void MDFieldPrinter::printBool(StringRef Name, bool Value,
+                               Optional<bool> Default) {
+  if (Default && Value == *Default)
+    return;
   Out << FS << Name << ": " << (Value ? "true" : "false");
 }
 
-void MDFieldPrinter::printDIFlags(StringRef Name, unsigned Flags) {
+void MDFieldPrinter::printDIFlags(StringRef Name, DINode::DIFlags Flags) {
   if (!Flags)
     return;
 
   Out << FS << Name << ": ";
 
-  SmallVector<unsigned, 8> SplitFlags;
-  unsigned Extra = DINode::splitFlags(Flags, SplitFlags);
+  SmallVector<DINode::DIFlags, 8> SplitFlags;
+  auto Extra = DINode::splitFlags(Flags, SplitFlags);
 
   FieldSeparator FlagsFS(" | ");
-  for (unsigned F : SplitFlags) {
+  for (auto F : SplitFlags) {
     const char *StringF = DINode::getFlagString(F);
     assert(StringF && "Expected valid flag");
     Out << FlagsFS << StringF;
@@ -1666,6 +1667,7 @@ static void writeDICompileUnit(raw_ostream &Out, const DICompileUnit *N,
   Printer.printMetadata("imports", N->getRawImportedEntities());
   Printer.printMetadata("macros", N->getRawMacros());
   Printer.printInt("dwoId", N->getDWOId());
+  Printer.printBool("splitDebugInlining", N->getSplitDebugInlining(), true);
   Out << ")";
 }
 
@@ -1814,7 +1816,7 @@ static void writeDIGlobalVariable(raw_ostream &Out, const DIGlobalVariable *N,
   Printer.printMetadata("type", N->getRawType());
   Printer.printBool("isLocal", N->isLocalToUnit());
   Printer.printBool("isDefinition", N->isDefinition());
-  Printer.printMetadata("variable", N->getRawVariable());
+  Printer.printMetadata("expr", N->getExpr());
   Printer.printMetadata("declaration", N->getRawStaticDataMemberDeclaration());
   Out << ")";
 }

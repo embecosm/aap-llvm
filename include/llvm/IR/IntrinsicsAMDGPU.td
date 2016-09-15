@@ -538,7 +538,7 @@ def int_amdgcn_mqsad_pk_u16_u8 :
 
 def int_amdgcn_mqsad_u32_u8 :
   GCCBuiltin<"__builtin_amdgcn_mqsad_u32_u8">,
-  Intrinsic<[llvm_i32_ty], [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty], [IntrNoMem]>;
+  Intrinsic<[llvm_v4i32_ty], [llvm_i64_ty, llvm_i32_ty, llvm_v4i32_ty], [IntrNoMem]>;
 
 def int_amdgcn_cvt_pk_u8_f32 :
   GCCBuiltin<"__builtin_amdgcn_cvt_pk_u8_f32">,
@@ -551,6 +551,14 @@ def int_amdgcn_icmp :
 def int_amdgcn_fcmp :
   Intrinsic<[llvm_i64_ty], [llvm_anyfloat_ty, LLVMMatchType<0>, llvm_i32_ty],
             [IntrNoMem, IntrConvergent]>;
+
+def int_amdgcn_readfirstlane :
+  GCCBuiltin<"__builtin_amdgcn_readfirstlane">,
+  Intrinsic<[llvm_i32_ty], [llvm_i32_ty], [IntrNoMem, IntrConvergent]>;
+
+def int_amdgcn_readlane :
+  GCCBuiltin<"__builtin_amdgcn_readlane">,
+  Intrinsic<[llvm_i32_ty], [llvm_i32_ty, llvm_i32_ty], [IntrNoMem, IntrConvergent]>;
 
 //===----------------------------------------------------------------------===//
 // CI+ Intrinsics

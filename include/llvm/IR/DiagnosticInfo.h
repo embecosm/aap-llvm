@@ -54,6 +54,7 @@ enum DiagnosticKind {
   DK_Linker,
   DK_DebugMetadataVersion,
   DK_DebugMetadataInvalid,
+  DK_ISelFallback,
   DK_SampleProfile,
   DK_OptimizationRemark,
   DK_OptimizationRemarkMissed,
@@ -401,6 +402,7 @@ public:
 
   const char *getPassName() const { return PassName; }
   const Twine &getMsg() const { return Msg; }
+  Optional<uint64_t> getHotness() const { return Hotness; }
 
   static bool classof(const DiagnosticInfo *DI) {
     return DI->getKind() >= DK_FirstRemark &&
@@ -581,6 +583,25 @@ public:
 
   static bool classof(const DiagnosticInfo *DI) {
     return DI->getKind() == DK_MIRParser;
+  }
+};
+
+/// Diagnostic information for ISel fallback path.
+class DiagnosticInfoISelFallback : public DiagnosticInfo {
+  /// The function that is concerned by this diagnostic.
+  const Function &Fn;
+
+public:
+  DiagnosticInfoISelFallback(const Function &Fn,
+                             DiagnosticSeverity Severity = DS_Warning)
+      : DiagnosticInfo(DK_ISelFallback, Severity), Fn(Fn) {}
+
+  const Function &getFunction() const { return Fn; }
+
+  void print(DiagnosticPrinter &DP) const override;
+
+  static bool classof(const DiagnosticInfo *DI) {
+    return DI->getKind() == DK_ISelFallback;
   }
 };
 

@@ -137,10 +137,6 @@ struct VerifierSupport {
       : OS(OS), M(M), MST(&M), DL(M.getDataLayout()), Context(M.getContext()) {}
 
 private:
-  template <class NodeTy> void Write(const ilist_iterator<NodeTy> &I) {
-    Write(&*I);
-  }
-
   void Write(const Module *M) {
     *OS << "; ModuleID = '" << M->getModuleIdentifier() << "'\n";
   }
@@ -1116,12 +1112,8 @@ void Verifier::visitDIGlobalVariable(const DIGlobalVariable &N) {
 
   AssertDI(N.getTag() == dwarf::DW_TAG_variable, "invalid tag", &N);
   AssertDI(!N.getName().empty(), "missing global variable name", &N);
-  if (auto *V = N.getRawVariable()) {
-    AssertDI(isa<ConstantAsMetadata>(V) &&
-                 !isa<Function>(cast<ConstantAsMetadata>(V)->getValue()),
-             "invalid global varaible ref", &N, V);
-    visitConstantExprsRecursively(cast<ConstantAsMetadata>(V)->getValue());
-  }
+  if (auto *V = N.getRawExpr())
+    AssertDI(isa<DIExpression>(V), "invalid expression location", &N, V);
   if (auto *Member = N.getRawStaticDataMemberDeclaration()) {
     AssertDI(isa<DIDerivedType>(Member),
              "invalid static data member declaration", &N, Member);
@@ -2117,9 +2109,9 @@ void Verifier::visitFunction(const Function &F) {
         continue;
 
       // FIXME: Once N is canonical, check "SP == &N".
-      Assert(SP->describes(&F),
-             "!dbg attachment points at wrong subprogram for function", N, &F,
-             &I, DL, Scope, SP);
+      AssertDI(SP->describes(&F),
+               "!dbg attachment points at wrong subprogram for function", N, &F,
+               &I, DL, Scope, SP);
     }
 }
 
@@ -2590,15 +2582,20 @@ void Verifier::verifyCallSite(CallSite CS) {
   }
 
   // For each argument of the callsite, if it has the swifterror argument,
-  // make sure the underlying alloca has swifterror as well.
+  // make sure the underlying alloca/parameter it comes from has a swifterror as
+  // well.
   for (unsigned i = 0, e = FTy->getNumParams(); i != e; ++i)
     if (CS.paramHasAttr(i+1, Attribute::SwiftError)) {
       Value *SwiftErrorArg = CS.getArgument(i);
-      auto AI = dyn_cast<AllocaInst>(SwiftErrorArg->stripInBoundsOffsets());
-      Assert(AI, "swifterror argument should come from alloca", AI, I);
-      if (AI)
+      if (auto AI = dyn_cast<AllocaInst>(SwiftErrorArg->stripInBoundsOffsets())) {
         Assert(AI->isSwiftError(),
                "swifterror argument for call has mismatched alloca", AI, I);
+        continue;
+      }
+      auto ArgI = dyn_cast<Argument>(SwiftErrorArg);
+      Assert(ArgI, "swifterror argument should come from an alloca or parameter", SwiftErrorArg, I);
+      Assert(ArgI->hasSwiftErrorAttr(),
+             "swifterror argument for call has mismatched parameter", ArgI, I);
     }
 
   if (FTy->isVarArg()) {
@@ -3873,7 +3870,7 @@ void Verifier::visitIntrinsicCallSite(Intrinsic::ID ID, CallSite CS) {
   default:
     break;
   case Intrinsic::coro_id: {
-    auto *InfoArg = CS.getArgOperand(2)->stripPointerCasts();
+    auto *InfoArg = CS.getArgOperand(3)->stripPointerCasts();
     if (isa<ConstantPointerNull>(InfoArg))
       break;
     auto *GV = dyn_cast<GlobalVariable>(InfoArg);
@@ -4264,10 +4261,10 @@ void Verifier::visitDbgIntrinsic(StringRef Kind, DbgIntrinsicTy &DII) {
   if (!VarSP || !LocSP)
     return; // Broken scope chains are checked elsewhere.
 
-  Assert(VarSP == LocSP, "mismatched subprogram between llvm.dbg." + Kind +
-                             " variable and !dbg attachment",
-         &DII, BB, F, Var, Var->getScope()->getSubprogram(), Loc,
-         Loc->getScope()->getSubprogram());
+  AssertDI(VarSP == LocSP, "mismatched subprogram between llvm.dbg." + Kind +
+                               " variable and !dbg attachment",
+           &DII, BB, F, Var, Var->getScope()->getSubprogram(), Loc,
+           Loc->getScope()->getSubprogram());
 }
 
 static uint64_t getVariableSize(const DILocalVariable &V) {
@@ -4330,9 +4327,9 @@ void Verifier::verifyBitPieceExpression(const DbgInfoIntrinsic &I) {
 
   unsigned PieceSize = E->getBitPieceSize();
   unsigned PieceOffset = E->getBitPieceOffset();
-  Assert(PieceSize + PieceOffset <= VarSize,
+  AssertDI(PieceSize + PieceOffset <= VarSize,
          "piece is larger than or outside of variable", &I, V, E);
-  Assert(PieceSize != VarSize, "piece covers entire variable", &I, V, E);
+  AssertDI(PieceSize != VarSize, "piece covers entire variable", &I, V, E);
 }
 
 void Verifier::verifyCompileUnits() {
@@ -4340,7 +4337,7 @@ void Verifier::verifyCompileUnits() {
   SmallPtrSet<const Metadata *, 2> Listed;
   if (CUs)
     Listed.insert(CUs->op_begin(), CUs->op_end());
-  Assert(
+  AssertDI(
       all_of(CUVisited,
              [&Listed](const Metadata *CU) { return Listed.count(CU); }),
       "All DICompileUnits must be listed in llvm.dbg.cu");

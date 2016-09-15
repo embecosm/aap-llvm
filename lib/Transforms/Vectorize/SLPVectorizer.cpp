@@ -115,22 +115,22 @@ static bool isValidElementType(Type *Ty) {
          !Ty->isPPC_FP128Ty();
 }
 
-/// \returns the parent basic block if all of the instructions in \p VL
-/// are in the same block or null otherwise.
-static BasicBlock *getSameBlock(ArrayRef<Value *> VL) {
+/// \returns true if all of the instructions in \p VL are in the same block or
+/// false otherwise.
+static bool allSameBlock(ArrayRef<Value *> VL) {
   Instruction *I0 = dyn_cast<Instruction>(VL[0]);
   if (!I0)
-    return nullptr;
+    return false;
   BasicBlock *BB = I0->getParent();
   for (int i = 1, e = VL.size(); i < e; i++) {
     Instruction *I = dyn_cast<Instruction>(VL[i]);
     if (!I)
-      return nullptr;
+      return false;
 
     if (BB != I->getParent())
-      return nullptr;
+      return false;
   }
-  return BB;
+  return true;
 }
 
 /// \returns True if all of the values in \p VL are constants.
@@ -224,15 +224,15 @@ static void propagateIRFlags(Value *I, ArrayRef<Value *> VL) {
   }
 }
 
-/// \returns The type that all of the values in \p VL have or null if there
-/// are different types.
-static Type* getSameType(ArrayRef<Value *> VL) {
+/// \returns true if all of the values in \p VL have the same type or false
+/// otherwise.
+static bool allSameType(ArrayRef<Value *> VL) {
   Type *Ty = VL[0]->getType();
   for (int i = 1, e = VL.size(); i < e; i++)
     if (VL[i]->getType() != Ty)
-      return nullptr;
+      return false;
 
-  return Ty;
+  return true;
 }
 
 /// \returns True if Extract{Value,Element} instruction extracts element Idx.
@@ -392,6 +392,10 @@ public:
   ///
   /// \returns number of elements in vector if isomorphism exists, 0 otherwise.
   unsigned canMapToVector(Type *T, const DataLayout &DL) const;
+
+  /// \returns True if the VectorizableTree is both tiny and not fully
+  /// vectorizable. We do not vectorize such trees.
+  bool isTreeTinyAndNotFullyVectorizable();
 
 private:
   struct TreeEntry;
@@ -917,7 +921,7 @@ void BoUpSLP::buildTree(ArrayRef<Value *> Roots,
                         ArrayRef<Value *> UserIgnoreLst) {
   deleteTree();
   UserIgnoreList = UserIgnoreLst;
-  if (!getSameType(Roots))
+  if (!allSameType(Roots))
     return;
   buildTree_rec(Roots, 0);
 
@@ -971,9 +975,8 @@ void BoUpSLP::buildTree(ArrayRef<Value *> Roots,
 
 
 void BoUpSLP::buildTree_rec(ArrayRef<Value *> VL, unsigned Depth) {
-  bool SameTy = allConstant(VL) || getSameType(VL); (void)SameTy;
   bool isAltShuffle = false;
-  assert(SameTy && "Invalid types!");
+  assert((allConstant(VL) || allSameType(VL)) && "Invalid types!");
 
   if (Depth == RecursionMaxDepth) {
     DEBUG(dbgs() << "SLP: Gathering due to max recursion depth.\n");
@@ -1006,7 +1009,7 @@ void BoUpSLP::buildTree_rec(ArrayRef<Value *> VL, unsigned Depth) {
   }
 
   // If all of the operands are identical or constant we have a simple solution.
-  if (allConstant(VL) || isSplat(VL) || !getSameBlock(VL) || !Opcode) {
+  if (allConstant(VL) || isSplat(VL) || !allSameBlock(VL) || !Opcode) {
     DEBUG(dbgs() << "SLP: Gathering due to C,S,B,O. \n");
     newTreeEntry(VL, false);
     return;
@@ -1581,7 +1584,7 @@ int BoUpSLP::getEntryCost(TreeEntry *E) {
     return getGatherCost(E->Scalars);
   }
   unsigned Opcode = getSameOpcode(VL);
-  assert(Opcode && getSameType(VL) && getSameBlock(VL) && "Invalid VL");
+  assert(Opcode && allSameType(VL) && allSameBlock(VL) && "Invalid VL");
   Instruction *VL0 = cast<Instruction>(VL[0]);
   switch (Opcode) {
     case Instruction::PHI: {
@@ -1807,6 +1810,27 @@ bool BoUpSLP::isFullyVectorizableTinyTree() {
   return true;
 }
 
+bool BoUpSLP::isTreeTinyAndNotFullyVectorizable() {
+
+  // We can vectorize the tree if its size is greater than or equal to the
+  // minimum size specified by the MinTreeSize command line option.
+  if (VectorizableTree.size() >= MinTreeSize)
+    return false;
+
+  // If we have a tiny tree (a tree whose size is less than MinTreeSize), we
+  // can vectorize it if we can prove it fully vectorizable.
+  if (isFullyVectorizableTinyTree())
+    return false;
+
+  assert(VectorizableTree.empty()
+             ? ExternalUses.empty()
+             : true && "We shouldn't have any external users");
+
+  // Otherwise, we can't vectorize the tree. It is both tiny and not fully
+  // vectorizable.
+  return true;
+}
+
 int BoUpSLP::getSpillCost() {
   // Walk from the bottom of the tree to the top, tracking which values are
   // live. When we see a call instruction that is not part of our tree,
@@ -1844,9 +1868,9 @@ int BoUpSLP::getSpillCost() {
       );
 
     // Now find the sequence of instructions between PrevInst and Inst.
-    BasicBlock::reverse_iterator InstIt(Inst->getIterator()),
-        PrevInstIt(PrevInst->getIterator());
-    --PrevInstIt;
+    BasicBlock::reverse_iterator InstIt = ++Inst->getIterator().getReverse(),
+                                 PrevInstIt =
+                                     PrevInst->getIterator().getReverse();
     while (InstIt != PrevInstIt) {
       if (PrevInstIt == PrevInst->getParent()->rend()) {
         PrevInstIt = Inst->getParent()->rbegin();
@@ -1873,14 +1897,6 @@ int BoUpSLP::getTreeCost() {
   int Cost = 0;
   DEBUG(dbgs() << "SLP: Calculating cost for tree of size " <<
         VectorizableTree.size() << ".\n");
-
-  // We only vectorize tiny trees if it is fully vectorizable.
-  if (VectorizableTree.size() < MinTreeSize && !isFullyVectorizableTinyTree()) {
-    if (VectorizableTree.empty()) {
-      assert(!ExternalUses.size() && "We should not have any external users");
-    }
-    return INT_MAX;
-  }
 
   unsigned BundleWidth = VectorizableTree[0].Scalars.size();
 
@@ -2210,7 +2226,7 @@ void BoUpSLP::setInsertPointAfterBundle(ArrayRef<Value *> VL) {
 
   // Set the insertion point after the last instruction in the bundle. Set the
   // debug location to Front.
-  Builder.SetInsertPoint(BB, next(BasicBlock::iterator(LastInst)));
+  Builder.SetInsertPoint(BB, ++LastInst->getIterator());
   Builder.SetCurrentDebugLocation(Front->getDebugLoc());
 }
 
@@ -3020,9 +3036,10 @@ bool BoUpSLP::BlockScheduling::extendSchedulingRegion(Value *V) {
   }
   // Search up and down at the same time, because we don't know if the new
   // instruction is above or below the existing scheduling region.
-  BasicBlock::reverse_iterator UpIter(ScheduleStart->getIterator());
+  BasicBlock::reverse_iterator UpIter =
+      ++ScheduleStart->getIterator().getReverse();
   BasicBlock::reverse_iterator UpperEnd = BB->rend();
-  BasicBlock::iterator DownIter(ScheduleEnd);
+  BasicBlock::iterator DownIter = ScheduleEnd->getIterator();
   BasicBlock::iterator LowerEnd = BB->end();
   for (;;) {
     if (++ScheduleRegionSize > ScheduleRegionSizeLimit) {
@@ -3668,8 +3685,7 @@ static bool hasValueBeenRAUWed(ArrayRef<Value *> VL, ArrayRef<WeakVH> VH,
   return !std::equal(VL.begin(), VL.end(), VH.begin());
 }
 
-bool SLPVectorizerPass::vectorizeStoreChain(ArrayRef<Value *> Chain,
-                                            int CostThreshold, BoUpSLP &R,
+bool SLPVectorizerPass::vectorizeStoreChain(ArrayRef<Value *> Chain, BoUpSLP &R,
                                             unsigned VecRegSize) {
   unsigned ChainLen = Chain.size();
   DEBUG(dbgs() << "SLP: Analyzing a store chain of length " << ChainLen
@@ -3698,12 +3714,15 @@ bool SLPVectorizerPass::vectorizeStoreChain(ArrayRef<Value *> Chain,
     ArrayRef<Value *> Operands = Chain.slice(i, VF);
 
     R.buildTree(Operands);
+    if (R.isTreeTinyAndNotFullyVectorizable())
+      continue;
+
     R.computeMinimumValueSizes();
 
     int Cost = R.getTreeCost();
 
     DEBUG(dbgs() << "SLP: Found cost=" << Cost << " for VF=" << VF << "\n");
-    if (Cost < CostThreshold) {
+    if (Cost < -SLPCostThreshold) {
       DEBUG(dbgs() << "SLP: Decided to vectorize cost=" << Cost << "\n");
       R.vectorizeTree();
 
@@ -3717,7 +3736,7 @@ bool SLPVectorizerPass::vectorizeStoreChain(ArrayRef<Value *> Chain,
 }
 
 bool SLPVectorizerPass::vectorizeStores(ArrayRef<StoreInst *> Stores,
-                                        int costThreshold, BoUpSLP &R) {
+                                        BoUpSLP &R) {
   SetVector<StoreInst *> Heads, Tails;
   SmallDenseMap<StoreInst *, StoreInst *> ConsecutiveChain;
 
@@ -3772,8 +3791,9 @@ bool SLPVectorizerPass::vectorizeStores(ArrayRef<StoreInst *> Stores,
 
     // FIXME: Is division-by-2 the correct step? Should we assert that the
     // register size is a power-of-2?
-    for (unsigned Size = R.getMaxVecRegSize(); Size >= R.getMinVecRegSize(); Size /= 2) {
-      if (vectorizeStoreChain(Operands, costThreshold, R, Size)) {
+    for (unsigned Size = R.getMaxVecRegSize(); Size >= R.getMinVecRegSize();
+         Size /= 2) {
+      if (vectorizeStoreChain(Operands, R, Size)) {
         // Mark the vectorized stores so that we don't vectorize them again.
         VectorizedStores.insert(Operands.begin(), Operands.end());
         Changed = true;
@@ -3831,11 +3851,12 @@ bool SLPVectorizerPass::tryToVectorizePair(Value *A, Value *B, BoUpSLP &R) {
 
 bool SLPVectorizerPass::tryToVectorizeList(ArrayRef<Value *> VL, BoUpSLP &R,
                                            ArrayRef<Value *> BuildVector,
-                                           bool allowReorder) {
+                                           bool AllowReorder) {
   if (VL.size() < 2)
     return false;
 
-  DEBUG(dbgs() << "SLP: Vectorizing a list of length = " << VL.size() << ".\n");
+  DEBUG(dbgs() << "SLP: Trying to vectorize a list of length = " << VL.size()
+               << ".\n");
 
   // Check that all of the parts are scalar instructions of the same type.
   Instruction *I0 = dyn_cast<Instruction>(VL[0]);
@@ -3888,7 +3909,7 @@ bool SLPVectorizerPass::tryToVectorizeList(ArrayRef<Value *> VL, BoUpSLP &R,
 
     R.buildTree(Ops, BuildVectorSlice);
     // TODO: check if we can allow reordering for more cases.
-    if (allowReorder && R.shouldReorder()) {
+    if (AllowReorder && R.shouldReorder()) {
       // Conceptually, there is nothing actually preventing us from trying to
       // reorder a larger list. In fact, we do exactly this when vectorizing
       // reductions. However, at this point, we only expect to get here from
@@ -3898,6 +3919,9 @@ bool SLPVectorizerPass::tryToVectorizeList(ArrayRef<Value *> VL, BoUpSLP &R,
       Value *ReorderedOps[] = { Ops[1], Ops[0] };
       R.buildTree(ReorderedOps, None);
     }
+    if (R.isTreeTinyAndNotFullyVectorizable())
+      continue;
+
     R.computeMinimumValueSizes();
     int Cost = R.getTreeCost();
 
@@ -4174,7 +4198,10 @@ public:
       if (V.shouldReorder()) {
         SmallVector<Value *, 8> Reversed(VL.rbegin(), VL.rend());
         V.buildTree(Reversed, ReductionOps);
-      }      
+      }
+      if (V.isTreeTinyAndNotFullyVectorizable())
+        continue;
+
       V.computeMinimumValueSizes();
 
       // Estimate cost.
@@ -4724,8 +4751,7 @@ bool SLPVectorizerPass::vectorizeStoreChains(BoUpSLP &R) {
     //       may cause a significant compile-time increase.
     for (unsigned CI = 0, CE = it->second.size(); CI < CE; CI+=16) {
       unsigned Len = std::min<unsigned>(CE - CI, 16);
-      Changed |= vectorizeStores(makeArrayRef(&it->second[CI], Len),
-                                 -SLPCostThreshold, R);
+      Changed |= vectorizeStores(makeArrayRef(&it->second[CI], Len), R);
     }
   }
   return Changed;

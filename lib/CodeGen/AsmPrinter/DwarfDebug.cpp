@@ -196,7 +196,7 @@ const DIType *DbgVariable::getType() const {
   return Ty;
 }
 
-static LLVM_CONSTEXPR DwarfAccelTable::Atom TypeAtoms[] = {
+static const DwarfAccelTable::Atom TypeAtoms[] = {
     DwarfAccelTable::Atom(dwarf::DW_ATOM_die_offset, dwarf::DW_FORM_data4),
     DwarfAccelTable::Atom(dwarf::DW_ATOM_die_tag, dwarf::DW_FORM_data2),
     DwarfAccelTable::Atom(dwarf::DW_ATOM_type_flags, dwarf::DW_FORM_data1)};
@@ -352,7 +352,8 @@ bool DwarfDebug::isLexicalScopeDIENull(LexicalScope *Scope) {
 template <typename Func> static void forBothCUs(DwarfCompileUnit &CU, Func F) {
   F(CU);
   if (auto *SkelCU = CU.getSkeleton())
-    F(*SkelCU);
+    if (CU.getCUNode()->getSplitDebugInlining())
+      F(*SkelCU);
 }
 
 void DwarfDebug::constructAbstractSubprogramScopeDIE(LexicalScope *Scope) {
@@ -476,12 +477,20 @@ void DwarfDebug::beginModule() {
   MMI->setDebugInfoAvailability(NumDebugCUs > 0);
   SingleCU = NumDebugCUs == 1;
 
+  DenseMap<DIGlobalVariable *, const GlobalVariable *> GVMap;
+  for (const GlobalVariable &Global : M->globals()) {
+    SmallVector<DIGlobalVariable *, 1> GVs;
+    Global.getDebugInfo(GVs);
+    for (auto &GV : GVs)
+      GVMap[GV] = &Global;
+  }
+
   for (DICompileUnit *CUNode : M->debug_compile_units()) {
     DwarfCompileUnit &CU = constructDwarfCompileUnit(CUNode);
     for (auto *IE : CUNode->getImportedEntities())
       CU.addImportedEntity(IE);
     for (auto *GV : CUNode->getGlobalVariables())
-      CU.getOrCreateGlobalVariableDIE(GV);
+      CU.getOrCreateGlobalVariableDIE(GV, GVMap.lookup(GV));
     for (auto *Ty : CUNode->getEnumTypes()) {
       // The enum types array by design contains pointers to
       // MDNodes rather than DIRefs. Unique them here.
@@ -1155,7 +1164,8 @@ void DwarfDebug::endFunction(const MachineFunction *MF) {
 
   TheCU.constructSubprogramScopeDIE(FnScope);
   if (auto *SkelCU = TheCU.getSkeleton())
-    if (!LScopes.getAbstractScopesList().empty())
+    if (!LScopes.getAbstractScopesList().empty() &&
+        TheCU.getCUNode()->getSplitDebugInlining())
       SkelCU->constructSubprogramScopeDIE(FnScope);
 
   // Clear debug info

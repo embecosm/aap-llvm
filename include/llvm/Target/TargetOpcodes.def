@@ -155,6 +155,11 @@ HANDLE_TARGET_OPCODE(PATCHABLE_FUNCTION_ENTER)
 /// instrumentation instructions at runtime.
 HANDLE_TARGET_OPCODE(PATCHABLE_RET)
 
+/// Wraps a tail call instruction and its operands to enable adding nop sleds
+/// either before or after the tail exit. We use this as a disambiguation from
+/// PATCHABLE_RET which specifically only works for return instructions.
+HANDLE_TARGET_OPCODE(PATCHABLE_TAIL_CALL)
+
 /// The following generic opcodes are not supposed to appear after ISel.
 /// This is something we might want to relax, but for now, this is convenient
 /// to produce diagnostics.
@@ -195,6 +200,9 @@ HANDLE_TARGET_OPCODE(G_XOR)
 /// stack-based object.
 HANDLE_TARGET_OPCODE(G_FRAME_INDEX)
 
+/// Generic reference to global value.
+HANDLE_TARGET_OPCODE(G_GLOBAL_VALUE)
+
 /// Generic instruction to extract blocks of bits from the register given
 /// (typically a sub-register COPY after instruction selection).
 HANDLE_TARGET_OPCODE(G_EXTRACT)
@@ -233,7 +241,7 @@ HANDLE_TARGET_OPCODE(G_INTRINSIC)
 HANDLE_TARGET_OPCODE(G_INTRINSIC_W_SIDE_EFFECTS)
 
 /// Generic extension allowing rubbish in high bits.
-HANDLE_TARGET_OPCODE(G_ANYEXTEND)
+HANDLE_TARGET_OPCODE(G_ANYEXT)
 
 /// Generic instruction to discard the high bits of a register. This differs
 /// from (G_EXTRACT val, 0) on its action on vectors: G_TRUNC will truncate
@@ -327,6 +335,9 @@ HANDLE_TARGET_OPCODE(G_SITOFP)
 
 /// Generic unsigned-int to float conversion
 HANDLE_TARGET_OPCODE(G_UITOFP)
+
+/// Generic unsigned-int to float conversion
+HANDLE_TARGET_OPCODE(G_GEP)
 
 /// Generic BRANCH instruction. This is an unconditional branch.
 HANDLE_TARGET_OPCODE(G_BR)

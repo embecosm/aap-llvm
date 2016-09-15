@@ -316,6 +316,13 @@ public:
 
   // Branch analysis.
   bool isUnpredicatedTerminator(const MachineInstr &MI) const override;
+  bool isUnconditionalTailCall(const MachineInstr &MI) const override;
+  bool canMakeTailCallConditional(SmallVectorImpl<MachineOperand> &Cond,
+                                  const MachineInstr &TailCall) const override;
+  void replaceBranchWithTailCall(MachineBasicBlock &MBB,
+                                 SmallVectorImpl<MachineOperand> &Cond,
+                                 const MachineInstr &TailCall) const override;
+
   bool analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
                      MachineBasicBlock *&FBB,
                      SmallVectorImpl<MachineOperand> &Cond,
@@ -328,10 +335,12 @@ public:
                               TargetInstrInfo::MachineBranchPredicate &MBP,
                               bool AllowModify = false) const override;
 
-  unsigned RemoveBranch(MachineBasicBlock &MBB) const override;
-  unsigned InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
+  unsigned removeBranch(MachineBasicBlock &MBB,
+                        int *BytesRemoved = nullptr) const override;
+  unsigned insertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
                         MachineBasicBlock *FBB, ArrayRef<MachineOperand> Cond,
-                        const DebugLoc &DL) const override;
+                        const DebugLoc &DL,
+                        int *BytesAdded = nullptr) const override;
   bool canInsertSelect(const MachineBasicBlock&, ArrayRef<MachineOperand> Cond,
                        unsigned, unsigned, int&, int&, int&) const override;
   void insertSelect(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
@@ -436,7 +445,7 @@ public:
   void getNoopForMachoTarget(MCInst &NopInst) const override;
 
   bool
-  ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const override;
+  reverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const override;
 
   /// isSafeToMoveRegClassDefs - Return true if it's safe to move a machine
   /// instruction that defines the specified register class.
@@ -541,6 +550,8 @@ public:
   ArrayRef<std::pair<unsigned, const char *>>
   getSerializableDirectMachineOperandTargetFlags() const override;
 
+  bool isTailCall(const MachineInstr &Inst) const override;
+
 protected:
   /// Commutes the operands in the given instruction by changing the operands
   /// order and/or changing the instruction's opcode and/or the immediate value
@@ -575,9 +586,6 @@ private:
   /// operand and follow operands form a reference to the stack frame.
   bool isFrameOperand(const MachineInstr &MI, unsigned int Op,
                       int &FrameIndex) const;
-
-  /// Expand the MOVImmSExti8 pseudo-instructions.
-  bool ExpandMOVImmSExti8(MachineInstrBuilder &MIB) const;
 };
 
 } // End llvm namespace

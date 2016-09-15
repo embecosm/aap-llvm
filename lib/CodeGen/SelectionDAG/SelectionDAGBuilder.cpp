@@ -183,7 +183,7 @@ static SDValue getCopyFromParts(SelectionDAG &DAG, const SDLoc &DL,
         Hi = DAG.getNode(ISD::ANY_EXTEND, DL, TotalVT, Hi);
         Hi =
             DAG.getNode(ISD::SHL, DL, TotalVT, Hi,
-                        DAG.getConstant(Lo.getValueType().getSizeInBits(), DL,
+                        DAG.getConstant(Lo.getValueSizeInBits(), DL,
                                         TLI.getPointerTy(DAG.getDataLayout())));
         Lo = DAG.getNode(ISD::ZERO_EXTEND, DL, TotalVT, Lo);
         Val = DAG.getNode(ISD::OR, DL, TotalVT, Lo, Hi);
@@ -2010,7 +2010,8 @@ static SDValue getLoadStackGuard(SelectionDAG &DAG, const SDLoc &DL,
   if (Global) {
     MachinePointerInfo MPInfo(Global);
     MachineInstr::mmo_iterator MemRefs = MF.allocateMemRefsArray(1);
-    auto Flags = MachineMemOperand::MOLoad | MachineMemOperand::MOInvariant;
+    auto Flags = MachineMemOperand::MOLoad | MachineMemOperand::MOInvariant |
+                 MachineMemOperand::MODereferenceable;
     *MemRefs = MF.getMachineMemOperand(MPInfo, Flags, PtrTy.getSizeInBits() / 8,
                                        DAG.getEVTAlignment(PtrTy));
     Node->setMemRefs(MemRefs, MemRefs + 1);
@@ -2637,7 +2638,7 @@ void SelectionDAGBuilder::visitShift(const User &I, unsigned Opcode) {
   // Coerce the shift amount to the right type if we can.
   if (!I.getType()->isVectorTy() && Op2.getValueType() != ShiftTy) {
     unsigned ShiftSize = ShiftTy.getSizeInBits();
-    unsigned Op2Size = Op2.getValueType().getSizeInBits();
+    unsigned Op2Size = Op2.getValueSizeInBits();
     SDLoc DL = getCurSDLoc();
 
     // If the operand is smaller than the shift count type, promote it.
@@ -2648,7 +2649,7 @@ void SelectionDAGBuilder::visitShift(const User &I, unsigned Opcode) {
     // count type has enough bits to represent any shift value, truncate
     // it now. This is a common case and it exposes the truncate to
     // optimization early.
-    else if (ShiftSize >= Log2_32_Ceil(Op2.getValueType().getSizeInBits()))
+    else if (ShiftSize >= Log2_32_Ceil(Op2.getValueSizeInBits()))
       Op2 = DAG.getNode(ISD::TRUNCATE, DL, ShiftTy, Op2);
     // Otherwise we'll need to temporarily settle for some other convenient
     // type.  Type legalization will make adjustments once the shiftee is split.
@@ -2996,6 +2997,7 @@ void SelectionDAGBuilder::visitExtractElement(const User &I) {
 void SelectionDAGBuilder::visitShuffleVector(const User &I) {
   SDValue Src1 = getValue(I.getOperand(0));
   SDValue Src2 = getValue(I.getOperand(1));
+  SDLoc DL = getCurSDLoc();
 
   SmallVector<int, 8> Mask;
   ShuffleVectorInst::getShuffleMask(cast<Constant>(I.getOperand(2)), Mask);
@@ -3007,53 +3009,59 @@ void SelectionDAGBuilder::visitShuffleVector(const User &I) {
   unsigned SrcNumElts = SrcVT.getVectorNumElements();
 
   if (SrcNumElts == MaskNumElts) {
-    setValue(&I, DAG.getVectorShuffle(VT, getCurSDLoc(), Src1, Src2, Mask));
+    setValue(&I, DAG.getVectorShuffle(VT, DL, Src1, Src2, Mask));
     return;
   }
 
   // Normalize the shuffle vector since mask and vector length don't match.
-  if (SrcNumElts < MaskNumElts && MaskNumElts % SrcNumElts == 0) {
-    // Mask is longer than the source vectors and is a multiple of the source
-    // vectors.  We can use concatenate vector to make the mask and vectors
-    // lengths match.
+  if (SrcNumElts < MaskNumElts) {
+    // Mask is longer than the source vectors. We can use concatenate vector to
+    // make the mask and vectors lengths match.
 
-    unsigned NumConcat = MaskNumElts / SrcNumElts;
-
-    // Check if the shuffle is some kind of concatenation of the input vectors.
-    bool IsConcat = true;
-    SmallVector<int, 8> ConcatSrcs(NumConcat, -1);
-    for (unsigned i = 0; i != MaskNumElts; ++i) {
-      int Idx = Mask[i];
-      if (Idx < 0)
-        continue;
-      // Ensure the indices in each SrcVT sized piece are sequential and that
-      // the same source is used for the whole piece.
-      if ((Idx % SrcNumElts != (i % SrcNumElts)) ||
-          (ConcatSrcs[i / SrcNumElts] >= 0 &&
-           ConcatSrcs[i / SrcNumElts] != (int)(Idx / SrcNumElts))) {
-        IsConcat = false;
-        break;
+    if (MaskNumElts % SrcNumElts == 0) {
+      // Mask length is a multiple of the source vector length.
+      // Check if the shuffle is some kind of concatenation of the input
+      // vectors.
+      unsigned NumConcat = MaskNumElts / SrcNumElts;
+      bool IsConcat = true;
+      SmallVector<int, 8> ConcatSrcs(NumConcat, -1);
+      for (unsigned i = 0; i != MaskNumElts; ++i) {
+        int Idx = Mask[i];
+        if (Idx < 0)
+          continue;
+        // Ensure the indices in each SrcVT sized piece are sequential and that
+        // the same source is used for the whole piece.
+        if ((Idx % SrcNumElts != (i % SrcNumElts)) ||
+            (ConcatSrcs[i / SrcNumElts] >= 0 &&
+             ConcatSrcs[i / SrcNumElts] != (int)(Idx / SrcNumElts))) {
+          IsConcat = false;
+          break;
+        }
+        // Remember which source this index came from.
+        ConcatSrcs[i / SrcNumElts] = Idx / SrcNumElts;
       }
-      // Remember which source this index came from.
-      ConcatSrcs[i / SrcNumElts] = Idx / SrcNumElts;
+
+      // The shuffle is concatenating multiple vectors together. Just emit
+      // a CONCAT_VECTORS operation.
+      if (IsConcat) {
+        SmallVector<SDValue, 8> ConcatOps;
+        for (auto Src : ConcatSrcs) {
+          if (Src < 0)
+            ConcatOps.push_back(DAG.getUNDEF(SrcVT));
+          else if (Src == 0)
+            ConcatOps.push_back(Src1);
+          else
+            ConcatOps.push_back(Src2);
+        }
+        setValue(&I, DAG.getNode(ISD::CONCAT_VECTORS, DL, VT, ConcatOps));
+        return;
+      }
     }
 
-    // The shuffle is concatenating multiple vectors together. Just emit
-    // a CONCAT_VECTORS operation.
-    if (IsConcat) {
-      SmallVector<SDValue, 8> ConcatOps;
-      for (auto Src : ConcatSrcs) {
-        if (Src < 0)
-          ConcatOps.push_back(DAG.getUNDEF(SrcVT));
-        else if (Src == 0)
-          ConcatOps.push_back(Src1);
-        else
-          ConcatOps.push_back(Src2);
-      }
-      setValue(&I, DAG.getNode(ISD::CONCAT_VECTORS, getCurSDLoc(),
-                               VT, ConcatOps));
-      return;
-    }
+    unsigned PaddedMaskNumElts = alignTo(MaskNumElts, SrcNumElts);
+    unsigned NumConcat = PaddedMaskNumElts / SrcNumElts;
+    EVT PaddedVT = EVT::getVectorVT(*DAG.getContext(), VT.getScalarType(),
+                                    PaddedMaskNumElts);
 
     // Pad both vectors with undefs to make them the same length as the mask.
     SDValue UndefVal = DAG.getUNDEF(SrcVT);
@@ -3063,24 +3071,32 @@ void SelectionDAGBuilder::visitShuffleVector(const User &I) {
     MOps1[0] = Src1;
     MOps2[0] = Src2;
 
-    Src1 = Src1.isUndef() ? DAG.getUNDEF(VT)
-                          : DAG.getNode(ISD::CONCAT_VECTORS,
-                                        getCurSDLoc(), VT, MOps1);
-    Src2 = Src2.isUndef() ? DAG.getUNDEF(VT)
-                          : DAG.getNode(ISD::CONCAT_VECTORS,
-                                        getCurSDLoc(), VT, MOps2);
+    Src1 = Src1.isUndef()
+               ? DAG.getUNDEF(PaddedVT)
+               : DAG.getNode(ISD::CONCAT_VECTORS, DL, PaddedVT, MOps1);
+    Src2 = Src2.isUndef()
+               ? DAG.getUNDEF(PaddedVT)
+               : DAG.getNode(ISD::CONCAT_VECTORS, DL, PaddedVT, MOps2);
 
     // Readjust mask for new input vector length.
-    SmallVector<int, 8> MappedOps;
+    SmallVector<int, 8> MappedOps(PaddedMaskNumElts, -1);
     for (unsigned i = 0; i != MaskNumElts; ++i) {
       int Idx = Mask[i];
       if (Idx >= (int)SrcNumElts)
-        Idx -= SrcNumElts - MaskNumElts;
-      MappedOps.push_back(Idx);
+        Idx -= SrcNumElts - PaddedMaskNumElts;
+      MappedOps[i] = Idx;
     }
 
-    setValue(&I, DAG.getVectorShuffle(VT, getCurSDLoc(), Src1, Src2,
-                                      MappedOps));
+    SDValue Result = DAG.getVectorShuffle(PaddedVT, DL, Src1, Src2, MappedOps);
+
+    // If the concatenated vector was padded, extract a subvector with the
+    // correct number of elements.
+    if (MaskNumElts != PaddedMaskNumElts)
+      Result = DAG.getNode(
+          ISD::EXTRACT_SUBVECTOR, DL, VT, Result,
+          DAG.getConstant(0, DL, TLI.getVectorIdxTy(DAG.getDataLayout())));
+
+    setValue(&I, Result);
     return;
   }
 
@@ -3139,10 +3155,9 @@ void SelectionDAGBuilder::visitShuffleVector(const User &I) {
         if (RangeUse[Input] == 0)
           Src = DAG.getUNDEF(VT);
         else {
-          SDLoc dl = getCurSDLoc();
           Src = DAG.getNode(
-              ISD::EXTRACT_SUBVECTOR, dl, VT, Src,
-              DAG.getConstant(StartIdx[Input], dl,
+              ISD::EXTRACT_SUBVECTOR, DL, VT, Src,
+              DAG.getConstant(StartIdx[Input], DL,
                               TLI.getVectorIdxTy(DAG.getDataLayout())));
         }
       }
@@ -3160,8 +3175,7 @@ void SelectionDAGBuilder::visitShuffleVector(const User &I) {
         MappedOps.push_back(Idx);
       }
 
-      setValue(&I, DAG.getVectorShuffle(VT, getCurSDLoc(), Src1, Src2,
-                                        MappedOps));
+      setValue(&I, DAG.getVectorShuffle(VT, DL, Src1, Src2, MappedOps));
       return;
     }
   }
@@ -3171,7 +3185,6 @@ void SelectionDAGBuilder::visitShuffleVector(const User &I) {
   // to insert and build vector.
   EVT EltVT = VT.getVectorElementType();
   EVT IdxVT = TLI.getVectorIdxTy(DAG.getDataLayout());
-  SDLoc dl = getCurSDLoc();
   SmallVector<SDValue,8> Ops;
   for (unsigned i = 0; i != MaskNumElts; ++i) {
     int Idx = Mask[i];
@@ -3183,14 +3196,14 @@ void SelectionDAGBuilder::visitShuffleVector(const User &I) {
       SDValue &Src = Idx < (int)SrcNumElts ? Src1 : Src2;
       if (Idx >= (int)SrcNumElts) Idx -= SrcNumElts;
 
-      Res = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl,
-                        EltVT, Src, DAG.getConstant(Idx, dl, IdxVT));
+      Res = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL,
+                        EltVT, Src, DAG.getConstant(Idx, DL, IdxVT));
     }
 
     Ops.push_back(Res);
   }
 
-  setValue(&I, DAG.getNode(ISD::BUILD_VECTOR, dl, VT, Ops));
+  setValue(&I, DAG.getNode(ISD::BUILD_VECTOR, DL, VT, Ops));
 }
 
 void SelectionDAGBuilder::visitInsertValue(const InsertValueInst &I) {
@@ -3461,17 +3474,8 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
 
   bool isVolatile = I.isVolatile();
   bool isNonTemporal = I.getMetadata(LLVMContext::MD_nontemporal) != nullptr;
-
-  // The IR notion of invariant_load only guarantees that all *non-faulting*
-  // invariant loads result in the same value.  The MI notion of invariant load
-  // guarantees that the load can be legally moved to any location within its
-  // containing function.  The MI notion of invariant_load is stronger than the
-  // IR notion of invariant_load -- an MI invariant_load is an IR invariant_load
-  // with a guarantee that the location being loaded from is dereferenceable
-  // throughout the function's lifetime.
-
-  bool isInvariant = I.getMetadata(LLVMContext::MD_invariant_load) != nullptr &&
-                     isDereferenceablePointer(SV, DAG.getDataLayout());
+  bool isInvariant = I.getMetadata(LLVMContext::MD_invariant_load) != nullptr;
+  bool isDereferenceable = isDereferenceablePointer(SV, DAG.getDataLayout());
   unsigned Alignment = I.getAlignment();
 
   AAMDNodes AAInfo;
@@ -3539,6 +3543,8 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
       MMOFlags |= MachineMemOperand::MONonTemporal;
     if (isInvariant)
       MMOFlags |= MachineMemOperand::MOInvariant;
+    if (isDereferenceable)
+      MMOFlags |= MachineMemOperand::MODereferenceable;
 
     SDValue L = DAG.getLoad(ValueVTs[i], dl, Root, A,
                             MachinePointerInfo(SV, Offsets[i]), Alignment,
@@ -5023,18 +5029,9 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     DAG.getMachineFunction().getMMI().setCallsUnwindInit(true);
     return nullptr;
   case Intrinsic::eh_dwarf_cfa: {
-    SDValue CfaArg = DAG.getSExtOrTrunc(getValue(I.getArgOperand(0)), sdl,
-                                        TLI.getPointerTy(DAG.getDataLayout()));
-    SDValue Offset = DAG.getNode(ISD::ADD, sdl,
-                                 CfaArg.getValueType(),
-                                 DAG.getNode(ISD::FRAME_TO_ARGS_OFFSET, sdl,
-                                             CfaArg.getValueType()),
-                                 CfaArg);
-    SDValue FA = DAG.getNode(
-        ISD::FRAMEADDR, sdl, TLI.getPointerTy(DAG.getDataLayout()),
-        DAG.getConstant(0, sdl, TLI.getPointerTy(DAG.getDataLayout())));
-    setValue(&I, DAG.getNode(ISD::ADD, sdl, FA.getValueType(),
-                             FA, Offset));
+    setValue(&I, DAG.getNode(ISD::EH_DWARF_CFA, sdl,
+                             TLI.getPointerTy(DAG.getDataLayout()),
+                             getValue(I.getArgOperand(0))));
     return nullptr;
   }
   case Intrinsic::eh_sjlj_callsite: {
@@ -8324,14 +8321,14 @@ void SelectionDAGBuilder::updateDAGForMaybeTailCall(SDValue MaybeTC) {
 }
 
 bool SelectionDAGBuilder::isDense(const CaseClusterVector &Clusters,
-                                  unsigned *TotalCases, unsigned First,
-                                  unsigned Last,
-                                  unsigned Density) {
+                                  const SmallVectorImpl<unsigned> &TotalCases,
+                                  unsigned First, unsigned Last,
+                                  unsigned Density) const {
   assert(Last >= First);
   assert(TotalCases[Last] >= TotalCases[First]);
 
-  APInt LowCase = Clusters[First].Low->getValue();
-  APInt HighCase = Clusters[Last].High->getValue();
+  const APInt &LowCase = Clusters[First].Low->getValue();
+  const APInt &HighCase = Clusters[Last].High->getValue();
   assert(LowCase.getBitWidth() == HighCase.getBitWidth());
 
   // FIXME: A range of consecutive cases has 100% density, but only requires one
@@ -8360,7 +8357,7 @@ static inline bool areJTsAllowed(const TargetLowering &TLI,
          TLI.isOperationLegalOrCustom(ISD::BRIND, MVT::Other);
 }
 
-bool SelectionDAGBuilder::buildJumpTable(CaseClusterVector &Clusters,
+bool SelectionDAGBuilder::buildJumpTable(const CaseClusterVector &Clusters,
                                          unsigned First, unsigned Last,
                                          const SwitchInst *SI,
                                          MachineBasicBlock *DefaultMBB,
@@ -8379,12 +8376,12 @@ bool SelectionDAGBuilder::buildJumpTable(CaseClusterVector &Clusters,
   for (unsigned I = First; I <= Last; ++I) {
     assert(Clusters[I].Kind == CC_Range);
     Prob += Clusters[I].Prob;
-    APInt Low = Clusters[I].Low->getValue();
-    APInt High = Clusters[I].High->getValue();
+    const APInt &Low = Clusters[I].Low->getValue();
+    const APInt &High = Clusters[I].High->getValue();
     NumCmps += (Low == High) ? 1 : 2;
     if (I != First) {
       // Fill the gap between this and the previous cluster.
-      APInt PreviousHigh = Clusters[I - 1].High->getValue();
+      const APInt &PreviousHigh = Clusters[I - 1].High->getValue();
       assert(PreviousHigh.slt(Low));
       uint64_t Gap = (Low - PreviousHigh).getLimitedValue() - 1;
       for (uint64_t J = 0; J < Gap; J++)
@@ -8459,8 +8456,8 @@ void SelectionDAGBuilder::findJumpTables(CaseClusterVector &Clusters,
   SmallVector<unsigned, 8> TotalCases(N);
 
   for (unsigned i = 0; i < N; ++i) {
-    APInt Hi = Clusters[i].High->getValue();
-    APInt Lo = Clusters[i].Low->getValue();
+    const APInt &Hi = Clusters[i].High->getValue();
+    const APInt &Lo = Clusters[i].Low->getValue();
     TotalCases[i] = (Hi - Lo).getLimitedValue() + 1;
     if (i != 0)
       TotalCases[i] += TotalCases[i - 1];
@@ -8470,7 +8467,7 @@ void SelectionDAGBuilder::findJumpTables(CaseClusterVector &Clusters,
   if (DefaultMBB->getParent()->getFunction()->optForSize())
     MinDensity = OptsizeJumpTableDensity;
   if (N >= MinJumpTableSize
-      && isDense(Clusters, &TotalCases[0], 0, N - 1, MinDensity)) {
+      && isDense(Clusters, TotalCases, 0, N - 1, MinDensity)) {
     // Cheap case: the whole range might be suitable for jump table.
     CaseCluster JTCluster;
     if (buildJumpTable(Clusters, 0, N - 1, SI, DefaultMBB, JTCluster)) {
@@ -8515,7 +8512,7 @@ void SelectionDAGBuilder::findJumpTables(CaseClusterVector &Clusters,
     // Search for a solution that results in fewer partitions.
     for (int64_t j = N - 1; j > i; j--) {
       // Try building a partition from Clusters[i..j].
-      if (isDense(Clusters, &TotalCases[0], i, j, MinDensity)) {
+      if (isDense(Clusters, TotalCases, i, j, MinDensity)) {
         unsigned NumPartitions = 1 + (j == N - 1 ? 0 : MinPartitions[j + 1]);
         bool IsTable = j - i + 1 >= MinJumpTableSize;
         unsigned Tables = IsTable + (j == N - 1 ? 0 : NumTables[j + 1]);
@@ -9234,7 +9231,8 @@ void SelectionDAGBuilder::visitSwitch(const SwitchInst &SI) {
     WorkList.pop_back();
     unsigned NumClusters = W.LastCluster - W.FirstCluster + 1;
 
-    if (NumClusters > 3 && TM.getOptLevel() != CodeGenOpt::None) {
+    if (NumClusters > 3 && TM.getOptLevel() != CodeGenOpt::None &&
+        !DefaultMBB->getParent()->getFunction()->optForMinSize()) {
       // For optimized builds, lower large range as a balanced binary tree.
       splitWorkItem(WorkList, W, SI.getCondition(), SwitchMBB);
       continue;

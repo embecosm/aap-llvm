@@ -31,6 +31,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Vectorize.h"
 
 using namespace llvm;
@@ -628,7 +629,7 @@ bool Vectorizer::vectorizeChains(InstrListMap &Map) {
 
 bool Vectorizer::vectorizeInstructions(ArrayRef<Instruction *> Instrs) {
   DEBUG(dbgs() << "LSV: Vectorizing " << Instrs.size() << " instructions.\n");
-  SmallSetVector<int, 16> Heads, Tails;
+  SmallVector<int, 16> Heads, Tails;
   int ConsecutiveChain[64];
 
   // Do a quadratic search on all of the given stores and find all of the pairs
@@ -647,8 +648,8 @@ bool Vectorizer::vectorizeInstructions(ArrayRef<Instruction *> Instrs) {
             continue; // Should not insert.
         }
 
-        Tails.insert(j);
-        Heads.insert(i);
+        Tails.push_back(j);
+        Heads.push_back(i);
         ConsecutiveChain[i] = j;
       }
     }
@@ -660,21 +661,21 @@ bool Vectorizer::vectorizeInstructions(ArrayRef<Instruction *> Instrs) {
   for (int Head : Heads) {
     if (InstructionsProcessed.count(Instrs[Head]))
       continue;
-    bool longerChainExists = false;
+    bool LongerChainExists = false;
     for (unsigned TIt = 0; TIt < Tails.size(); TIt++)
       if (Head == Tails[TIt] &&
           !InstructionsProcessed.count(Instrs[Heads[TIt]])) {
-        longerChainExists = true;
+        LongerChainExists = true;
         break;
       }
-    if (longerChainExists)
+    if (LongerChainExists)
       continue;
 
     // We found an instr that starts a chain. Now follow the chain and try to
     // vectorize it.
     SmallVector<Instruction *, 16> Operands;
     int I = Head;
-    while (I != -1 && (Tails.count(I) || Heads.count(I))) {
+    while (I != -1 && (is_contained(Tails, I) || is_contained(Heads, I))) {
       if (InstructionsProcessed.count(Instrs[I]))
         break;
 
@@ -742,7 +743,8 @@ bool Vectorizer::vectorizeStoreChain(
 
   // Store size should be 1B, 2B or multiple of 4B.
   // TODO: Target hook for size constraint?
-  unsigned SzInBytes = (Sz / 8) * ChainSize;
+  unsigned EltSzInBytes = Sz / 8;
+  unsigned SzInBytes = EltSzInBytes * ChainSize;
   if (SzInBytes > 2 && SzInBytes % 4 != 0) {
     DEBUG(dbgs() << "LSV: Size should be 1B, 2B "
                     "or multiple of 4B. Splitting.\n");
@@ -790,15 +792,11 @@ bool Vectorizer::vectorizeStoreChain(
     if (S0->getPointerAddressSpace() != 0)
       return false;
 
-    // If we're storing to an object on the stack, we control its alignment,
-    // so we can cheat and change it!
-    Value *V = GetUnderlyingObject(S0->getPointerOperand(), DL);
-    if (AllocaInst *AI = dyn_cast_or_null<AllocaInst>(V)) {
-      AI->setAlignment(StackAdjustedAlignment);
-      Alignment = StackAdjustedAlignment;
-    } else {
+    unsigned NewAlign = getOrEnforceKnownAlignment(S0->getPointerOperand(),
+                                                   StackAdjustedAlignment,
+                                                   DL, S0, nullptr, &DT);
+    if (NewAlign < StackAdjustedAlignment)
       return false;
-    }
   }
 
   BasicBlock::iterator First, Last;
@@ -899,7 +897,8 @@ bool Vectorizer::vectorizeLoadChain(
 
   // Load size should be 1B, 2B or multiple of 4B.
   // TODO: Should size constraint be a target hook?
-  unsigned SzInBytes = (Sz / 8) * ChainSize;
+  unsigned EltSzInBytes = Sz / 8;
+  unsigned SzInBytes = EltSzInBytes * ChainSize;
   if (SzInBytes > 2 && SzInBytes % 4 != 0) {
     DEBUG(dbgs() << "LSV: Size should be 1B, 2B "
                     "or multiple of 4B. Splitting.\n");
@@ -940,15 +939,13 @@ bool Vectorizer::vectorizeLoadChain(
     if (L0->getPointerAddressSpace() != 0)
       return false;
 
-    // If we're loading from an object on the stack, we control its alignment,
-    // so we can cheat and change it!
-    Value *V = GetUnderlyingObject(L0->getPointerOperand(), DL);
-    if (AllocaInst *AI = dyn_cast_or_null<AllocaInst>(V)) {
-      AI->setAlignment(StackAdjustedAlignment);
-      Alignment = StackAdjustedAlignment;
-    } else {
+    unsigned NewAlign = getOrEnforceKnownAlignment(L0->getPointerOperand(),
+                                                   StackAdjustedAlignment,
+                                                   DL, L0, nullptr, &DT);
+    if (NewAlign < StackAdjustedAlignment)
       return false;
-    }
+
+    Alignment = NewAlign;
   }
 
   DEBUG({
@@ -983,7 +980,8 @@ bool Vectorizer::vectorizeLoadChain(
         Instruction *UI = cast<Instruction>(Use);
         unsigned Idx = cast<ConstantInt>(UI->getOperand(1))->getZExtValue();
         unsigned NewIdx = Idx + I * VecWidth;
-        Value *V = Builder.CreateExtractElement(LI, Builder.getInt32(NewIdx));
+        Value *V = Builder.CreateExtractElement(LI, Builder.getInt32(NewIdx),
+                                                UI->getName());
         if (V->getType() != UI->getType())
           V = Builder.CreateBitCast(V, UI->getType());
 
@@ -1002,8 +1000,9 @@ bool Vectorizer::vectorizeLoadChain(
       I->eraseFromParent();
   } else {
     for (unsigned I = 0, E = Chain.size(); I != E; ++I) {
-      Value *V = Builder.CreateExtractElement(LI, Builder.getInt32(I));
       Value *CV = Chain[I];
+      Value *V =
+          Builder.CreateExtractElement(LI, Builder.getInt32(I), CV->getName());
       if (V->getType() != CV->getType()) {
         V = Builder.CreateBitOrPointerCast(V, CV->getType());
       }
@@ -1027,6 +1026,7 @@ bool Vectorizer::accessIsMisaligned(unsigned SzInBytes, unsigned AddressSpace,
                                     unsigned Alignment) {
   if (Alignment % SzInBytes == 0)
     return false;
+
   bool Fast = false;
   bool Allows = TTI.allowsMisalignedMemoryAccesses(F.getParent()->getContext(),
                                                    SzInBytes * 8, AddressSpace,

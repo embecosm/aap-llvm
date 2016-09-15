@@ -119,7 +119,7 @@ TargetInstrInfo::ReplaceTailWithBranchTo(MachineBasicBlock::iterator Tail,
 
   // If MBB isn't immediately before MBB, insert a branch to it.
   if (++MachineFunction::iterator(MBB) != MachineFunction::iterator(NewDest))
-    InsertBranch(*MBB, NewDest, nullptr, SmallVector<MachineOperand, 0>(), DL);
+    insertBranch(*MBB, NewDest, nullptr, SmallVector<MachineOperand, 0>(), DL);
   MBB->addSuccessor(NewDest);
 }
 
@@ -437,13 +437,20 @@ static MachineInstr *foldPatchpoint(MachineFunction &MF, MachineInstr &MI,
                                     const TargetInstrInfo &TII) {
   unsigned StartIdx = 0;
   switch (MI.getOpcode()) {
-  case TargetOpcode::STACKMAP:
-    StartIdx = 2; // Skip ID, nShadowBytes.
+  case TargetOpcode::STACKMAP: {
+    // StackMapLiveValues are foldable
+    StartIdx = StackMapOpers(&MI).getVarIdx();
     break;
+  }
   case TargetOpcode::PATCHPOINT: {
-    // For PatchPoint, the call args are not foldable.
-    PatchPointOpers opers(&MI);
-    StartIdx = opers.getVarIdx();
+    // For PatchPoint, the call args are not foldable (even if reported in the
+    // stackmap e.g. via anyregcc).
+    StartIdx = PatchPointOpers(&MI).getVarIdx();
+    break;
+  }
+  case TargetOpcode::STATEPOINT: {
+    // For statepoints, fold deopt and gc arguments, but not call arguments.
+    StartIdx = StatepointOpers(&MI).getVarIdx();
     break;
   }
   default:
@@ -511,7 +518,8 @@ MachineInstr *TargetInstrInfo::foldMemoryOperand(MachineInstr &MI,
   MachineInstr *NewMI = nullptr;
 
   if (MI.getOpcode() == TargetOpcode::STACKMAP ||
-      MI.getOpcode() == TargetOpcode::PATCHPOINT) {
+      MI.getOpcode() == TargetOpcode::PATCHPOINT ||
+      MI.getOpcode() == TargetOpcode::STATEPOINT) {
     // Fold stackmap/patchpoint.
     NewMI = foldPatchpoint(MF, MI, Ops, FI, *this);
     if (NewMI)
@@ -792,7 +800,8 @@ MachineInstr *TargetInstrInfo::foldMemoryOperand(MachineInstr &MI,
   int FrameIndex = 0;
 
   if ((MI.getOpcode() == TargetOpcode::STACKMAP ||
-       MI.getOpcode() == TargetOpcode::PATCHPOINT) &&
+       MI.getOpcode() == TargetOpcode::PATCHPOINT ||
+       MI.getOpcode() == TargetOpcode::STATEPOINT) &&
       isLoadFromStackSlot(LoadMI, FrameIndex)) {
     // Fold stackmap/patchpoint.
     NewMI = foldPatchpoint(MF, MI, Ops, FrameIndex, *this);
@@ -857,7 +866,7 @@ bool TargetInstrInfo::isReallyTriviallyReMaterializableGeneric(
     return false;
 
   // Avoid instructions which load from potentially varying memory.
-  if (MI.mayLoad() && !MI.isInvariantLoad(AA))
+  if (MI.mayLoad() && !MI.isDereferenceableInvariantLoad(AA))
     return false;
 
   // If any of the registers accessed are non-constant, conservatively assume

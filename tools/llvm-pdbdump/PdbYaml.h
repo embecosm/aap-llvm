@@ -26,6 +26,8 @@ namespace llvm {
 namespace pdb {
 
 namespace yaml {
+struct SerializationContext;
+
 struct MSFHeaders {
   msf::SuperBlock SuperBlock;
   uint32_t NumDirectoryBlocks;
@@ -70,8 +72,11 @@ struct PdbDbiStream {
 };
 
 struct PdbTpiRecord {
-  std::vector<uint8_t> RecordData;
   codeview::CVType Record;
+};
+
+struct PdbTpiFieldListRecord {
+  codeview::CVMemberRecord Record;
 };
 
 struct PdbTpiStream {
@@ -80,12 +85,16 @@ struct PdbTpiStream {
 };
 
 struct PdbObject {
+  explicit PdbObject(BumpPtrAllocator &Allocator) : Allocator(Allocator) {}
+
   Optional<MSFHeaders> Headers;
   Optional<std::vector<uint32_t>> StreamSizes;
   Optional<std::vector<StreamBlockList>> StreamMap;
   Optional<PdbInfoStream> PdbStream;
   Optional<PdbDbiStream> DbiStream;
   Optional<PdbTpiStream> TpiStream;
+
+  BumpPtrAllocator &Allocator;
 };
 }
 }
@@ -118,8 +127,10 @@ template <> struct MappingTraits<pdb::yaml::PdbDbiStream> {
   static void mapping(IO &IO, pdb::yaml::PdbDbiStream &Obj);
 };
 
-template <> struct MappingTraits<pdb::yaml::PdbTpiStream> {
-  static void mapping(IO &IO, pdb::yaml::PdbTpiStream &Obj);
+template <>
+struct MappingContextTraits<pdb::yaml::PdbTpiStream, llvm::BumpPtrAllocator> {
+  static void mapping(IO &IO, pdb::yaml::PdbTpiStream &Obj,
+                      llvm::BumpPtrAllocator &Allocator);
 };
 
 template <> struct MappingTraits<pdb::yaml::NamedStreamMapping> {
@@ -130,8 +141,11 @@ template <> struct MappingTraits<pdb::yaml::PdbDbiModuleInfo> {
   static void mapping(IO &IO, pdb::yaml::PdbDbiModuleInfo &Obj);
 };
 
-template <> struct MappingTraits<pdb::yaml::PdbTpiRecord> {
-  static void mapping(IO &IO, pdb::yaml::PdbTpiRecord &Obj);
+template <>
+struct MappingContextTraits<pdb::yaml::PdbTpiRecord,
+                            pdb::yaml::SerializationContext> {
+  static void mapping(IO &IO, pdb::yaml::PdbTpiRecord &Obj,
+                      pdb::yaml::SerializationContext &Context);
 };
 }
 }

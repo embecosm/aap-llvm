@@ -40,7 +40,8 @@ using namespace llvm::codeview;
 using namespace llvm::msf;
 
 CodeViewDebug::CodeViewDebug(AsmPrinter *AP)
-    : DebugHandlerBase(AP), OS(*Asm->OutStreamer), CurFn(nullptr) {
+    : DebugHandlerBase(AP), OS(*Asm->OutStreamer), Allocator(),
+      TypeTable(Allocator), CurFn(nullptr) {
   // If module doesn't have named metadata anchors or COFF debug section
   // is not available, skip any debug info related stuff.
   if (!MMI->getModule()->getNamedMetadata("llvm.dbg.cu") ||
@@ -111,8 +112,9 @@ unsigned CodeViewDebug::maybeRecordFile(const DIFile *F) {
   if (Insertion.second) {
     // We have to compute the full filepath and emit a .cv_file directive.
     StringRef FullPath = getFullFilepath(F);
-    NextId = OS.EmitCVFileDirective(NextId, FullPath);
-    assert(NextId == FileIdMap.size() && ".cv_file directive failed");
+    bool Success = OS.EmitCVFileDirective(NextId, FullPath);
+    (void)Success;
+    assert(Success && ".cv_file directive failed");
   }
   return Insertion.first->second;
 }
@@ -123,7 +125,16 @@ CodeViewDebug::getInlineSite(const DILocation *InlinedAt,
   auto SiteInsertion = CurFn->InlineSites.insert({InlinedAt, InlineSite()});
   InlineSite *Site = &SiteInsertion.first->second;
   if (SiteInsertion.second) {
+    unsigned ParentFuncId = CurFn->FuncId;
+    if (const DILocation *OuterIA = InlinedAt->getInlinedAt())
+      ParentFuncId =
+          getInlineSite(OuterIA, InlinedAt->getScope()->getSubprogram())
+              .SiteFuncId;
+
     Site->SiteFuncId = NextFuncId++;
+    OS.EmitCVInlineSiteIdDirective(
+        Site->SiteFuncId, ParentFuncId, maybeRecordFile(InlinedAt->getFile()),
+        InlinedAt->getLine(), InlinedAt->getColumn(), SMLoc());
     Site->Inlinee = Inlinee;
     InlinedSubprograms.insert(Inlinee);
     getFuncIdForSubprogram(Inlinee);
@@ -356,8 +367,8 @@ void CodeViewDebug::maybeRecordLocation(const DebugLoc &DL,
   }
 
   OS.EmitCVLocDirective(FuncId, FileId, DL.getLine(), DL.getCol(),
-                        /*PrologueEnd=*/false,
-                        /*IsStmt=*/false, DL->getFilename());
+                        /*PrologueEnd=*/false, /*IsStmt=*/false,
+                        DL->getFilename(), SMLoc());
 }
 
 void CodeViewDebug::emitCodeViewMagicVersion() {
@@ -528,17 +539,6 @@ void CodeViewDebug::emitInlineeLinesSubsection() {
   endCVSubsection(InlineEnd);
 }
 
-void CodeViewDebug::collectInlineSiteChildren(
-    SmallVectorImpl<unsigned> &Children, const FunctionInfo &FI,
-    const InlineSite &Site) {
-  for (const DILocation *ChildSiteLoc : Site.ChildSites) {
-    auto I = FI.InlineSites.find(ChildSiteLoc);
-    const InlineSite &ChildSite = I->second;
-    Children.push_back(ChildSite.SiteFuncId);
-    collectInlineSiteChildren(Children, FI, ChildSite);
-  }
-}
-
 void CodeViewDebug::emitInlinedCallSite(const FunctionInfo &FI,
                                         const DILocation *InlinedAt,
                                         const InlineSite &Site) {
@@ -564,11 +564,9 @@ void CodeViewDebug::emitInlinedCallSite(const FunctionInfo &FI,
 
   unsigned FileId = maybeRecordFile(Site.Inlinee->getFile());
   unsigned StartLineNum = Site.Inlinee->getLine();
-  SmallVector<unsigned, 3> SecondaryFuncIds;
-  collectInlineSiteChildren(SecondaryFuncIds, FI, Site);
 
   OS.EmitCVInlineLinetableDirective(Site.SiteFuncId, FileId, StartLineNum,
-                                    FI.Begin, FI.End, SecondaryFuncIds);
+                                    FI.Begin, FI.End);
 
   OS.EmitLabel(InlineEnd);
 
@@ -644,13 +642,13 @@ void CodeViewDebug::emitDebugInfoForFunction(const Function *GV,
     OS.emitAbsoluteSymbolDiff(ProcRecordEnd, ProcRecordBegin, 2);
     OS.EmitLabel(ProcRecordBegin);
 
-  if (GV->hasLocalLinkage()) {
-    OS.AddComment("Record kind: S_LPROC32_ID");
-    OS.EmitIntValue(unsigned(SymbolKind::S_LPROC32_ID), 2);
-  } else {
-    OS.AddComment("Record kind: S_GPROC32_ID");
-    OS.EmitIntValue(unsigned(SymbolKind::S_GPROC32_ID), 2);
-  }
+    if (GV->hasLocalLinkage()) {
+      OS.AddComment("Record kind: S_LPROC32_ID");
+      OS.EmitIntValue(unsigned(SymbolKind::S_LPROC32_ID), 2);
+    } else {
+      OS.AddComment("Record kind: S_GPROC32_ID");
+      OS.EmitIntValue(unsigned(SymbolKind::S_GPROC32_ID), 2);
+    }
 
     // These fields are filled in by tools like CVPACK which run after the fact.
     OS.AddComment("PtrParent");
@@ -876,6 +874,8 @@ void CodeViewDebug::beginFunction(const MachineFunction *MF) {
   CurFn->FuncId = NextFuncId++;
   CurFn->Begin = Asm->getFunctionBegin();
 
+  OS.EmitCVFuncIdDirective(CurFn->FuncId);
+
   // Find the end of the function prolog.  First known non-DBG_VALUE and
   // non-frame setup location marks the beginning of the function body.
   // FIXME: is there a simpler a way to do this? Can we just search
@@ -936,6 +936,9 @@ TypeIndex CodeViewDebug::lowerType(const DIType *Ty, const DIType *ClassTy) {
   case dwarf::DW_TAG_base_type:
     return lowerTypeBasic(cast<DIBasicType>(Ty));
   case dwarf::DW_TAG_pointer_type:
+    if (cast<DIDerivedType>(Ty)->getName() == "__vtbl_ptr_type")
+      return lowerTypeVFTableShape(cast<DIDerivedType>(Ty));
+    LLVM_FALLTHROUGH;
   case dwarf::DW_TAG_reference_type:
   case dwarf::DW_TAG_rvalue_reference_type:
     return lowerTypePointer(cast<DIDerivedType>(Ty));
@@ -992,20 +995,25 @@ TypeIndex CodeViewDebug::lowerTypeArray(const DICompositeType *Ty) {
 
   uint64_t ElementSize = getBaseTypeSize(ElementTypeRef) / 8;
 
-  bool UndefinedSubrange = false;
 
-  // FIXME:
-  // There is a bug in the front-end where an array of a structure, which was
-  // declared as incomplete structure first, ends up not getting a size assigned
-  // to it. (PR28303)
+  // We want to assert that the element type multiplied by the array lengths
+  // match the size of the overall array. However, if we don't have complete
+  // type information for the base type, we can't make this assertion. This
+  // happens if limited debug info is enabled in this case:
+  //   struct VTableOptzn { VTableOptzn(); virtual ~VTableOptzn(); };
+  //   VTableOptzn array[3];
+  // The DICompositeType of VTableOptzn will have size zero, and the array will
+  // have size 3 * sizeof(void*), and we should avoid asserting.
+  //
+  // There is a related bug in the front-end where an array of a structure,
+  // which was declared as incomplete structure first, ends up not getting a
+  // size assigned to it. (PR28303)
   // Example:
   //   struct A(*p)[3];
   //   struct A { int f; } a[3];
-  //
-  // This needs to be fixed in the front-end, but in the meantime we don't want
-  // to trigger an assertion because of this.
-  if (Ty->getSizeInBits() == 0) {
-    UndefinedSubrange = true;
+  bool PartiallyIncomplete = false;
+  if (Ty->getSizeInBits() == 0 || ElementSize == 0) {
+    PartiallyIncomplete = true;
   }
 
   // Add subranges to array type.
@@ -1024,18 +1032,24 @@ TypeIndex CodeViewDebug::lowerTypeArray(const DICompositeType *Ty) {
     // FIXME: Make front-end support VLA subrange and emit LF_DIMVARLU.
     if (Count == -1) {
       Count = 1;
-      UndefinedSubrange = true;
+      PartiallyIncomplete = true;
     }
 
-    StringRef Name = (i == 0) ? Ty->getName() : "";
     // Update the element size and element type index for subsequent subranges.
     ElementSize *= Count;
+
+    // If this is the outermost array, use the size from the array. It will be
+    // more accurate if PartiallyIncomplete is true.
+    uint64_t ArraySize =
+        (i == 0 && ElementSize == 0) ? Ty->getSizeInBits() / 8 : ElementSize;
+
+    StringRef Name = (i == 0) ? Ty->getName() : "";
     ElementTypeIndex = TypeTable.writeKnownType(
-        ArrayRecord(ElementTypeIndex, IndexType, ElementSize, Name));
+        ArrayRecord(ElementTypeIndex, IndexType, ArraySize, Name));
   }
 
-  (void)UndefinedSubrange;
-  assert(UndefinedSubrange || ElementSize == (Ty->getSizeInBits() / 8));
+  (void)PartiallyIncomplete;
+  assert(PartiallyIncomplete || ElementSize == (Ty->getSizeInBits() / 8));
 
   return ElementTypeIndex;
 }
@@ -1135,13 +1149,6 @@ TypeIndex CodeViewDebug::lowerTypeBasic(const DIBasicType *Ty) {
 
 TypeIndex CodeViewDebug::lowerTypePointer(const DIDerivedType *Ty) {
   TypeIndex PointeeTI = getTypeIndex(Ty->getBaseType());
-
-  // While processing the type being pointed to it is possible we already
-  // created this pointer type.  If so, we check here and return the existing
-  // pointer type.
-  auto I = TypeIndices.find({Ty, nullptr});
-  if (I != TypeIndices.end())
-    return I->second;
 
   // Pointers to simple types can use SimpleTypeMode, rather than having a
   // dedicated pointer type record.
@@ -1263,16 +1270,7 @@ TypeIndex CodeViewDebug::lowerTypeModifier(const DIDerivedType *Ty) {
       BaseTy = cast<DIDerivedType>(BaseTy)->getBaseType().resolve();
   }
   TypeIndex ModifiedTI = getTypeIndex(BaseTy);
-
-  // While processing the type being pointed to, it is possible we already
-  // created this modifier type.  If so, we check here and return the existing
-  // modifier type.
-  auto I = TypeIndices.find({Ty, nullptr});
-  if (I != TypeIndices.end())
-    return I->second;
-
-  ModifierRecord MR(ModifiedTI, Mods);
-  return TypeTable.writeKnownType(MR);
+  return TypeTable.writeKnownType(ModifierRecord(ModifiedTI, Mods));
 }
 
 TypeIndex CodeViewDebug::lowerTypeFunction(const DISubroutineType *Ty) {
@@ -1334,6 +1332,12 @@ TypeIndex CodeViewDebug::lowerTypeMemberFunction(const DISubroutineType *Ty,
       ArgTypeIndices.size(), ArgListIndex, ThisAdjustment));
 
   return TI;
+}
+
+TypeIndex CodeViewDebug::lowerTypeVFTableShape(const DIDerivedType *Ty) {
+  unsigned VSlotCount = Ty->getSizeInBits() / (8 * Asm->MAI->getPointerSize());
+  SmallVector<VFTableSlotKind, 4> Slots(VSlotCount, VFTableSlotKind::Near);
+  return TypeTable.writeKnownType(VFTableShapeRecord(Slots));
 }
 
 static MemberAccess translateAccessFlags(unsigned RecordTag, unsigned Flags) {
@@ -1468,6 +1472,8 @@ struct llvm::ClassInfo {
   // Direct overloaded methods gathered by name.
   MethodsMap Methods;
 
+  TypeIndex VShapeTI;
+
   std::vector<const DICompositeType *> NestedClasses;
 };
 
@@ -1516,11 +1522,13 @@ ClassInfo CodeViewDebug::collectClassInfo(const DICompositeType *Ty) {
         collectMemberInfo(Info, DDTy);
       } else if (DDTy->getTag() == dwarf::DW_TAG_inheritance) {
         Info.Inheritance.push_back(DDTy);
+      } else if (DDTy->getTag() == dwarf::DW_TAG_pointer_type &&
+                 DDTy->getName() == "__vtbl_ptr_type") {
+        Info.VShapeTI = getTypeIndex(DDTy);
       } else if (DDTy->getTag() == dwarf::DW_TAG_friend) {
         // Ignore friend members. It appears that MSVC emitted info about
         // friends in the past, but modern versions do not.
       }
-      // FIXME: Get Clang to emit function virtual table here and handle it.
     } else if (auto *Composite = dyn_cast<DICompositeType>(Element)) {
       Info.NestedClasses.push_back(Composite);
     }
@@ -1661,6 +1669,14 @@ CodeViewDebug::lowerRecordFieldList(const DICompositeType *Ty) {
       continue;
     }
 
+    // Virtual function pointer member.
+    if ((Member->getFlags() & DINode::FlagArtificial) &&
+        Member->getName().startswith("_vptr$")) {
+      Fields.writeMemberType(VFPtrRecord(getTypeIndex(Member->getBaseType())));
+      MemberCount++;
+      continue;
+    }
+
     // Data member.
     uint64_t MemberOffsetInBits =
         Member->getOffsetInBits() + MemberInfo.BaseOffset;
@@ -1719,7 +1735,7 @@ CodeViewDebug::lowerRecordFieldList(const DICompositeType *Ty) {
   }
 
   TypeIndex FieldTI = TypeTable.writeFieldList(Fields);
-  return std::make_tuple(FieldTI, TypeIndex(), MemberCount,
+  return std::make_tuple(FieldTI, Info.VShapeTI, MemberCount,
                          !Info.NestedClasses.empty());
 }
 
@@ -1985,6 +2001,14 @@ void CodeViewDebug::emitDebugInfoForUDTs(
 }
 
 void CodeViewDebug::emitDebugInfoForGlobals() {
+  DenseMap<const DIGlobalVariable *, const GlobalVariable *> GlobalMap;
+  for (const GlobalVariable &GV : MMI->getModule()->globals()) {
+    SmallVector<MDNode *, 1> MDs;
+    GV.getMetadata(LLVMContext::MD_dbg, MDs);
+    for (MDNode *MD : MDs)
+      GlobalMap[cast<DIGlobalVariable>(MD)] = &GV;
+  }
+
   NamedMDNode *CUs = MMI->getModule()->getNamedMetadata("llvm.dbg.cu");
   for (const MDNode *Node : CUs->operands()) {
     const auto *CU = cast<DICompileUnit>(Node);
@@ -1995,15 +2019,14 @@ void CodeViewDebug::emitDebugInfoForGlobals() {
     switchToDebugSectionForSymbol(nullptr);
     MCSymbol *EndLabel = nullptr;
     for (const DIGlobalVariable *G : CU->getGlobalVariables()) {
-      if (const auto *GV = dyn_cast_or_null<GlobalVariable>(G->getVariable())) {
+      if (const auto *GV = GlobalMap.lookup(G))
         if (!GV->hasComdat() && !GV->isDeclarationForLinker()) {
           if (!EndLabel) {
             OS.AddComment("Symbol subsection for globals");
             EndLabel = beginCVSubsection(ModuleSubstreamKind::Symbols);
           }
-          emitDebugInfoForGlobal(G, Asm->getSymbol(GV));
+          emitDebugInfoForGlobal(G, GV, Asm->getSymbol(GV));
         }
-      }
     }
     if (EndLabel)
       endCVSubsection(EndLabel);
@@ -2011,14 +2034,14 @@ void CodeViewDebug::emitDebugInfoForGlobals() {
     // Second, emit each global that is in a comdat into its own .debug$S
     // section along with its own symbol substream.
     for (const DIGlobalVariable *G : CU->getGlobalVariables()) {
-      if (const auto *GV = dyn_cast_or_null<GlobalVariable>(G->getVariable())) {
+      if (const auto *GV = GlobalMap.lookup(G)) {
         if (GV->hasComdat()) {
           MCSymbol *GVSym = Asm->getSymbol(GV);
           OS.AddComment("Symbol subsection for " +
                         Twine(GlobalValue::getRealLinkageName(GV->getName())));
           switchToDebugSectionForSymbol(GVSym);
           EndLabel = beginCVSubsection(ModuleSubstreamKind::Symbols);
-          emitDebugInfoForGlobal(G, GVSym);
+          emitDebugInfoForGlobal(G, GV, GVSym);
           endCVSubsection(EndLabel);
         }
       }
@@ -2039,6 +2062,7 @@ void CodeViewDebug::emitDebugInfoForRetainedTypes() {
 }
 
 void CodeViewDebug::emitDebugInfoForGlobal(const DIGlobalVariable *DIGV,
+                                           const GlobalVariable *GV,
                                            MCSymbol *GVSym) {
   // DataSym record, see SymbolRecord.h for more info.
   // FIXME: Thread local data, etc
@@ -2047,7 +2071,6 @@ void CodeViewDebug::emitDebugInfoForGlobal(const DIGlobalVariable *DIGV,
   OS.AddComment("Record length");
   OS.emitAbsoluteSymbolDiff(DataEnd, DataBegin, 2);
   OS.EmitLabel(DataBegin);
-  const auto *GV = cast<GlobalVariable>(DIGV->getVariable());
   if (DIGV->isLocalToUnit()) {
     if (GV->isThreadLocal()) {
       OS.AddComment("Record kind: S_LTHREAD32");

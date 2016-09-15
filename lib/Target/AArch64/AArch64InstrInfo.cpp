@@ -19,6 +19,7 @@
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/PseudoSourceValue.h"
+#include "llvm/CodeGen/StackMaps.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -29,7 +30,7 @@ using namespace llvm;
 #define GET_INSTRINFO_CTOR_DTOR
 #include "AArch64GenInstrInfo.inc"
 
-static LLVM_CONSTEXPR MachineMemOperand::Flags MOSuppressPair =
+static const MachineMemOperand::Flags MOSuppressPair =
     MachineMemOperand::MOTargetFlag1;
 
 static cl::opt<unsigned>
@@ -58,22 +59,38 @@ unsigned AArch64InstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
   if (MI.getOpcode() == AArch64::INLINEASM)
     return getInlineAsmLength(MI.getOperand(0).getSymbolName(), *MAI);
 
+  // FIXME: We currently only handle pseudoinstructions that don't get expanded
+  //        before the assembly printer.
+  unsigned NumBytes = 0;
   const MCInstrDesc &Desc = MI.getDesc();
   switch (Desc.getOpcode()) {
   default:
     // Anything not explicitly designated otherwise is a normal 4-byte insn.
-    return 4;
+    NumBytes = 4;
+    break;
   case TargetOpcode::DBG_VALUE:
   case TargetOpcode::EH_LABEL:
   case TargetOpcode::IMPLICIT_DEF:
   case TargetOpcode::KILL:
-    return 0;
+    NumBytes = 0;
+    break;
+  case TargetOpcode::STACKMAP:
+    // The upper bound for a stackmap intrinsic is the full length of its shadow
+    NumBytes = StackMapOpers(&MI).getNumPatchBytes();
+    assert(NumBytes % 4 == 0 && "Invalid number of NOP bytes requested!");
+    break;
+  case TargetOpcode::PATCHPOINT:
+    // The size of the patchpoint intrinsic is the number of bytes requested
+    NumBytes = PatchPointOpers(&MI).getNumPatchBytes();
+    assert(NumBytes % 4 == 0 && "Invalid number of NOP bytes requested!");
+    break;
   case AArch64::TLSDESC_CALLSEQ:
     // This gets lowered to an instruction sequence which takes 16 bytes
-    return 16;
+    NumBytes = 16;
+    break;
   }
 
-  llvm_unreachable("getInstSizeInBytes()- Unable to determin insn size");
+  return NumBytes;
 }
 
 static void parseCondBranch(MachineInstr *LastInst, MachineBasicBlock *&Target,
@@ -240,7 +257,7 @@ bool AArch64InstrInfo::analyzeBranch(MachineBasicBlock &MBB,
   return true;
 }
 
-bool AArch64InstrInfo::ReverseBranchCondition(
+bool AArch64InstrInfo::reverseBranchCondition(
     SmallVectorImpl<MachineOperand> &Cond) const {
   if (Cond[0].getImm() != -1) {
     // Regular Bcc
@@ -281,7 +298,8 @@ bool AArch64InstrInfo::ReverseBranchCondition(
   return false;
 }
 
-unsigned AArch64InstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
+unsigned AArch64InstrInfo::removeBranch(MachineBasicBlock &MBB,
+                                        int *BytesRemoved) const {
   MachineBasicBlock::iterator I = MBB.getLastNonDebugInstr();
   if (I == MBB.end())
     return 0;
@@ -295,14 +313,23 @@ unsigned AArch64InstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
 
   I = MBB.end();
 
-  if (I == MBB.begin())
+  if (I == MBB.begin()) {
+    if (BytesRemoved)
+      *BytesRemoved = 4;
     return 1;
+  }
   --I;
-  if (!isCondBranchOpcode(I->getOpcode()))
+  if (!isCondBranchOpcode(I->getOpcode())) {
+    if (BytesRemoved)
+      *BytesRemoved = 4;
     return 1;
+  }
 
   // Remove the branch.
   I->eraseFromParent();
+  if (BytesRemoved)
+    *BytesRemoved = 8;
+
   return 2;
 }
 
@@ -323,25 +350,34 @@ void AArch64InstrInfo::instantiateCondBranch(
   }
 }
 
-unsigned AArch64InstrInfo::InsertBranch(MachineBasicBlock &MBB,
+unsigned AArch64InstrInfo::insertBranch(MachineBasicBlock &MBB,
                                         MachineBasicBlock *TBB,
                                         MachineBasicBlock *FBB,
                                         ArrayRef<MachineOperand> Cond,
-                                        const DebugLoc &DL) const {
+                                        const DebugLoc &DL,
+                                        int *BytesAdded) const {
   // Shouldn't be a fall through.
-  assert(TBB && "InsertBranch must not be told to insert a fallthrough");
+  assert(TBB && "insertBranch must not be told to insert a fallthrough");
 
   if (!FBB) {
     if (Cond.empty()) // Unconditional branch?
       BuildMI(&MBB, DL, get(AArch64::B)).addMBB(TBB);
     else
       instantiateCondBranch(MBB, DL, TBB, Cond);
+
+    if (BytesAdded)
+      *BytesAdded = 4;
+
     return 1;
   }
 
   // Two-way conditional branch.
   instantiateCondBranch(MBB, DL, TBB, Cond);
   BuildMI(&MBB, DL, get(AArch64::B)).addMBB(FBB);
+
+  if (BytesAdded)
+    *BytesAdded = 8;
+
   return 2;
 }
 
@@ -920,9 +956,9 @@ static bool areCFlagsAccessedBetweenInstrs(
     return true;
 
   // From must be above To.
-  assert(std::find_if(MachineBasicBlock::reverse_iterator(To),
-                      To->getParent()->rend(), [From](MachineInstr &MI) {
-                        return MachineBasicBlock::iterator(MI) == From;
+  assert(std::find_if(++To.getReverse(), To->getParent()->rend(),
+                      [From](MachineInstr &MI) {
+                        return MI.getIterator() == From;
                       }) != To->getParent()->rend());
 
   // We iterate backward starting \p To until we hit \p From.

@@ -24,17 +24,21 @@ struct ValueBitMap {
   // Clears all bits.
   void Reset() { memset(Map, 0, sizeof(Map)); }
 
-  // Computed a hash function of Value and sets the corresponding bit.
-  inline void AddValue(uintptr_t Value) {
+  // Computes a hash function of Value and sets the corresponding bit.
+  // Returns true if the bit was changed from 0 to 1.
+  inline bool AddValue(uintptr_t Value) {
     uintptr_t Idx = Value < kMapSizeInBits ? Value : Value % kMapSizeInBits;
     uintptr_t WordIdx = Idx / kBitsInWord;
     uintptr_t BitIdx = Idx % kBitsInWord;
-    Map[WordIdx] |= 1UL << BitIdx;
+    uintptr_t Old = Map[WordIdx];
+    uintptr_t New = Old | (1UL << BitIdx);
+    Map[WordIdx] = New;
+    return New != Old;
   }
 
   // Merges 'Other' into 'this', clears 'Other',
   // returns the number of set bits in 'this'.
-  __attribute__((target("popcnt")))
+  ATTRIBUTE_TARGET_POPCNT
   size_t MergeFrom(ValueBitMap &Other) {
     uintptr_t Res = 0;
     for (size_t i = 0; i < kMapSizeInWords; i++) {

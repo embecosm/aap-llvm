@@ -332,23 +332,16 @@ struct ArgumentUsesTracker : public CaptureTracker {
 
 namespace llvm {
 template <> struct GraphTraits<ArgumentGraphNode *> {
-  typedef ArgumentGraphNode NodeType;
   typedef ArgumentGraphNode *NodeRef;
   typedef SmallVectorImpl<ArgumentGraphNode *>::iterator ChildIteratorType;
 
-  static inline NodeType *getEntryNode(NodeType *A) { return A; }
-  static inline ChildIteratorType child_begin(NodeType *N) {
-    return N->Uses.begin();
-  }
-  static inline ChildIteratorType child_end(NodeType *N) {
-    return N->Uses.end();
-  }
+  static NodeRef getEntryNode(NodeRef A) { return A; }
+  static ChildIteratorType child_begin(NodeRef N) { return N->Uses.begin(); }
+  static ChildIteratorType child_end(NodeRef N) { return N->Uses.end(); }
 };
 template <>
 struct GraphTraits<ArgumentGraph *> : public GraphTraits<ArgumentGraphNode *> {
-  static NodeType *getEntryNode(ArgumentGraph *AG) {
-    return AG->getEntryNode();
-  }
+  static NodeRef getEntryNode(ArgumentGraph *AG) { return AG->getEntryNode(); }
   static ChildIteratorType nodes_begin(ArgumentGraph *AG) {
     return AG->begin();
   }
@@ -501,6 +494,11 @@ static bool addArgumentReturnedAttrs(const SCCNodeSet &SCCNodes) {
       continue;
 
     if (F->getReturnType()->isVoidTy())
+      continue;
+
+    // There is nothing to do if an argument is already marked as 'returned'.
+    if (any_of(F->args(),
+               [](const Argument &Arg) { return Arg.hasReturnedAttr(); }))
       continue;
 
     auto FindRetArg = [&]() -> Value * {
@@ -1036,9 +1034,11 @@ static bool addNoRecurseAttrs(const SCCNodeSet &SCCNodes) {
 }
 
 PreservedAnalyses PostOrderFunctionAttrsPass::run(LazyCallGraph::SCC &C,
-                                                  CGSCCAnalysisManager &AM) {
+                                                  CGSCCAnalysisManager &AM,
+                                                  LazyCallGraph &CG,
+                                                  CGSCCUpdateResult &) {
   FunctionAnalysisManager &FAM =
-      AM.getResult<FunctionAnalysisManagerCGSCCProxy>(C).getManager();
+      AM.getResult<FunctionAnalysisManagerCGSCCProxy>(C, CG).getManager();
 
   // We pass a lambda into functions to wire them up to the analysis manager
   // for getting function analyses.

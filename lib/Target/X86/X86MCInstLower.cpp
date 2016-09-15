@@ -499,18 +499,18 @@ ReSimplify:
     break;
   }
 
-  // TAILJMPd, TAILJMPd64 - Lower to the correct jump instructions.
-  case X86::TAILJMPr:
+  // TAILJMPd, TAILJMPd64, TailJMPd_cc - Lower to the correct jump instruction.
+  { unsigned Opcode;
+  case X86::TAILJMPr:   Opcode = X86::JMP32r; goto SetTailJmpOpcode;
   case X86::TAILJMPd:
-  case X86::TAILJMPd64: {
-    unsigned Opcode;
-    switch (OutMI.getOpcode()) {
-    default: llvm_unreachable("Invalid opcode");
-    case X86::TAILJMPr: Opcode = X86::JMP32r; break;
-    case X86::TAILJMPd:
-    case X86::TAILJMPd64: Opcode = X86::JMP_1; break;
-    }
+  case X86::TAILJMPd64: Opcode = X86::JMP_1;  goto SetTailJmpOpcode;
+  case X86::TAILJMPd_CC:
+  case X86::TAILJMPd64_CC:
+    Opcode = X86::GetCondBranchFromCond(
+        static_cast<X86::CondCode>(MI->getOperand(1).getImm()));
+    goto SetTailJmpOpcode;
 
+  SetTailJmpOpcode:
     MCOperand Saved = OutMI.getOperand(0);
     OutMI = MCInst();
     OutMI.setOpcode(Opcode);
@@ -979,8 +979,7 @@ void X86AsmPrinter::LowerPATCHPOINT(const MachineInstr &MI,
   PatchPointOpers opers(&MI);
   unsigned ScratchIdx = opers.getNextScratchIdx();
   unsigned EncodedBytes = 0;
-  const MachineOperand &CalleeMO =
-    opers.getMetaOper(PatchPointOpers::TargetPos);
+  const MachineOperand &CalleeMO = opers.getCallTarget();
 
   // Check for null target. If target is non-null (i.e. is non-zero or is
   // symbolic) then emit a call.
@@ -1016,7 +1015,7 @@ void X86AsmPrinter::LowerPATCHPOINT(const MachineInstr &MI,
   }
 
   // Emit padding.
-  unsigned NumBytes = opers.getMetaOper(PatchPointOpers::NBytesPos).getImm();
+  unsigned NumBytes = opers.getNumPatchBytes();
   assert(NumBytes >= EncodedBytes &&
          "Patchpoint can't request size less than the length of a call.");
 
@@ -1092,6 +1091,39 @@ void X86AsmPrinter::LowerPATCHABLE_RET(const MachineInstr &MI,
   OutStreamer->EmitInstruction(Ret, getSubtargetInfo());
   EmitNops(*OutStreamer, 10, Subtarget->is64Bit(), getSubtargetInfo());
   recordSled(CurSled, MI, SledKind::FUNCTION_EXIT);
+}
+
+void X86AsmPrinter::LowerPATCHABLE_TAIL_CALL(const MachineInstr &MI, X86MCInstLower &MCIL) {
+  // Like PATCHABLE_RET, we have the actual instruction in the operands to this
+  // instruction so we lower that particular instruction and its operands.
+  // Unlike PATCHABLE_RET though, we put the sled before the JMP, much like how
+  // we do it for PATCHABLE_FUNCTION_ENTER. The sled should be very similar to
+  // the PATCHABLE_FUNCTION_ENTER case, followed by the lowering of the actual
+  // tail call much like how we have it in PATCHABLE_RET.
+  auto CurSled = OutContext.createTempSymbol("xray_sled_", true);
+  OutStreamer->EmitCodeAlignment(2);
+  OutStreamer->EmitLabel(CurSled);
+  auto Target = OutContext.createTempSymbol();
+
+  // Use a two-byte `jmp`. This version of JMP takes an 8-bit relative offset as
+  // an operand (computed as an offset from the jmp instruction).
+  // FIXME: Find another less hacky way do force the relative jump.
+  OutStreamer->EmitBytes("\xeb\x09");
+  EmitNops(*OutStreamer, 9, Subtarget->is64Bit(), getSubtargetInfo());
+  OutStreamer->EmitLabel(Target);
+  recordSled(CurSled, MI, SledKind::TAIL_CALL);
+
+  unsigned OpCode = MI.getOperand(0).getImm();
+  MCInst TC;
+  TC.setOpcode(OpCode);
+
+  // Before emitting the instruction, add a comment to indicate that this is
+  // indeed a tail call.
+  OutStreamer->AddComment("TAILCALL");
+  for (auto &MO : make_range(MI.operands_begin() + 1, MI.operands_end()))
+    if (auto MaybeOperand = MCIL.LowerMachineOperand(&MI, MO))
+      TC.addOperand(MaybeOperand.getValue());
+  OutStreamer->EmitInstruction(TC, getSubtargetInfo());
 }
 
 void X86AsmPrinter::EmitXRayTable() {
@@ -1274,12 +1306,13 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
   case X86::TAILJMPr:
   case X86::TAILJMPm:
   case X86::TAILJMPd:
+  case X86::TAILJMPd_CC:
   case X86::TAILJMPr64:
   case X86::TAILJMPm64:
   case X86::TAILJMPd64:
+  case X86::TAILJMPd64_CC:
   case X86::TAILJMPr64_REX:
   case X86::TAILJMPm64_REX:
-  case X86::TAILJMPd64_REX:
     // Lower these as normal, but add some comments.
     OutStreamer->AddComment("TAILCALL");
     break;
@@ -1383,6 +1416,9 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
   case TargetOpcode::PATCHABLE_RET:
     return LowerPATCHABLE_RET(*MI, MCInstLowering);
+
+  case TargetOpcode::PATCHABLE_TAIL_CALL:
+    return LowerPATCHABLE_TAIL_CALL(*MI, MCInstLowering);
 
   case X86::MORESTACK_RET:
     EmitAndCountInstruction(MCInstBuilder(getRetOpcode(*Subtarget)));

@@ -35,6 +35,7 @@ class MachineBasicBlock;
 class MachineFunction;
 class MachineInstr;
 class MachineRegisterInfo;
+class TargetPassConfig;
 
 // Technically the pass should run on an hypothetical MachineModule,
 // since it should translate Global into some sort of MachineGlobal.
@@ -166,6 +167,8 @@ private:
 
   bool translateSelect(const User &U);
 
+  bool translateGetElementPtr(const User &U);
+
   /// Translate return (ret) instruction.
   /// The target needs to implement CallLowering::lowerReturn for
   /// this to succeed.
@@ -281,7 +284,6 @@ private:
   bool translateCleanupRet(const User &U) { return false; }
   bool translateCatchRet(const User &U) { return false; }
   bool translateCatchSwitch(const User &U) { return false; }
-  bool translateGetElementPtr(const User &U) { return false; }
   bool translateFence(const User &U) { return false; }
   bool translateAtomicCmpXchg(const User &U) { return false; }
   bool translateAtomicRMW(const User &U) { return false; }
@@ -313,6 +315,9 @@ private:
 
   const DataLayout *DL;
 
+  /// Current target configuration. Controls how the pass handles errors.
+  const TargetPassConfig *TPC;
+
   // * Insert all the code needed to materialize the constants
   // at the proper place. E.g., Entry block or dominator block
   // of each constant depending on how fancy we want to be.
@@ -340,6 +345,8 @@ public:
   const char *getPassName() const override {
     return "IRTranslator";
   }
+
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
 
   // Algo:
   //   CallLowering = MF.subtarget.getCallLowering()

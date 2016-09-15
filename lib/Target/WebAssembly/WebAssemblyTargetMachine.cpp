@@ -165,7 +165,19 @@ void WebAssemblyPassConfig::addIRPasses() {
   if (getOptLevel() != CodeGenOpt::None)
     addPass(createWebAssemblyOptimizeReturned());
 
-  // Handle exceptions.
+  // If exception handling is not enabled and setjmp/longjmp handling is
+  // enabled, we lower invokes into calls and delete unreachable landingpad
+  // blocks. Lowering invokes when there is no EH support is done in
+  // TargetPassConfig::addPassesToHandleExceptions, but this runs after this
+  // function and SjLj handling expects all invokes to be lowered before.
+  if (!EnableEmException) {
+    addPass(createLowerInvokePass());
+    // The lower invoke pass may create unreachable code. Remove it in order not
+    // to process dead blocks in setjmp/longjmp handling.
+    addPass(createUnreachableBlockEliminationPass());
+  }
+
+  // Handle exceptions and setjmp/longjmp if enabled.
   if (EnableEmException || EnableEmSjLj)
     addPass(createWebAssemblyLowerEmscriptenEHSjLj(EnableEmException,
                                                    EnableEmSjLj));
@@ -196,7 +208,7 @@ void WebAssemblyPassConfig::addPostRegAlloc() {
   // Has no asserts of its own, but was not written to handle virtual regs.
   disablePass(&ShrinkWrapID);
 
-  // These functions all require the AllVRegsAllocated property.
+  // These functions all require the NoVRegs property.
   disablePass(&MachineCopyPropagationID);
   disablePass(&PostRASchedulerID);
   disablePass(&FuncletLayoutID);

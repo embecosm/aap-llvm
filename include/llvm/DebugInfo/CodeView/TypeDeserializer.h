@@ -17,30 +17,21 @@ namespace llvm {
 namespace codeview {
 class TypeDeserializer : public TypeVisitorCallbacks {
 public:
-  explicit TypeDeserializer(TypeVisitorCallbacks &Recipient)
-      : Recipient(Recipient) {}
-
-  Error visitTypeBegin(const CVRecord<TypeLeafKind> &Record) override {
-    return Recipient.visitTypeBegin(Record);
-  }
-
-  Error visitTypeEnd(const CVRecord<TypeLeafKind> &Record) override {
-    return Recipient.visitTypeEnd(Record);
-  }
+  TypeDeserializer() {}
 
 #define TYPE_RECORD(EnumName, EnumVal, Name)                                   \
-  Error visitKnownRecord(const CVRecord<TypeLeafKind> &CVR,                    \
-                         Name##Record &Record) override {                      \
+  Error visitKnownRecord(CVType &CVR, Name##Record &Record) override {         \
     return defaultVisitKnownRecord(CVR, Record);                               \
   }
 #define MEMBER_RECORD(EnumName, EnumVal, Name)                                 \
-  TYPE_RECORD(EnumName, EnumVal, Name)
+  Error visitKnownMember(CVMemberRecord &CVR, Name##Record &Record) override { \
+    return defaultVisitKnownMember(CVR, Record);                               \
+  }
 #define TYPE_RECORD_ALIAS(EnumName, EnumVal, Name, AliasName)
 #define MEMBER_RECORD_ALIAS(EnumName, EnumVal, Name, AliasName)
 #include "TypeRecords.def"
 
 protected:
-  TypeVisitorCallbacks &Recipient;
 
   template <typename T>
   Error deserializeRecord(ArrayRef<uint8_t> &Data, TypeLeafKind Kind,
@@ -54,12 +45,18 @@ protected:
   }
 
 private:
-  template <typename T>
-  Error defaultVisitKnownRecord(const CVRecord<TypeLeafKind> &CVR, T &Record) {
-    ArrayRef<uint8_t> RD = CVR.Data;
+  template <typename T> Error defaultVisitKnownRecord(CVType &CVR, T &Record) {
+    ArrayRef<uint8_t> RD = CVR.content();
     if (auto EC = deserializeRecord(RD, CVR.Type, Record))
       return EC;
-    return Recipient.visitKnownRecord(CVR, Record);
+    return Error::success();
+  }
+  template <typename T>
+  Error defaultVisitKnownMember(CVMemberRecord &CVMR, T &Record) {
+    ArrayRef<uint8_t> RD = CVMR.Data;
+    if (auto EC = deserializeRecord(RD, CVMR.Kind, Record))
+      return EC;
+    return Error::success();
   }
 };
 }

@@ -268,6 +268,7 @@ set(LLVM_ALL_TARGETS
   ARM
   BPF
   Hexagon
+  Lanai
   Mips
   MSP430
   NVPTX
@@ -453,6 +454,7 @@ option (LLVM_BUILD_DOCS "Build the llvm documentation." OFF)
 option (LLVM_INCLUDE_DOCS "Generate build targets for llvm documentation." ON)
 option (LLVM_ENABLE_DOXYGEN "Use doxygen to generate llvm API documentation." OFF)
 option (LLVM_ENABLE_SPHINX "Use Sphinx to generate llvm documentation." OFF)
+option (LLVM_ENABLE_OCAMLDOC "Build OCaml bindings documentation." ON)
 
 option (LLVM_BUILD_EXTERNAL_COMPILER_RT
   "Build compiler-rt as an external project." OFF)
@@ -741,6 +743,7 @@ if( MINGW )
 endif()
 
 # Put this before tblgen. Else we have a circular dependence.
+add_subdirectory(lib/Demangle)
 add_subdirectory(lib/Support)
 add_subdirectory(lib/TableGen)
 
@@ -820,14 +823,22 @@ if( LLVM_INCLUDE_TESTS )
   get_property(LLVM_LIT_PARAMS GLOBAL PROPERTY LLVM_LIT_PARAMS)
   get_property(LLVM_LIT_DEPENDS GLOBAL PROPERTY LLVM_LIT_DEPENDS)
   get_property(LLVM_LIT_EXTRA_ARGS GLOBAL PROPERTY LLVM_LIT_EXTRA_ARGS)
+  get_property(LLVM_ADDITIONAL_TEST_TARGETS
+               GLOBAL PROPERTY LLVM_ADDITIONAL_TEST_TARGETS)
+  get_property(LLVM_ADDITIONAL_TEST_DEPENDS
+               GLOBAL PROPERTY LLVM_ADDITIONAL_TEST_DEPENDS)
   add_lit_target(check-all
     "Running all regression tests"
     ${LLVM_LIT_TESTSUITES}
     PARAMS ${LLVM_LIT_PARAMS}
-    DEPENDS ${LLVM_LIT_DEPENDS}
+    DEPENDS ${LLVM_LIT_DEPENDS} ${LLVM_ADDITIONAL_TEST_TARGETS}
     ARGS ${LLVM_LIT_EXTRA_ARGS}
     )
-  add_custom_target(test-depends DEPENDS ${LLVM_LIT_DEPENDS})
+  if(TARGET check-runtimes)
+    add_dependencies(check-all check-runtimes)
+  endif()
+  add_custom_target(test-depends
+                    DEPENDS ${LLVM_LIT_DEPENDS} ${LLVM_ADDITIONAL_TEST_DEPENDS})
   set_target_properties(test-depends PROPERTIES FOLDER "Tests")
 endif()
 

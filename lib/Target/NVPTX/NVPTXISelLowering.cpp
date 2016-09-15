@@ -279,6 +279,28 @@ NVPTXTargetLowering::NVPTXTargetLowering(const NVPTXTargetMachine &TM,
   setTargetDAGCombine(ISD::SHL);
   setTargetDAGCombine(ISD::SELECT);
 
+  // Library functions.  These default to Expand, but we have instructions
+  // for them.
+  setOperationAction(ISD::FCEIL,  MVT::f32, Legal);
+  setOperationAction(ISD::FCEIL,  MVT::f64, Legal);
+  setOperationAction(ISD::FFLOOR, MVT::f32, Legal);
+  setOperationAction(ISD::FFLOOR, MVT::f64, Legal);
+  setOperationAction(ISD::FNEARBYINT, MVT::f32, Legal);
+  setOperationAction(ISD::FNEARBYINT, MVT::f64, Legal);
+  setOperationAction(ISD::FRINT,  MVT::f32, Legal);
+  setOperationAction(ISD::FRINT,  MVT::f64, Legal);
+  setOperationAction(ISD::FROUND, MVT::f32, Legal);
+  setOperationAction(ISD::FROUND, MVT::f64, Legal);
+  setOperationAction(ISD::FTRUNC, MVT::f32, Legal);
+  setOperationAction(ISD::FTRUNC, MVT::f64, Legal);
+  setOperationAction(ISD::FMINNUM, MVT::f32, Legal);
+  setOperationAction(ISD::FMINNUM, MVT::f64, Legal);
+  setOperationAction(ISD::FMAXNUM, MVT::f32, Legal);
+  setOperationAction(ISD::FMAXNUM, MVT::f64, Legal);
+
+  // No FEXP2, FLOG2.  The PTX ex2 and log2 functions are always approximate.
+  // No FPOW or FREM in PTX.
+
   // Now deduce the information based on the above mentioned
   // actions
   computeRegisterProperties(STI.getRegisterInfo());
@@ -2216,7 +2238,8 @@ SDValue NVPTXTargetLowering::LowerFormalArguments(
           SDValue P = DAG.getLoad(
               EltVT, dl, Root, Arg, MachinePointerInfo(SrcValue),
               DL.getABITypeAlignment(EltVT.getTypeForEVT(F->getContext())),
-              MachineMemOperand::MOInvariant);
+              MachineMemOperand::MODereferenceable |
+                  MachineMemOperand::MOInvariant);
           if (P.getNode())
             P.getNode()->setIROrder(idx + 1);
 
@@ -2233,7 +2256,8 @@ SDValue NVPTXTargetLowering::LowerFormalArguments(
           SDValue P = DAG.getLoad(
               VecVT, dl, Root, Arg, MachinePointerInfo(SrcValue),
               DL.getABITypeAlignment(VecVT.getTypeForEVT(F->getContext())),
-              MachineMemOperand::MOInvariant);
+              MachineMemOperand::MODereferenceable |
+                  MachineMemOperand::MOInvariant);
           if (P.getNode())
             P.getNode()->setIROrder(idx + 1);
 
@@ -2275,7 +2299,8 @@ SDValue NVPTXTargetLowering::LowerFormalArguments(
             SDValue P = DAG.getLoad(
                 VecVT, dl, Root, SrcAddr, MachinePointerInfo(SrcValue),
                 DL.getABITypeAlignment(VecVT.getTypeForEVT(F->getContext())),
-                MachineMemOperand::MOInvariant);
+                MachineMemOperand::MODereferenceable |
+                    MachineMemOperand::MOInvariant);
             if (P.getNode())
               P.getNode()->setIROrder(idx + 1);
 
@@ -2419,7 +2444,7 @@ NVPTXTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
       //      11 elem => 3 st.v4
 
       unsigned VecSize = 4;
-      if (OutVals[0].getValueType().getSizeInBits() == 64)
+      if (OutVals[0].getValueSizeInBits() == 64)
         VecSize = 2;
 
       unsigned Offset = 0;
@@ -2507,7 +2532,7 @@ NVPTXTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
           TmpVal = DAG.getNode(ISD::ZERO_EXTEND, dl, MVT::i32, TmpVal);
           TheStoreType = MVT::i32;
         }
-        else if (TmpVal.getValueType().getSizeInBits() < 16)
+        else if (TmpVal.getValueSizeInBits() < 16)
           TmpVal = DAG.getNode(ISD::ANY_EXTEND, dl, MVT::i16, TmpVal);
 
         SDValue Ops[] = {

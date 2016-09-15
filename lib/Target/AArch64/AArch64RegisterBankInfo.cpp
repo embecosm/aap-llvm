@@ -14,6 +14,8 @@
 
 #include "AArch64RegisterBankInfo.h"
 #include "AArch64InstrInfo.h" // For XXXRegClassID.
+#include "llvm/CodeGen/LowLevelType.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/GlobalISel/RegisterBank.h"
 #include "llvm/CodeGen/GlobalISel/RegisterBankInfo.h"
 #include "llvm/Target/TargetRegisterInfo.h"
@@ -177,7 +179,8 @@ AArch64RegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
   // As a top-level guess, vectors go in FPRs, scalars in GPRs. Obviously this
   // won't work for normal floating-point types (or NZCV). When such
   // instructions exist we'll need to look at the MI's opcode.
-  LLT Ty = MI.getType();
+  auto &MRI = MI.getParent()->getParent()->getRegInfo();
+  LLT Ty = MRI.getType(MI.getOperand(0).getReg());
   unsigned BankID;
   if (Ty.isVector())
     BankID = AArch64::FPRRegBankID;
@@ -185,7 +188,7 @@ AArch64RegisterBankInfo::getInstrMapping(const MachineInstr &MI) const {
     BankID = AArch64::GPRRegBankID;
 
   Mapping = InstructionMapping{1, 1, MI.getNumOperands()};
-  int Size = Ty.isSized() ? Ty.getSizeInBits() : 0;
+  int Size = Ty.isValid() ? Ty.getSizeInBits() : 0;
   for (unsigned Idx = 0; Idx < MI.getNumOperands(); ++Idx)
     Mapping.setOperandMapping(Idx, Size, getRegBank(BankID));
 

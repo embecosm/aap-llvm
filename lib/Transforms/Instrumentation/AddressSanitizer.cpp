@@ -55,6 +55,7 @@
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 #include <algorithm>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -181,7 +182,11 @@ static cl::opt<bool> ClUseAfterScope("asan-use-after-scope",
 static cl::opt<bool> ClExperimentalPoisoning(
     "asan-experimental-poisoning",
     cl::desc("Enable experimental red zones and scope poisoning"), cl::Hidden,
-    cl::init(false));
+    cl::init(true));
+static cl::opt<bool> ClSkipAmbiguousLifetimeAllocas(
+    "asan-skip-ambiguous-lifetime-allocas",
+    cl::desc("Disabled lifetime check for allocas with ambiguous lifetime"),
+    cl::Hidden, cl::init(true));
 // This flag may need to be replaced with -f[no]asan-globals.
 static cl::opt<bool> ClGlobals("asan-globals",
                                cl::desc("Handle global objects"), cl::Hidden,
@@ -811,11 +816,19 @@ struct FunctionStackPoisoner : public InstVisitor<FunctionStackPoisoner> {
 
   /// Finds alloca where the value comes from.
   AllocaInst *findAllocaForValue(Value *V);
-  void poisonStackFrameInline(ArrayRef<uint8_t> ShadowBytes, size_t Begin,
-                              size_t End, IRBuilder<> &IRB, Value *ShadowBase,
-                              bool DoPoison);
-  void poisonStackFrame(ArrayRef<uint8_t> ShadowBytes, IRBuilder<> &IRB,
-                        Value *ShadowBase, bool DoPoison);
+
+  // Copies bytes from ShadowBytes into shadow memory for indexes where
+  // ShadowMask is not zero. If ShadowMask[i] is zero, we assume that
+  // ShadowBytes[i] is constantly zero and doesn't need to be overwritten.
+  void copyToShadow(ArrayRef<uint8_t> ShadowMask, ArrayRef<uint8_t> ShadowBytes,
+                    IRBuilder<> &IRB, Value *ShadowBase);
+  void copyToShadow(ArrayRef<uint8_t> ShadowMask, ArrayRef<uint8_t> ShadowBytes,
+                    size_t Begin, size_t End, IRBuilder<> &IRB,
+                    Value *ShadowBase);
+  void copyToShadowInline(ArrayRef<uint8_t> ShadowMask,
+                          ArrayRef<uint8_t> ShadowBytes, size_t Begin,
+                          size_t End, IRBuilder<> &IRB, Value *ShadowBase);
+
   void poisonAlloca(Value *V, uint64_t Size, IRBuilder<> &IRB, bool DoPoison);
 
   Value *createAllocaForLayout(IRBuilder<> &IRB, const ASanStackFrameLayout &L,
@@ -823,6 +836,79 @@ struct FunctionStackPoisoner : public InstVisitor<FunctionStackPoisoner> {
   PHINode *createPHI(IRBuilder<> &IRB, Value *Cond, Value *ValueIfTrue,
                      Instruction *ThenTerm, Value *ValueIfFalse);
 };
+
+// Performs depth-first search on the control flow graph of block and checks if
+// we can get into the same block with different lifetime state.
+class AllocaLifetimeChecker {
+  // Contains values of the last lifetime intrinsics in the block.
+  // true: llvm.lifetime.start, false: llvm.lifetime.end
+  DenseMap<const BasicBlock *, bool> Markers;
+  // Contains the lifetime state we detected doing depth-first search on the
+  // control flow graph. We expect all future hits will have the same value.
+  // true: llvm.lifetime.start, false: llvm.lifetime.end
+  DenseMap<const BasicBlock *, bool> InboundState;
+  bool Processed = false;
+  bool CollisionDetected = false;
+
+  bool FindCollision(const std::pair<const BasicBlock *, bool> &BlockState) {
+    auto Ins = InboundState.insert(BlockState);
+    if (!Ins.second) {
+      // Already there. Return collision if they are different.
+      return BlockState.second != Ins.first->second;
+    }
+
+    // Use marker for successors if block contains any.
+    auto M = Markers.find(BlockState.first);
+    bool NewState = (M != Markers.end() ? M->second : BlockState.second);
+    for (const BasicBlock *SB : successors(BlockState.first))
+      // We may get into EHPad with any lifetime state, so ignore them.
+      if (!SB->isEHPad() && FindCollision({SB, NewState}))
+        return true;
+
+    return false;
+  }
+
+public:
+  // Assume that markers of the same block will be added in the same order as
+  // the order of corresponding intrinsics, so in the end we will keep only
+  // value of the last intrinsic.
+  void AddMarker(const BasicBlock *BB, bool start) {
+    assert(!Processed);
+    Markers[BB] = start;
+  }
+
+  bool HasAmbiguousLifetime() {
+    if (!Processed) {
+      Processed = true;
+      const Function *F = Markers.begin()->first->getParent();
+      CollisionDetected = FindCollision({&F->getEntryBlock(), false});
+    }
+    return CollisionDetected;
+  }
+};
+
+// Removes allocas for which exists at least one block simultaneously
+// reachable in both states: allocas is inside the scope, and alloca is outside
+// of the scope. We don't have enough information to validate access to such
+// variable, so we just remove such allocas from lifetime analysis.
+// This is workaround for PR28267.
+void removeAllocasWithAmbiguousLifetime(
+    SmallVectorImpl<FunctionStackPoisoner::AllocaPoisonCall> &PoisonCallVec) {
+  if (!ClSkipAmbiguousLifetimeAllocas)
+    return;
+  DenseMap<const AllocaInst *, AllocaLifetimeChecker> Checkers;
+  for (const auto &APC : PoisonCallVec)
+    Checkers[APC.AI].AddMarker(APC.InsBefore->getParent(), !APC.DoPoison);
+
+  auto IsAmbiguous =
+      [&Checkers](const FunctionStackPoisoner::AllocaPoisonCall &APC) {
+        return Checkers[APC.AI].HasAmbiguousLifetime();
+      };
+
+  PoisonCallVec.erase(
+      std::remove_if(PoisonCallVec.begin(), PoisonCallVec.end(), IsAmbiguous),
+      PoisonCallVec.end());
+}
 
 } // anonymous namespace
 
@@ -1519,7 +1605,8 @@ bool AddressSanitizerModule::InstrumentGlobals(IRBuilder<> &IRB, Module &M) {
     Constant *ODRIndicator = ConstantExpr::getNullValue(IRB.getInt8PtrTy());
     GlobalValue *InstrumentedGlobal = NewGlobal;
 
-    bool CanUsePrivateAliases = TargetTriple.isOSBinFormatELF();
+    bool CanUsePrivateAliases =
+        TargetTriple.isOSBinFormatELF() || TargetTriple.isOSBinFormatMachO();
     if (CanUsePrivateAliases && ClUsePrivateAliasForGlobals) {
       // Create local alias for NewGlobal to avoid crash on ODR between
       // instrumented and non-instrumented libraries.
@@ -1795,17 +1882,21 @@ void AddressSanitizer::markEscapedLocalAllocas(Function &F) {
 bool AddressSanitizer::runOnFunction(Function &F) {
   if (&F == AsanCtorFunction) return false;
   if (F.getLinkage() == GlobalValue::AvailableExternallyLinkage) return false;
-  DEBUG(dbgs() << "ASAN instrumenting:\n" << F << "\n");
-  initializeCallbacks(*F.getParent());
-
-  DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  if (!ClDebugFunc.empty() && ClDebugFunc == F.getName()) return false;
+  if (F.getName().find("__asan_") != std::string::npos) return false;
 
   // If needed, insert __asan_init before checking for SanitizeAddress attr.
+  // This function needs to be called even if the function body is not
+  // instrumented.  
   maybeInsertAsanInitAtFunctionEntry(F);
-
+  
+  // Leave if the function doesn't need instrumentation.
   if (!F.hasFnAttribute(Attribute::SanitizeAddress)) return false;
 
-  if (!ClDebugFunc.empty() && ClDebugFunc != F.getName()) return false;
+  DEBUG(dbgs() << "ASAN instrumenting:\n" << F << "\n");
+
+  initializeCallbacks(*F.getParent());
+  DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
 
   FunctionStateRAII CleanupObj(this);
 
@@ -1958,15 +2049,11 @@ void FunctionStackPoisoner::initializeCallbacks(Module &M) {
           kAsanAllocasUnpoison, IRB.getVoidTy(), IntptrTy, IntptrTy, nullptr));
 }
 
-// If DoPoison is true function copies ShadowBytes into shadow memory.
-// If DoPoison is false function sets 0s into shadow memory.
-// Function assumes that if ShadowBytes[i] is 0, then corresponding shadow
-// memory is constant for duration of the function and it contains 0s. So we
-// will try to minimize writes into corresponding addresses of the real shadow
-// memory.
-void FunctionStackPoisoner::poisonStackFrameInline(
-    ArrayRef<uint8_t> ShadowBytes, size_t Begin, size_t End, IRBuilder<> &IRB,
-    Value *ShadowBase, bool DoPoison) {
+void FunctionStackPoisoner::copyToShadowInline(ArrayRef<uint8_t> ShadowMask,
+                                               ArrayRef<uint8_t> ShadowBytes,
+                                               size_t Begin, size_t End,
+                                               IRBuilder<> &IRB,
+                                               Value *ShadowBase) {
   if (Begin >= End)
     return;
 
@@ -1976,11 +2063,12 @@ void FunctionStackPoisoner::poisonStackFrameInline(
   const bool IsLittleEndian = F.getParent()->getDataLayout().isLittleEndian();
 
   // Poison given range in shadow using larges store size with out leading and
-  // trailing zeros. Zeros never change, so they need neither poisoning nor
-  // up-poisoning, but we don't mind if some of them get into a middle of a
-  // store.
+  // trailing zeros in ShadowMask. Zeros never change, so they need neither
+  // poisoning nor up-poisoning. Still we don't mind if some of them get into a
+  // middle of a store.
   for (size_t i = Begin; i < End;) {
-    if (!ShadowBytes[i]) {
+    if (!ShadowMask[i]) {
+      assert(!ShadowBytes[i]);
       ++i;
       continue;
     }
@@ -1991,22 +2079,17 @@ void FunctionStackPoisoner::poisonStackFrameInline(
       StoreSizeInBytes /= 2;
 
     // Minimize store size by trimming trailing zeros.
-    for (size_t j = StoreSizeInBytes - 1; j && !ShadowBytes[i + j]; --j) {
+    for (size_t j = StoreSizeInBytes - 1; j && !ShadowMask[i + j]; --j) {
       while (j <= StoreSizeInBytes / 2)
         StoreSizeInBytes /= 2;
     }
 
     uint64_t Val = 0;
-    if (DoPoison) {
-      for (size_t j = 0; j < StoreSizeInBytes; j++) {
-        if (IsLittleEndian)
-          Val |= (uint64_t)ShadowBytes[i + j] << (8 * j);
-        else
-          Val = (Val << 8) | ShadowBytes[i + j];
-      }
-      assert(Val); // Impossible because ShadowBytes[i] != 0
-    } else {
-      Val = 0;
+    for (size_t j = 0; j < StoreSizeInBytes; j++) {
+      if (IsLittleEndian)
+        Val |= (uint64_t)ShadowBytes[i + j] << (8 * j);
+      else
+        Val = (Val << 8) | ShadowBytes[i + j];
     }
 
     Value *Ptr = IRB.CreateAdd(ShadowBase, ConstantInt::get(IntptrTy, i));
@@ -2018,30 +2101,33 @@ void FunctionStackPoisoner::poisonStackFrameInline(
   }
 }
 
-void FunctionStackPoisoner::poisonStackFrame(ArrayRef<uint8_t> ShadowBytes,
-                                             IRBuilder<> &IRB,
-                                             Value *ShadowBase, bool DoPoison) {
-  auto ValueToWrite = [&](size_t i) {
-    if (DoPoison)
-      return ShadowBytes[i];
-    return static_cast<uint8_t>(0);
-  };
+void FunctionStackPoisoner::copyToShadow(ArrayRef<uint8_t> ShadowMask,
+                                         ArrayRef<uint8_t> ShadowBytes,
+                                         IRBuilder<> &IRB, Value *ShadowBase) {
+  copyToShadow(ShadowMask, ShadowBytes, 0, ShadowMask.size(), IRB, ShadowBase);
+}
 
-  const size_t End = ShadowBytes.size();
-  size_t Done = 0;
-  for (size_t i = 0, j = 1; i < End; i = j++) {
-    if (!ShadowBytes[i])
+void FunctionStackPoisoner::copyToShadow(ArrayRef<uint8_t> ShadowMask,
+                                         ArrayRef<uint8_t> ShadowBytes,
+                                         size_t Begin, size_t End,
+                                         IRBuilder<> &IRB, Value *ShadowBase) {
+  assert(ShadowMask.size() == ShadowBytes.size());
+  size_t Done = Begin;
+  for (size_t i = Begin, j = Begin + 1; i < End; i = j++) {
+    if (!ShadowMask[i]) {
+      assert(!ShadowBytes[i]);
       continue;
-    uint8_t Val = ValueToWrite(i);
+    }
+    uint8_t Val = ShadowBytes[i];
     if (!AsanSetShadowFunc[Val])
       continue;
 
     // Skip same values.
-    for (; j < End && ShadowBytes[j] && Val == ValueToWrite(j); ++j) {
+    for (; j < End && ShadowMask[j] && Val == ShadowBytes[j]; ++j) {
     }
 
     if (j - i >= ClMaxInlinePoisoningSize) {
-      poisonStackFrameInline(ShadowBytes, Done, i, IRB, ShadowBase, DoPoison);
+      copyToShadowInline(ShadowMask, ShadowBytes, Done, i, IRB, ShadowBase);
       IRB.CreateCall(AsanSetShadowFunc[Val],
                      {IRB.CreateAdd(ShadowBase, ConstantInt::get(IntptrTy, i)),
                       ConstantInt::get(IntptrTy, j - i)});
@@ -2049,7 +2135,7 @@ void FunctionStackPoisoner::poisonStackFrame(ArrayRef<uint8_t> ShadowBytes,
     }
   }
 
-  poisonStackFrameInline(ShadowBytes, Done, End, IRB, ShadowBase, DoPoison);
+  copyToShadowInline(ShadowMask, ShadowBytes, Done, End, IRB, ShadowBase);
 }
 
 // Fake stack allocator (asan_fake_stack.h) has 11 size classes
@@ -2106,6 +2192,8 @@ void FunctionStackPoisoner::processDynamicAllocas() {
     return;
   }
 
+  removeAllocasWithAmbiguousLifetime(DynamicAllocaPoisonCallVec);
+
   // Insert poison calls for lifetime intrinsics for dynamic allocas.
   for (const auto &APC : DynamicAllocaPoisonCallVec) {
     assert(APC.InsBefore);
@@ -2133,6 +2221,8 @@ void FunctionStackPoisoner::processStaticAllocas() {
     return;
   }
 
+  removeAllocasWithAmbiguousLifetime(StaticAllocaPoisonCallVec);
+
   int StackMallocIdx = -1;
   DebugLoc EntryDebugLocation;
   if (auto SP = F.getSubprogram())
@@ -2155,23 +2245,33 @@ void FunctionStackPoisoner::processStaticAllocas() {
   // If we have a call to llvm.localescape, keep it in the entry block.
   if (LocalEscapeCall) LocalEscapeCall->moveBefore(InsBefore);
 
-  // Insert poison calls for lifetime intrinsics for static allocas.
+  // Find static allocas with lifetime analysis.
+  DenseMap<const AllocaInst *, const ASanStackVariableDescription *>
+      AllocaToSVDMap;
   for (const auto &APC : StaticAllocaPoisonCallVec) {
     assert(APC.InsBefore);
     assert(APC.AI);
     assert(ASan.isInterestingAlloca(*APC.AI));
     assert(APC.AI->isStaticAlloca());
 
-    IRBuilder<> IRB(APC.InsBefore);
-    poisonAlloca(APC.AI, APC.Size, IRB, APC.DoPoison);
+    if (ClExperimentalPoisoning) {
+      AllocaToSVDMap[APC.AI] = nullptr;
+    } else {
+      IRBuilder<> IRB(APC.InsBefore);
+      poisonAlloca(APC.AI, APC.Size, IRB, APC.DoPoison);
+    }
   }
 
   SmallVector<ASanStackVariableDescription, 16> SVD;
   SVD.reserve(AllocaVec.size());
   for (AllocaInst *AI : AllocaVec) {
+    size_t UseAfterScopePoisonSize =
+        AllocaToSVDMap.find(AI) != AllocaToSVDMap.end()
+            ? ASan.getAllocaSizeInBytes(*AI)
+            : 0;
     ASanStackVariableDescription D = {AI->getName().data(),
                                       ASan.getAllocaSizeInBytes(*AI),
-                                      0,
+                                      UseAfterScopePoisonSize,
                                       AI->getAlignment(),
                                       AI,
                                       0};
@@ -2180,8 +2280,9 @@ void FunctionStackPoisoner::processStaticAllocas() {
   // Minimal header size (left redzone) is 4 pointers,
   // i.e. 32 bytes on 64-bit platforms and 16 bytes in 32-bit platforms.
   size_t MinHeaderSize = ASan.LongSize / 2;
-  ASanStackFrameLayout L;
-  ComputeASanStackFrameLayout(SVD, 1ULL << Mapping.Scale, MinHeaderSize, &L);
+  const ASanStackFrameLayout &L =
+      ComputeASanStackFrameLayout(SVD, 1ULL << Mapping.Scale, MinHeaderSize);
+
   DEBUG(dbgs() << L.DescriptionString << " --- " << L.FrameSize << "\n");
   uint64_t LocalStackSize = L.FrameSize;
   bool DoStackMalloc = ClUseAfterReturn && !ASan.CompileKernel &&
@@ -2276,22 +2377,55 @@ void FunctionStackPoisoner::processStaticAllocas() {
       IntptrPtrTy);
   IRB.CreateStore(IRB.CreatePointerCast(&F, IntptrTy), BasePlus2);
 
-  // Poison the stack redzones at the entry.
+  const auto &ShadowAfterScope = GetShadowBytesAfterScope(SVD, L);
+
+  // Poison the stack red zones at the entry.
   Value *ShadowBase = ASan.memToShadow(LocalStackBase, IRB);
-  poisonStackFrame(L.ShadowBytes, IRB, ShadowBase, true);
+  // As mask we must use most poisoned case: red zones and after scope.
+  // As bytes we can use either the same or just red zones only.
+  copyToShadow(ShadowAfterScope, ShadowAfterScope, IRB, ShadowBase);
+
+  if (ClExperimentalPoisoning && !StaticAllocaPoisonCallVec.empty()) {
+    // Complete AllocaToSVDMap
+    for (const auto &Desc : SVD) {
+      auto It = AllocaToSVDMap.find(Desc.AI);
+      if (It != AllocaToSVDMap.end()) {
+        It->second = &Desc;
+      }
+    }
+
+    const auto &ShadowInScope = GetShadowBytes(SVD, L);
+
+    // Poison static allocas near lifetime intrinsics.
+    for (const auto &APC : StaticAllocaPoisonCallVec) {
+      // Must be already set.
+      assert(AllocaToSVDMap[APC.AI]);
+      const auto &Desc = *AllocaToSVDMap[APC.AI];
+      assert(Desc.Offset % L.Granularity == 0);
+      size_t Begin = Desc.Offset / L.Granularity;
+      size_t End = Begin + (APC.Size + L.Granularity - 1) / L.Granularity;
+
+      IRBuilder<> IRB(APC.InsBefore);
+      copyToShadow(ShadowAfterScope,
+                   APC.DoPoison ? ShadowAfterScope : ShadowInScope, Begin, End,
+                   IRB, ShadowBase);
+    }
+  }
+
+  SmallVector<uint8_t, 64> ShadowClean(ShadowAfterScope.size(), 0);
 
   auto UnpoisonStack = [&](IRBuilder<> &IRB) {
     // Do this always as poisonAlloca can be disabled with
     // detect_stack_use_after_scope=0.
-    poisonStackFrame(L.ShadowBytes, IRB, ShadowBase, false);
-    if (!StaticAllocaPoisonCallVec.empty()) {
+    copyToShadow(ShadowAfterScope, ShadowClean, IRB, ShadowBase);
+    if (!ClExperimentalPoisoning && !StaticAllocaPoisonCallVec.empty()) {
       // If we poisoned some allocas in llvm.lifetime analysis,
       // unpoison whole stack frame now.
       poisonAlloca(LocalStackBase, LocalStackSize, IRB, false);
     }
   };
 
-  SmallVector<uint8_t, 64> ShadowBytesAfterReturn;
+  SmallVector<uint8_t, 64> ShadowAfterReturn;
 
   // (Un)poison the stack before all ret instructions.
   for (auto Ret : RetVec) {
@@ -2319,9 +2453,10 @@ void FunctionStackPoisoner::processStaticAllocas() {
       IRBuilder<> IRBPoison(ThenTerm);
       if (StackMallocIdx <= 4) {
         int ClassSize = kMinStackMallocSize << StackMallocIdx;
-        ShadowBytesAfterReturn.resize(ClassSize >> Mapping.Scale,
-                                      kAsanStackUseAfterReturnMagic);
-        poisonStackFrame(ShadowBytesAfterReturn, IRBPoison, ShadowBase, true);
+        ShadowAfterReturn.resize(ClassSize / L.Granularity,
+                                 kAsanStackUseAfterReturnMagic);
+        copyToShadow(ShadowAfterReturn, ShadowAfterReturn, IRBPoison,
+                     ShadowBase);
         Value *SavedFlagPtrPtr = IRBPoison.CreateAdd(
             FakeStack,
             ConstantInt::get(IntptrTy, ClassSize - ASan.LongSize / 8));
@@ -2369,7 +2504,7 @@ void FunctionStackPoisoner::poisonAlloca(Value *V, uint64_t Size,
 
 AllocaInst *FunctionStackPoisoner::findAllocaForValue(Value *V) {
   if (AllocaInst *AI = dyn_cast<AllocaInst>(V))
-    // We're intested only in allocas we can handle.
+    // We're interested only in allocas we can handle.
     return ASan.isInterestingAlloca(*AI) ? AI : nullptr;
   // See if we've already calculated (or started to calculate) alloca for a
   // given value.

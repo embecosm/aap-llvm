@@ -371,6 +371,21 @@ define <2 x i1> @test31vec(<2 x i64> %A) {
   ret <2 x i1> %D
 }
 
+; Verify that the 'and' was narrowed, the zext was eliminated, and the compare was narrowed
+; even for vectors. Earlier folds should ensure that the icmp(and(zext)) pattern never occurs.
+
+define <2 x i1> @test32vec(<2 x i8> %A) {
+; CHECK-LABEL: @test32vec(
+; CHECK-NEXT:    [[TMP1:%.*]] = and <2 x i8> %A, <i8 42, i8 42>
+; CHECK-NEXT:    [[D:%.*]] = icmp eq <2 x i8> [[TMP1]], <i8 10, i8 10>
+; CHECK-NEXT:    ret <2 x i1> [[D]]
+;
+  %B = zext <2 x i8> %A to <2 x i16>
+  %C = and <2 x i16> %B, <i16 42, i16 42>
+  %D = icmp eq <2 x i16> %C, <i16 10, i16 10>
+  ret <2 x i1> %D
+}
+
 define i32 @test33(i32 %c1) {
 ; CHECK-LABEL: @test33(
 ; CHECK-NEXT:    ret i32 %c1
@@ -414,11 +429,9 @@ define i1 @test36(i32 %a) {
   ret i1 %d
 }
 
-; FIXME: The trunc is removed, but the icmp+lshr fold is missing.
 define <2 x i1> @test36vec(<2 x i32> %a) {
 ; CHECK-LABEL: @test36vec(
-; CHECK-NEXT:    [[B:%.*]] = lshr <2 x i32> %a, <i32 31, i32 31>
-; CHECK-NEXT:    [[D:%.*]] = icmp eq <2 x i32> [[B]], zeroinitializer
+; CHECK-NEXT:    [[D:%.*]] = icmp sgt <2 x i32> %a, <i32 -1, i32 -1>
 ; CHECK-NEXT:    ret <2 x i1> [[D]]
 ;
   %b = lshr <2 x i32> %a, <i32 31, i32 31>

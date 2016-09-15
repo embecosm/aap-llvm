@@ -16,6 +16,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/LTO/Caching.h"
 #include "llvm/LTO/LTO.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetSelect.h"
@@ -30,6 +31,13 @@ static cl::list<std::string> InputFilenames(cl::Positional, cl::OneOrMore,
 static cl::opt<std::string> OutputFilename("o", cl::Required,
                                            cl::desc("Output filename"),
                                            cl::value_desc("filename"));
+
+static cl::opt<std::string> CacheDir("cache-dir", cl::desc("Cache Directory"),
+                                     cl::value_desc("directory"));
+
+static cl::opt<std::string> OptPipeline("opt-pipeline",
+                                        cl::desc("Optimizer Pipeline"),
+                                        cl::value_desc("pipeline"));
 
 static cl::opt<bool> SaveTemps("save-temps", cl::desc("Save temporary files"));
 
@@ -144,6 +152,9 @@ int main(int argc, char **argv) {
     check(Conf.addSaveTemps(OutputFilename + "."),
           "Config::addSaveTemps failed");
 
+  // Run a custom pipeline, if asked for.
+  Conf.OptPipeline = OptPipeline;
+
   ThinBackend Backend;
   if (ThinLTODistributedIndexes)
     Backend = createWriteIndexesThinBackend("", "", true, "");
@@ -187,9 +198,22 @@ int main(int argc, char **argv) {
   if (HasErrors)
     return 1;
 
-  auto AddOutput = [&](size_t Task) {
+  auto AddOutput =
+      [&](size_t Task) -> std::unique_ptr<lto::NativeObjectOutput> {
     std::string Path = OutputFilename + "." + utostr(Task);
-    return llvm::make_unique<LTOOutput>(std::move(Path));
+    if (CacheDir.empty())
+      return llvm::make_unique<LTOOutput>(std::move(Path));
+
+    return llvm::make_unique<CacheObjectOutput>(
+        CacheDir, [Path](std::string EntryPath) {
+          // Load the entry from the cache now.
+          auto ReloadedBufferOrErr = MemoryBuffer::getFile(EntryPath);
+          if (auto EC = ReloadedBufferOrErr.getError())
+            report_fatal_error(Twine("Can't reload cached file '") + EntryPath +
+                               "': " + EC.message() + "\n");
+
+          *LTOOutput(Path).getStream() << (*ReloadedBufferOrErr)->getBuffer();
+        });
   };
 
   check(Lto.run(AddOutput), "LTO::run failed");

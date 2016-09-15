@@ -92,6 +92,10 @@ namespace opts {
     cl::desc("Alias for --relocations"),
     cl::aliasopt(Relocations));
 
+  // -notes, -n
+  cl::opt<bool> Notes("notes", cl::desc("Display the ELF notes in the file"));
+  cl::alias NotesShort("n", cl::desc("Alias for --notes"), cl::aliasopt(Notes));
+
   // -dyn-relocations
   cl::opt<bool> DynRelocs("dyn-relocations",
     cl::desc("Display the dynamic relocation entries in the file"));
@@ -327,8 +331,15 @@ static bool isMipsArch(unsigned Arch) {
     return false;
   }
 }
+namespace {
+struct TypeTableBuilder {
+  TypeTableBuilder() : Allocator(), Builder(Allocator) {}
 
-static llvm::codeview::MemoryTypeTableBuilder CVTypes;
+  llvm::BumpPtrAllocator Allocator;
+  llvm::codeview::MemoryTypeTableBuilder Builder;
+};
+}
+static TypeTableBuilder CVTypes;
 
 /// @brief Creates an format-specific object file dumper.
 static std::error_code createDumper(const ObjectFile *Obj,
@@ -408,6 +419,8 @@ static void dumpObject(const ObjectFile *Obj) {
       Dumper->printGroupSections();
     if (opts::HashHistogram)
       Dumper->printHashHistogram();
+    if (opts::Notes)
+      Dumper->printNotes();
   }
   if (Obj->isCOFF()) {
     if (opts::COFFImports)
@@ -423,7 +436,7 @@ static void dumpObject(const ObjectFile *Obj) {
     if (opts::CodeView)
       Dumper->printCodeViewDebugInfo();
     if (opts::CodeViewMergedTypes)
-      Dumper->mergeCodeViewTypes(CVTypes);
+      Dumper->mergeCodeViewTypes(CVTypes.Builder);
   }
   if (Obj->isMachO()) {
     if (opts::MachODataInCode)
@@ -528,7 +541,7 @@ int main(int argc, const char *argv[]) {
 
   if (opts::CodeViewMergedTypes) {
     ScopedPrinter W(outs());
-    dumpCodeViewMergedTypes(W, CVTypes);
+    dumpCodeViewMergedTypes(W, CVTypes.Builder);
   }
 
   return 0;

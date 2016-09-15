@@ -17,6 +17,7 @@
 #include "llvm/Config/config.h" // plugin-api.h requires HAVE_STDINT_H
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/LTO/Caching.h"
 #include "llvm/LTO/LTO.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -161,6 +162,8 @@ namespace options {
   // corresponding bitcode file, will use a path formed by replacing the
   // bitcode file's path prefix matching oldprefix with newprefix.
   static std::string thinlto_prefix_replace;
+  // Optional path to a directory for caching ThinLTO objects.
+  static std::string cache_dir;
   // Additional options to pass into the code generator.
   // Note: This array will contain all plugin options which are not claimed
   // as plugin exclusive to pass to the code generator.
@@ -199,6 +202,8 @@ namespace options {
       thinlto_prefix_replace = opt.substr(strlen("thinlto-prefix-replace="));
       if (thinlto_prefix_replace.find(";") == std::string::npos)
         message(LDPL_FATAL, "thinlto-prefix-replace expects 'old;new' format");
+    } else if (opt.startswith("cache-dir=")) {
+      cache_dir = opt.substr(strlen("cache-dir="));
     } else if (opt.size() == 2 && opt[0] == 'O') {
       if (opt[1] < '0' || opt[1] > '3')
         message(LDPL_FATAL, "Optimization level must be between 0 and 3");
@@ -563,14 +568,10 @@ static void addModule(LTO &Lto, claimed_file &F, const void *View) {
     message(LDPL_FATAL, "Could not read bitcode from file : %s",
             toString(ObjOrErr.takeError()).c_str());
 
-  InputFile &Obj = **ObjOrErr;
-
   unsigned SymNum = 0;
   std::vector<SymbolResolution> Resols(F.syms.size());
-  for (LLVM_ATTRIBUTE_UNUSED auto &ObjSym : Obj.symbols()) {
-    ld_plugin_symbol &Sym = F.syms[SymNum];
-    SymbolResolution &R = Resols[SymNum];
-    ++SymNum;
+  for (ld_plugin_symbol &Sym : F.syms) {
+    SymbolResolution &R = Resols[SymNum++];
 
     ld_plugin_symbol_resolution Resolution =
         (ld_plugin_symbol_resolution)Sym.resolution;
@@ -727,11 +728,11 @@ static std::unique_ptr<LTO> createLTO() {
     break;
 
   case options::OT_DISABLE:
-    Conf.PreOptModuleHook = [](size_t Task, Module &M) { return false; };
+    Conf.PreOptModuleHook = [](size_t Task, const Module &M) { return false; };
     break;
 
   case options::OT_BC_ONLY:
-    Conf.PostInternalizeModuleHook = [](size_t Task, Module &M) {
+    Conf.PostInternalizeModuleHook = [](size_t Task, const Module &M) {
       std::error_code EC;
       raw_fd_ostream OS(output_name, EC, sys::fs::OpenFlags::F_None);
       if (EC)
@@ -792,12 +793,18 @@ static ld_plugin_status allSymbolsReadHook() {
   std::vector<uintptr_t> IsTemporary(MaxTasks);
   std::vector<SmallString<128>> Filenames(MaxTasks);
 
-  auto AddOutput = [&](size_t Task) {
+  auto AddOutput =
+      [&](size_t Task) -> std::unique_ptr<lto::NativeObjectOutput> {
     auto &OutputName = Filenames[Task];
     getOutputFileName(Filename, /*TempOutFile=*/!SaveTemps, OutputName,
                       MaxTasks > 1 ? Task : -1);
-    IsTemporary[Task] = !SaveTemps;
-    return llvm::make_unique<LTOOutput>(OutputName);
+    IsTemporary[Task] = !SaveTemps && options::cache_dir.empty();
+    if (options::cache_dir.empty())
+      return llvm::make_unique<LTOOutput>(OutputName);
+
+    return llvm::make_unique<CacheObjectOutput>(
+        options::cache_dir,
+        [&OutputName](std::string EntryPath) { OutputName = EntryPath; });
   };
 
   check(Lto->run(AddOutput));

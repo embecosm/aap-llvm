@@ -165,6 +165,8 @@ public:
       return GV && llvm::canBeOmittedFromSymbolTable(GV);
     }
     Expected<const Comdat *> getComdat() const {
+      if (!GV)
+        return nullptr;
       const GlobalObject *GO;
       if (auto *GA = dyn_cast<GlobalAlias>(GV)) {
         GO = GA->getBaseObject();
@@ -174,8 +176,8 @@ public:
       } else {
         GO = cast<GlobalObject>(GV);
       }
-      if (GV)
-        return GV->getComdat();
+      if (GO)
+        return GO->getComdat();
       return nullptr;
     }
     uint64_t getCommonSize() const {
@@ -223,6 +225,10 @@ public:
   iterator_range<symbol_iterator> symbols() {
     return llvm::make_range(symbol_iterator(Obj->symbol_begin()),
                             symbol_iterator(Obj->symbol_end()));
+  }
+
+  StringRef getDataLayoutStr() const {
+    return Obj->getModule().getDataLayoutStr();
   }
 
   StringRef getSourceFileName() const {
@@ -309,6 +315,8 @@ private:
     struct CommonResolution {
       uint64_t Size = 0;
       unsigned Align = 0;
+      /// Record if at least one instance of the common was marked as prevailing
+      bool Prevailing = false;
     };
     std::map<std::string, CommonResolution> Commons;
 
@@ -316,7 +324,7 @@ private:
     LTOLLVMContext Ctx;
     bool HasModule = false;
     std::unique_ptr<Module> CombinedModule;
-    IRMover Mover;
+    std::unique_ptr<IRMover> Mover;
   } RegularLTO;
 
   struct ThinLTOState {
@@ -367,8 +375,6 @@ private:
 
   // Global mapping from mangled symbol names to resolutions.
   StringMap<GlobalResolution> GlobalResolutions;
-
-  void writeToResolutionFile(InputFile *Input, ArrayRef<SymbolResolution> Res);
 
   void addSymbolToGlobalRes(object::IRObjectFile *Obj,
                             SmallPtrSet<GlobalValue *, 8> &Used,

@@ -1005,6 +1005,7 @@ void SelectionDAGLegalize::LegalizeOp(SDNode *Node) {
   case ISD::MERGE_VALUES:
   case ISD::EH_RETURN:
   case ISD::FRAME_TO_ARGS_OFFSET:
+  case ISD::EH_DWARF_CFA:
   case ISD::EH_SJLJ_SETJMP:
   case ISD::EH_SJLJ_LONGJMP:
   case ISD::EH_SJLJ_SETUP_DISPATCH:
@@ -1066,35 +1067,41 @@ void SelectionDAGLegalize::LegalizeOp(SDNode *Node) {
     case ISD::SRL:
     case ISD::SRA:
     case ISD::ROTL:
-    case ISD::ROTR:
+    case ISD::ROTR: {
       // Legalizing shifts/rotates requires adjusting the shift amount
       // to the appropriate width.
-      if (!Node->getOperand(1).getValueType().isVector()) {
-        SDValue SAO =
-          DAG.getShiftAmountOperand(Node->getOperand(0).getValueType(),
-                                    Node->getOperand(1));
-        HandleSDNode Handle(SAO);
-        LegalizeOp(SAO.getNode());
-        NewNode = DAG.UpdateNodeOperands(Node, Node->getOperand(0),
-                                         Handle.getValue());
+      SDValue Op0 = Node->getOperand(0);
+      SDValue Op1 = Node->getOperand(1);
+      if (!Op1.getValueType().isVector()) {
+        SDValue SAO = DAG.getShiftAmountOperand(Op0.getValueType(), Op1);
+        // The getShiftAmountOperand() may create a new operand node or
+        // return the existing one. If new operand is created we need
+        // to update the parent node.
+        // Do not try to legalize SAO here! It will be automatically legalized
+        // in the next round.
+        if (SAO != Op1)
+          NewNode = DAG.UpdateNodeOperands(Node, Op0, SAO);
       }
-      break;
+    }
+    break;
     case ISD::SRL_PARTS:
     case ISD::SRA_PARTS:
-    case ISD::SHL_PARTS:
+    case ISD::SHL_PARTS: {
       // Legalizing shifts/rotates requires adjusting the shift amount
       // to the appropriate width.
-      if (!Node->getOperand(2).getValueType().isVector()) {
-        SDValue SAO =
-          DAG.getShiftAmountOperand(Node->getOperand(0).getValueType(),
-                                    Node->getOperand(2));
-        HandleSDNode Handle(SAO);
-        LegalizeOp(SAO.getNode());
-        NewNode = DAG.UpdateNodeOperands(Node, Node->getOperand(0),
-                                         Node->getOperand(1),
-                                         Handle.getValue());
+      SDValue Op0 = Node->getOperand(0);
+      SDValue Op1 = Node->getOperand(1);
+      SDValue Op2 = Node->getOperand(2);
+      if (!Op2.getValueType().isVector()) {
+        SDValue SAO = DAG.getShiftAmountOperand(Op0.getValueType(), Op2);
+        // The getShiftAmountOperand() may create a new operand node or
+        // return the existing one. If new operand is created we need
+        // to update the parent node.
+        if (SAO != Op2)
+          NewNode = DAG.UpdateNodeOperands(Node, Op0, Op1, SAO);
       }
-      break;
+    }
+    break;
     }
 
     if (NewNode != Node) {
@@ -1209,8 +1216,7 @@ SDValue SelectionDAGLegalize::ExpandExtractFromVectorThroughStack(SDValue Op) {
   }
 
   // Add the offset to the index.
-  unsigned EltSize =
-      Vec.getValueType().getVectorElementType().getSizeInBits()/8;
+  unsigned EltSize = Vec.getScalarValueSizeInBits() / 8;
   Idx = DAG.getNode(ISD::MUL, dl, Idx.getValueType(), Idx,
                     DAG.getConstant(EltSize, SDLoc(Vec), Idx.getValueType()));
 
@@ -1261,8 +1267,7 @@ SDValue SelectionDAGLegalize::ExpandInsertToVectorThroughStack(SDValue Op) {
   // Then store the inserted part.
 
   // Add the offset to the index.
-  unsigned EltSize =
-      Vec.getValueType().getVectorElementType().getSizeInBits()/8;
+  unsigned EltSize = Vec.getScalarValueSizeInBits() / 8;
 
   Idx = DAG.getNode(ISD::MUL, dl, Idx.getValueType(), Idx,
                     DAG.getConstant(EltSize, SDLoc(Vec), Idx.getValueType()));
@@ -1656,7 +1661,7 @@ SDValue SelectionDAGLegalize::EmitStackConvert(SDValue SrcOp, EVT SlotVT,
   MachinePointerInfo PtrInfo =
       MachinePointerInfo::getFixedStack(DAG.getMachineFunction(), SPFI);
 
-  unsigned SrcSize = SrcOp.getValueType().getSizeInBits();
+  unsigned SrcSize = SrcOp.getValueSizeInBits();
   unsigned SlotSize = SlotVT.getSizeInBits();
   unsigned DestSize = DestVT.getSizeInBits();
   Type *DestType = DestVT.getTypeForEVT(*DAG.getContext());
@@ -2782,6 +2787,21 @@ bool SelectionDAGLegalize::ExpandNode(SDNode *Node) {
   case ISD::FRAME_TO_ARGS_OFFSET:
     Results.push_back(DAG.getConstant(0, dl, Node->getValueType(0)));
     break;
+  case ISD::EH_DWARF_CFA: {
+    SDValue CfaArg = DAG.getSExtOrTrunc(Node->getOperand(0), dl,
+                                        TLI.getPointerTy(DAG.getDataLayout()));
+    SDValue Offset = DAG.getNode(ISD::ADD, dl,
+                                 CfaArg.getValueType(),
+                                 DAG.getNode(ISD::FRAME_TO_ARGS_OFFSET, dl,
+                                             CfaArg.getValueType()),
+                                 CfaArg);
+    SDValue FA = DAG.getNode(
+        ISD::FRAMEADDR, dl, TLI.getPointerTy(DAG.getDataLayout()),
+        DAG.getConstant(0, dl, TLI.getPointerTy(DAG.getDataLayout())));
+    Results.push_back(DAG.getNode(ISD::ADD, dl, FA.getValueType(),
+                                  FA, Offset));
+    break;
+  }
   case ISD::FLT_ROUNDS_:
     Results.push_back(DAG.getConstant(1, dl, Node->getValueType(0)));
     break;
@@ -2920,8 +2940,8 @@ bool SelectionDAGLegalize::ExpandNode(SDNode *Node) {
     EVT ShiftAmountTy = TLI.getShiftAmountTy(VT, DAG.getDataLayout());
     if (VT.isVector())
       ShiftAmountTy = VT;
-    unsigned BitsDiff = VT.getScalarType().getSizeInBits() -
-                        ExtraVT.getScalarType().getSizeInBits();
+    unsigned BitsDiff = VT.getScalarSizeInBits() -
+                        ExtraVT.getScalarSizeInBits();
     SDValue ShiftCst = DAG.getConstant(BitsDiff, dl, ShiftAmountTy);
     Tmp1 = DAG.getNode(ISD::SHL, dl, Node->getValueType(0),
                        Node->getOperand(0), ShiftCst);

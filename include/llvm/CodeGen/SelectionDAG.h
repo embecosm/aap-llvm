@@ -81,16 +81,10 @@ template<> struct FoldingSetTrait<SDVTListNode> : DefaultFoldingSetTrait<SDVTLis
   }
 };
 
-template <>
-struct ilist_sentinel_traits<SDNode>
-    : public ilist_half_embedded_sentinel_traits<SDNode> {};
-
-template <> struct ilist_traits<SDNode> : public ilist_default_traits<SDNode> {
+template <> struct ilist_alloc_traits<SDNode> {
   static void deleteNode(SDNode *) {
     llvm_unreachable("ilist_traits<SDNode> shouldn't see a deleteNode call!");
   }
-private:
-  static void createNode(const SDNode &);
 };
 
 /// Keeps track of dbg_value information through SDISel.  We do
@@ -274,6 +268,22 @@ private:
   SDNodeT *newSDNode(ArgTypes &&... Args) {
     return new (NodeAllocator.template Allocate<SDNodeT>())
         SDNodeT(std::forward<ArgTypes>(Args)...);
+  }
+
+  /// Build a synthetic SDNodeT with the given args and extract its subclass
+  /// data as an integer (e.g. for use in a folding set).
+  ///
+  /// The args to this function are the same as the args to SDNodeT's
+  /// constructor, except the second arg (assumed to be a const DebugLoc&) is
+  /// omitted.
+  template <typename SDNodeT, typename... ArgTypes>
+  static uint16_t getSyntheticNodeSubclassData(unsigned IROrder,
+                                               ArgTypes &&... Args) {
+    // The compiler can reduce this expression to a constant iff we pass an
+    // empty DebugLoc.  Thankfully, the debug location doesn't have any bearing
+    // on the subclass data.
+    return SDNodeT(IROrder, DebugLoc(), std::forward<ArgTypes>(Args)...)
+        .getRawSubclassData();
   }
 
   void createOperands(SDNode *Node, ArrayRef<SDValue> Vals) {
@@ -653,11 +663,6 @@ public:
 
     SmallVector<SDValue, 16> Ops(VT.getVectorNumElements(), Op);
     return getNode(ISD::BUILD_VECTOR, DL, VT, Ops);
-  }
-
-  /// Return a splat ISD::BUILD_VECTOR node, but with Op's SDLoc.
-  SDValue getSplatBuildVector(EVT VT, SDValue Op) {
-    return getSplatBuildVector(VT, SDLoc(Op), Op);
   }
 
   /// \brief Returns an ISD::VECTOR_SHUFFLE node semantically equivalent to

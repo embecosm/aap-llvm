@@ -227,6 +227,7 @@ SITargetLowering::SITargetLowering(const TargetMachine &TM,
   setTargetDAGCombine(ISD::SETCC);
   setTargetDAGCombine(ISD::AND);
   setTargetDAGCombine(ISD::OR);
+  setTargetDAGCombine(ISD::XOR);
   setTargetDAGCombine(ISD::UINT_TO_FP);
   setTargetDAGCombine(ISD::FCANONICALIZE);
 
@@ -581,8 +582,10 @@ SDValue SITargetLowering::LowerParameter(SelectionDAG &DAG, EVT VT, EVT MemVT,
 
   SDValue Ptr = LowerParameterPtr(DAG, SL, Chain, Offset);
   return DAG.getLoad(ISD::UNINDEXED, ExtTy, VT, SL, Chain, Ptr, PtrOffset,
-                     PtrInfo, MemVT, Align, MachineMemOperand::MONonTemporal |
-                                                MachineMemOperand::MOInvariant);
+                     PtrInfo, MemVT, Align,
+                     MachineMemOperand::MONonTemporal |
+                         MachineMemOperand::MODereferenceable |
+                         MachineMemOperand::MOInvariant);
 }
 
 SDValue SITargetLowering::LowerFormalArguments(
@@ -1453,6 +1456,36 @@ MachineBasicBlock *SITargetLowering::EmitInstrWithCustomInserter(
     return emitIndirectDst(MI, *BB, getSubtarget()->getInstrInfo());
   case AMDGPU::SI_KILL:
     return splitKillBlock(MI, BB);
+  case AMDGPU::V_CNDMASK_B64_PSEUDO: {
+    MachineRegisterInfo &MRI = BB->getParent()->getRegInfo();
+    const SIInstrInfo *TII = getSubtarget()->getInstrInfo();
+
+    unsigned Dst = MI.getOperand(0).getReg();
+    unsigned Src0 = MI.getOperand(1).getReg();
+    unsigned Src1 = MI.getOperand(2).getReg();
+    const DebugLoc &DL = MI.getDebugLoc();
+    unsigned SrcCond = MI.getOperand(3).getReg();
+
+    unsigned DstLo = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
+    unsigned DstHi = MRI.createVirtualRegister(&AMDGPU::VGPR_32RegClass);
+
+    BuildMI(*BB, MI, DL, TII->get(AMDGPU::V_CNDMASK_B32_e64), DstLo)
+      .addReg(Src0, 0, AMDGPU::sub0)
+      .addReg(Src1, 0, AMDGPU::sub0)
+      .addReg(SrcCond);
+    BuildMI(*BB, MI, DL, TII->get(AMDGPU::V_CNDMASK_B32_e64), DstHi)
+      .addReg(Src0, 0, AMDGPU::sub1)
+      .addReg(Src1, 0, AMDGPU::sub1)
+      .addReg(SrcCond);
+
+    BuildMI(*BB, MI, DL, TII->get(AMDGPU::REG_SEQUENCE), Dst)
+      .addReg(DstLo)
+      .addImm(AMDGPU::sub0)
+      .addReg(DstHi)
+      .addImm(AMDGPU::sub1);
+    MI.eraseFromParent();
+    return BB;
+  }
   default:
     return AMDGPUTargetLowering::EmitInstrWithCustomInserter(MI, BB);
   }
@@ -1762,7 +1795,8 @@ SDValue SITargetLowering::getSegmentAperture(unsigned AS,
   MachinePointerInfo PtrInfo(V, StructOffset);
   return DAG.getLoad(MVT::i32, SL, QueuePtr.getValue(1), Ptr, PtrInfo,
                      MinAlign(64, StructOffset),
-                     MachineMemOperand::MOInvariant);
+                     MachineMemOperand::MODereferenceable |
+                         MachineMemOperand::MOInvariant);
 }
 
 SDValue SITargetLowering::lowerADDRSPACECAST(SDValue Op,
@@ -1880,7 +1914,8 @@ SDValue SITargetLowering::LowerGlobalAddress(AMDGPUMachineFunction *MFI,
   MachinePointerInfo PtrInfo(UndefValue::get(PtrTy));
 
   return DAG.getLoad(PtrVT, DL, DAG.getEntryNode(), GOTAddr, PtrInfo, Align,
-                     MachineMemOperand::MOInvariant);
+                     MachineMemOperand::MODereferenceable |
+                         MachineMemOperand::MOInvariant);
 }
 
 SDValue SITargetLowering::lowerTRAP(SDValue Op,
@@ -2100,9 +2135,10 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
     };
 
     MachineMemOperand *MMO = MF.getMachineMemOperand(
-      MachinePointerInfo(),
-      MachineMemOperand::MOLoad | MachineMemOperand::MOInvariant,
-      VT.getStoreSize(), 4);
+        MachinePointerInfo(),
+        MachineMemOperand::MOLoad | MachineMemOperand::MODereferenceable |
+            MachineMemOperand::MOInvariant,
+        VT.getStoreSize(), 4);
     return DAG.getMemIntrinsicNode(AMDGPUISD::LOAD_CONSTANT, DL,
                                    Op->getVTList(), Ops, VT, MMO);
   }
@@ -2864,23 +2900,62 @@ SDValue SITargetLowering::performSHLPtrCombine(SDNode *N,
   return DAG.getNode(ISD::ADD, SL, VT, ShlX, COffset);
 }
 
+static bool bitOpWithConstantIsReducible(unsigned Opc, uint32_t Val) {
+  return (Opc == ISD::AND && (Val == 0 || Val == 0xffffffff)) ||
+         (Opc == ISD::OR && (Val == 0xffffffff || Val == 0)) ||
+         (Opc == ISD::XOR && Val == 0);
+}
+
+// Break up 64-bit bit operation of a constant into two 32-bit and/or/xor. This
+// will typically happen anyway for a VALU 64-bit and. This exposes other 32-bit
+// integer combine opportunities since most 64-bit operations are decomposed
+// this way.  TODO: We won't want this for SALU especially if it is an inline
+// immediate.
+SDValue SITargetLowering::splitBinaryBitConstantOp(
+  DAGCombinerInfo &DCI,
+  const SDLoc &SL,
+  unsigned Opc, SDValue LHS,
+  const ConstantSDNode *CRHS) const {
+  uint64_t Val = CRHS->getZExtValue();
+  uint32_t ValLo = Lo_32(Val);
+  uint32_t ValHi = Hi_32(Val);
+  const SIInstrInfo *TII = getSubtarget()->getInstrInfo();
+
+    if ((bitOpWithConstantIsReducible(Opc, ValLo) ||
+         bitOpWithConstantIsReducible(Opc, ValHi)) ||
+        (CRHS->hasOneUse() && !TII->isInlineConstant(CRHS->getAPIntValue()))) {
+    // If we need to materialize a 64-bit immediate, it will be split up later
+    // anyway. Avoid creating the harder to understand 64-bit immediate
+    // materialization.
+    return splitBinaryBitConstantOpImpl(DCI, SL, Opc, LHS, ValLo, ValHi);
+  }
+
+  return SDValue();
+}
+
 SDValue SITargetLowering::performAndCombine(SDNode *N,
                                             DAGCombinerInfo &DCI) const {
   if (DCI.isBeforeLegalize())
     return SDValue();
 
-  if (SDValue Base = AMDGPUTargetLowering::performAndCombine(N, DCI))
-    return Base;
-
   SelectionDAG &DAG = DCI.DAG;
-
-  // (and (fcmp ord x, x), (fcmp une (fabs x), inf)) ->
-  // fp_class x, ~(s_nan | q_nan | n_infinity | p_infinity)
+  EVT VT = N->getValueType(0);
   SDValue LHS = N->getOperand(0);
   SDValue RHS = N->getOperand(1);
 
-  if (LHS.getOpcode() == ISD::SETCC &&
-      RHS.getOpcode() == ISD::SETCC) {
+
+  if (VT == MVT::i64) {
+    const ConstantSDNode *CRHS = dyn_cast<ConstantSDNode>(RHS);
+    if (CRHS) {
+      if (SDValue Split
+          = splitBinaryBitConstantOp(DCI, SDLoc(N), ISD::AND, LHS, CRHS))
+        return Split;
+    }
+  }
+
+  // (and (fcmp ord x, x), (fcmp une (fabs x), inf)) ->
+  // fp_class x, ~(s_nan | q_nan | n_infinity | p_infinity)
+  if (LHS.getOpcode() == ISD::SETCC && RHS.getOpcode() == ISD::SETCC) {
     ISD::CondCode LCC = cast<CondCodeSDNode>(LHS.getOperand(2))->get();
     ISD::CondCode RCC = cast<CondCodeSDNode>(RHS.getOperand(2))->get();
 
@@ -2928,54 +3003,85 @@ SDValue SITargetLowering::performOrCombine(SDNode *N,
   SDValue RHS = N->getOperand(1);
 
   EVT VT = N->getValueType(0);
-  if (VT == MVT::i64) {
-    // TODO: This could be a generic combine with a predicate for extracting the
-    // high half of an integer being free.
+  if (VT == MVT::i1) {
+    // or (fp_class x, c1), (fp_class x, c2) -> fp_class x, (c1 | c2)
+    if (LHS.getOpcode() == AMDGPUISD::FP_CLASS &&
+        RHS.getOpcode() == AMDGPUISD::FP_CLASS) {
+      SDValue Src = LHS.getOperand(0);
+      if (Src != RHS.getOperand(0))
+        return SDValue();
 
-    // (or i64:x, (zero_extend i32:y)) ->
-    //   i64 (bitcast (v2i32 build_vector (or i32:y, lo_32(x)), hi_32(x)))
-    if (LHS.getOpcode() == ISD::ZERO_EXTEND &&
-        RHS.getOpcode() != ISD::ZERO_EXTEND)
-      std::swap(LHS, RHS);
+      const ConstantSDNode *CLHS = dyn_cast<ConstantSDNode>(LHS.getOperand(1));
+      const ConstantSDNode *CRHS = dyn_cast<ConstantSDNode>(RHS.getOperand(1));
+      if (!CLHS || !CRHS)
+        return SDValue();
 
-    if (RHS.getOpcode() == ISD::ZERO_EXTEND) {
-      SDValue ExtSrc = RHS.getOperand(0);
-      EVT SrcVT = ExtSrc.getValueType();
-      if (SrcVT == MVT::i32) {
-        SDLoc SL(N);
-        SDValue LowLHS, HiBits;
-        std::tie(LowLHS, HiBits) = split64BitValue(LHS, DAG);
-        SDValue LowOr = DAG.getNode(ISD::OR, SL, MVT::i32, LowLHS, ExtSrc);
+      // Only 10 bits are used.
+      static const uint32_t MaxMask = 0x3ff;
 
-        DCI.AddToWorklist(LowOr.getNode());
-        DCI.AddToWorklist(HiBits.getNode());
+      uint32_t NewMask = (CLHS->getZExtValue() | CRHS->getZExtValue()) & MaxMask;
+      SDLoc DL(N);
+      return DAG.getNode(AMDGPUISD::FP_CLASS, DL, MVT::i1,
+                         Src, DAG.getConstant(NewMask, DL, MVT::i32));
+    }
 
-        SDValue Vec = DAG.getNode(ISD::BUILD_VECTOR, SL, MVT::v2i32,
-                                  LowOr, HiBits);
-        return DAG.getNode(ISD::BITCAST, SL, MVT::i64, Vec);
-      }
+    return SDValue();
+  }
+
+  if (VT != MVT::i64)
+    return SDValue();
+
+  // TODO: This could be a generic combine with a predicate for extracting the
+  // high half of an integer being free.
+
+  // (or i64:x, (zero_extend i32:y)) ->
+  //   i64 (bitcast (v2i32 build_vector (or i32:y, lo_32(x)), hi_32(x)))
+  if (LHS.getOpcode() == ISD::ZERO_EXTEND &&
+      RHS.getOpcode() != ISD::ZERO_EXTEND)
+    std::swap(LHS, RHS);
+
+  if (RHS.getOpcode() == ISD::ZERO_EXTEND) {
+    SDValue ExtSrc = RHS.getOperand(0);
+    EVT SrcVT = ExtSrc.getValueType();
+    if (SrcVT == MVT::i32) {
+      SDLoc SL(N);
+      SDValue LowLHS, HiBits;
+      std::tie(LowLHS, HiBits) = split64BitValue(LHS, DAG);
+      SDValue LowOr = DAG.getNode(ISD::OR, SL, MVT::i32, LowLHS, ExtSrc);
+
+      DCI.AddToWorklist(LowOr.getNode());
+      DCI.AddToWorklist(HiBits.getNode());
+
+      SDValue Vec = DAG.getNode(ISD::BUILD_VECTOR, SL, MVT::v2i32,
+                                LowOr, HiBits);
+      return DAG.getNode(ISD::BITCAST, SL, MVT::i64, Vec);
     }
   }
 
-  // or (fp_class x, c1), (fp_class x, c2) -> fp_class x, (c1 | c2)
-  if (LHS.getOpcode() == AMDGPUISD::FP_CLASS &&
-      RHS.getOpcode() == AMDGPUISD::FP_CLASS) {
-    SDValue Src = LHS.getOperand(0);
-    if (Src != RHS.getOperand(0))
-      return SDValue();
+  const ConstantSDNode *CRHS = dyn_cast<ConstantSDNode>(N->getOperand(1));
+  if (CRHS) {
+    if (SDValue Split
+          = splitBinaryBitConstantOp(DCI, SDLoc(N), ISD::OR, LHS, CRHS))
+      return Split;
+  }
 
-    const ConstantSDNode *CLHS = dyn_cast<ConstantSDNode>(LHS.getOperand(1));
-    const ConstantSDNode *CRHS = dyn_cast<ConstantSDNode>(RHS.getOperand(1));
-    if (!CLHS || !CRHS)
-      return SDValue();
+  return SDValue();
+}
 
-    // Only 10 bits are used.
-    static const uint32_t MaxMask = 0x3ff;
+SDValue SITargetLowering::performXorCombine(SDNode *N,
+                                            DAGCombinerInfo &DCI) const {
+  EVT VT = N->getValueType(0);
+  if (VT != MVT::i64)
+    return SDValue();
 
-    uint32_t NewMask = (CLHS->getZExtValue() | CRHS->getZExtValue()) & MaxMask;
-    SDLoc DL(N);
-    return DAG.getNode(AMDGPUISD::FP_CLASS, DL, MVT::i1,
-                       Src, DAG.getConstant(NewMask, DL, MVT::i32));
+  SDValue LHS = N->getOperand(0);
+  SDValue RHS = N->getOperand(1);
+
+  const ConstantSDNode *CRHS = dyn_cast<ConstantSDNode>(RHS);
+  if (CRHS) {
+    if (SDValue Split
+          = splitBinaryBitConstantOp(DCI, SDLoc(N), ISD::XOR, LHS, CRHS))
+      return Split;
   }
 
   return SDValue();
@@ -3392,6 +3498,8 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
     return performAndCombine(N, DCI);
   case ISD::OR:
     return performOrCombine(N, DCI);
+  case ISD::XOR:
+    return performXorCombine(N, DCI);
   case AMDGPUISD::FP_CLASS:
     return performClassCombine(N, DCI);
   case ISD::FCANONICALIZE:
@@ -3721,7 +3829,7 @@ SITargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
       default:
         return std::make_pair(0U, nullptr);
       case 32:
-        return std::make_pair(0U, &AMDGPU::SGPR_32RegClass);
+        return std::make_pair(0U, &AMDGPU::SReg_32RegClass);
       case 64:
         return std::make_pair(0U, &AMDGPU::SGPR_64RegClass);
       case 128:

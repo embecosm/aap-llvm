@@ -462,7 +462,7 @@ public:
   ///    condition.  These operands can be passed to other TargetInstrInfo
   ///    methods to create new branches.
   ///
-  /// Note that RemoveBranch and InsertBranch must be implemented to support
+  /// Note that removeBranch and insertBranch must be implemented to support
   /// cases where this method returns success.
   ///
   /// If AllowModify is true, then this routine is allowed to modify the basic
@@ -525,15 +525,18 @@ public:
   /// Remove the branching code at the end of the specific MBB.
   /// This is only invoked in cases where AnalyzeBranch returns success. It
   /// returns the number of instructions that were removed.
-  virtual unsigned RemoveBranch(MachineBasicBlock &MBB) const {
-    llvm_unreachable("Target didn't implement TargetInstrInfo::RemoveBranch!");
+  /// If \p BytesRemoved is non-null, report the change in code size from the
+  /// removed instructions.
+  virtual unsigned removeBranch(MachineBasicBlock &MBB,
+                                int *BytesRemoved = nullptr) const {
+    llvm_unreachable("Target didn't implement TargetInstrInfo::removeBranch!");
   }
 
-  /// Insert branch code into the end of the specified MachineBasicBlock.
-  /// The operands to this method are the same as those
-  /// returned by AnalyzeBranch.  This is only invoked in cases where
-  /// AnalyzeBranch returns success. It returns the number of instructions
-  /// inserted.
+  /// Insert branch code into the end of the specified MachineBasicBlock. The
+  /// operands to this method are the same as those returned by AnalyzeBranch.
+  /// This is only invoked in cases where AnalyzeBranch returns success. It
+  /// returns the number of instructions inserted. If \p BytesAdded is non-null,
+  /// report the change in code size from the added instructions.
   ///
   /// It is also invoked by tail merging to add unconditional branches in
   /// cases where AnalyzeBranch doesn't apply because there was no original
@@ -542,11 +545,20 @@ public:
   ///
   /// The CFG information in MBB.Predecessors and MBB.Successors must be valid
   /// before calling this function.
-  virtual unsigned InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
+  virtual unsigned insertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
                                 MachineBasicBlock *FBB,
                                 ArrayRef<MachineOperand> Cond,
-                                const DebugLoc &DL) const {
-    llvm_unreachable("Target didn't implement TargetInstrInfo::InsertBranch!");
+                                const DebugLoc &DL,
+                                int *BytesAdded = nullptr) const {
+    llvm_unreachable("Target didn't implement TargetInstrInfo::insertBranch!");
+  }
+
+  unsigned insertUnconditionalBranch(MachineBasicBlock &MBB,
+                                     MachineBasicBlock *DestBB,
+                                     const DebugLoc &DL,
+                                     int *BytesAdded = nullptr) const {
+    return insertBranch(MBB, DestBB, nullptr,
+                        ArrayRef<MachineOperand>(), DL, BytesAdded);
   }
 
   /// Analyze the loop code, return true if it cannot be understoo. Upon
@@ -1061,7 +1073,7 @@ public:
   /// Reverses the branch condition of the specified condition list,
   /// returning false on success and true if it cannot be reversed.
   virtual
-  bool ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const {
+  bool reverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const {
     return true;
   }
 
@@ -1086,6 +1098,25 @@ public:
   /// Returns true if the instruction is a
   /// terminator instruction that has not been predicated.
   virtual bool isUnpredicatedTerminator(const MachineInstr &MI) const;
+
+  /// Returns true if MI is an unconditional tail call.
+  virtual bool isUnconditionalTailCall(const MachineInstr &MI) const {
+    return false;
+  }
+
+  /// Returns true if the tail call can be made conditional on BranchCond.
+  virtual bool
+  canMakeTailCallConditional(SmallVectorImpl<MachineOperand> &Cond,
+                             const MachineInstr &TailCall) const {
+    return false;
+  }
+
+  /// Replace the conditional branch in MBB with a conditional tail call.
+  virtual void replaceBranchWithTailCall(MachineBasicBlock &MBB,
+                                         SmallVectorImpl<MachineOperand> &Cond,
+                                         const MachineInstr &TailCall) const {
+    llvm_unreachable("Target didn't implement replaceBranchWithTailCall!");
+  }
 
   /// Convert the instruction into a predicated instruction.
   /// It returns true if the operation was successful.
@@ -1479,6 +1510,11 @@ public:
   virtual ArrayRef<std::pair<unsigned, const char *>>
   getSerializableBitmaskMachineOperandTargetFlags() const {
     return None;
+  }
+
+  /// Determines whether |Inst| is a tail call instruction.
+  virtual bool isTailCall(const MachineInstr &Inst) const {
+    return false;
   }
 
 private:

@@ -19,6 +19,8 @@
 #include "llvm/DebugInfo/PDB/Raw/InfoStream.h"
 #include "llvm/DebugInfo/PDB/Raw/InfoStreamBuilder.h"
 #include "llvm/DebugInfo/PDB/Raw/RawError.h"
+#include "llvm/DebugInfo/PDB/Raw/TpiStream.h"
+#include "llvm/DebugInfo/PDB/Raw/TpiStreamBuilder.h"
 
 using namespace llvm;
 using namespace llvm::codeview;
@@ -48,25 +50,33 @@ MSFBuilder &PDBFileBuilder::getMsfBuilder() { return *Msf; }
 
 InfoStreamBuilder &PDBFileBuilder::getInfoBuilder() {
   if (!Info)
-    Info = llvm::make_unique<InfoStreamBuilder>();
+    Info = llvm::make_unique<InfoStreamBuilder>(*Msf);
   return *Info;
 }
 
 DbiStreamBuilder &PDBFileBuilder::getDbiBuilder() {
   if (!Dbi)
-    Dbi = llvm::make_unique<DbiStreamBuilder>(Allocator);
+    Dbi = llvm::make_unique<DbiStreamBuilder>(*Msf);
   return *Dbi;
+}
+
+TpiStreamBuilder &PDBFileBuilder::getTpiBuilder() {
+  if (!Tpi)
+    Tpi = llvm::make_unique<TpiStreamBuilder>(*Msf);
+  return *Tpi;
 }
 
 Expected<msf::MSFLayout> PDBFileBuilder::finalizeMsfLayout() const {
   if (Info) {
-    uint32_t Length = Info->calculateSerializedLength();
-    if (auto EC = Msf->setStreamSize(StreamPDB, Length))
+    if (auto EC = Info->finalizeMsfLayout())
       return std::move(EC);
   }
   if (Dbi) {
-    uint32_t Length = Dbi->calculateSerializedLength();
-    if (auto EC = Msf->setStreamSize(StreamDBI, Length))
+    if (auto EC = Dbi->finalizeMsfLayout())
+      return std::move(EC);
+  }
+  if (Tpi) {
+    if (auto EC = Tpi->finalizeMsfLayout())
       return std::move(EC);
   }
 
@@ -94,6 +104,13 @@ PDBFileBuilder::build(std::unique_ptr<msf::WritableStream> PdbFileBuffer) {
     if (!ExpectedDbi)
       return ExpectedDbi.takeError();
     File->Dbi = std::move(*ExpectedDbi);
+  }
+
+  if (Tpi) {
+    auto ExpectedTpi = Tpi->build(*File, *PdbFileBuffer);
+    if (!ExpectedTpi)
+      return ExpectedTpi.takeError();
+    File->Tpi = std::move(*ExpectedTpi);
   }
 
   if (File->Info && File->Dbi && File->Info->getAge() != File->Dbi->getAge())
@@ -141,6 +158,11 @@ Error PDBFileBuilder::commit(const msf::WritableStream &Buffer) {
 
   if (Dbi) {
     if (auto EC = Dbi->commit(Layout, Buffer))
+      return EC;
+  }
+
+  if (Tpi) {
+    if (auto EC = Tpi->commit(Layout, Buffer))
       return EC;
   }
 

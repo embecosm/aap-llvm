@@ -254,6 +254,7 @@ int main(int argc, char **argv) {
   initializeCodeGen(*Registry);
   initializeLoopStrengthReducePass(*Registry);
   initializeLowerIntrinsicsPass(*Registry);
+  initializeCountingFunctionInserterPass(*Registry);
   initializeUnreachableBlockElimLegacyPassPass(*Registry);
 
   // Register the target printer for --version.
@@ -450,8 +451,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
       LLVMTargetMachine &LLVMTM = static_cast<LLVMTargetMachine&>(*Target);
       TargetPassConfig &TPC = *LLVMTM.createPassConfig(PM);
       PM.add(&TPC);
-      LLVMTM.addMachineModuleInfo(PM);
-      LLVMTM.addMachineFunctionAnalysis(PM, MIR.get());
+      MachineModuleInfo *MMI = new MachineModuleInfo(&LLVMTM);
+      MMI->setMachineFunctionInitializer(MIR.get());
+      PM.add(MMI);
       TPC.printAndVerify("");
 
       for (const std::string &RunPassName : *RunPassNames) {

@@ -344,6 +344,8 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i64  , Custom);
   setOperationAction(ISD::GET_DYNAMIC_AREA_OFFSET, MVT::i32, Custom);
   setOperationAction(ISD::GET_DYNAMIC_AREA_OFFSET, MVT::i64, Custom);
+  setOperationAction(ISD::EH_DWARF_CFA, MVT::i32, Custom);
+  setOperationAction(ISD::EH_DWARF_CFA, MVT::i64, Custom);
 
   // We want to custom lower some of our intrinsics.
   setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
@@ -665,9 +667,10 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
       addRegisterClass(MVT::v2i64, &PPC::VRRCRegClass);
       addRegisterClass(MVT::v1i128, &PPC::VRRCRegClass);
     }
+
     if (Subtarget.hasP9Vector()) {
-      setOperationAction(ISD::INSERT_VECTOR_ELT, MVT::v4i32, Legal);
-      setOperationAction(ISD::INSERT_VECTOR_ELT, MVT::v4f32, Legal);
+      setOperationAction(ISD::INSERT_VECTOR_ELT, MVT::v4i32, Custom);
+      setOperationAction(ISD::INSERT_VECTOR_ELT, MVT::v4f32, Custom);
     }
   }
 
@@ -4215,7 +4218,7 @@ CalculateTailCallArgDest(SelectionDAG &DAG, MachineFunction &MF, bool isPPC64,
                          SDValue Arg, int SPDiff, unsigned ArgOffset,
                      SmallVectorImpl<TailCallArgumentInfo>& TailCallArguments) {
   int Offset = ArgOffset + SPDiff;
-  uint32_t OpSize = (Arg.getValueType().getSizeInBits()+7)/8;
+  uint32_t OpSize = (Arg.getValueSizeInBits() + 7) / 8;
   int FI = MF.getFrameInfo().CreateFixedObject(OpSize, Offset, true);
   EVT VT = isPPC64 ? MVT::i64 : MVT::i32;
   SDValue FIN = DAG.getFrameIndex(FI, VT);
@@ -4442,7 +4445,8 @@ PrepareCall(SelectionDAG &DAG, SDValue &Callee, SDValue &InFlag, SDValue &Chain,
         LDChain = CallSeqStart.getValue(CallSeqStart->getNumValues()-2);
 
       auto MMOFlags = Subtarget.hasInvariantFunctionDescriptors()
-                          ? MachineMemOperand::MOInvariant
+                          ? (MachineMemOperand::MODereferenceable |
+                             MachineMemOperand::MOInvariant)
                           : MachineMemOperand::MONone;
 
       MachinePointerInfo MPI(CS ? CS->getCalledValue() : nullptr);
@@ -4695,7 +4699,9 @@ PPCTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   ImmutableCallSite *CS                 = CLI.CS;
 
   if (isTailCall) {
-    if (Subtarget.isSVR4ABI() && Subtarget.isPPC64())
+    if (Subtarget.useLongCalls() && !(CS && CS->isMustTailCall()))
+      isTailCall = false;
+    else if (Subtarget.isSVR4ABI() && Subtarget.isPPC64())
       isTailCall =
         IsEligibleForTailCallOptimization_64SVR4(Callee, CallConv, CS,
                                                  isVarArg, Outs, Ins, DAG);
@@ -4724,6 +4730,13 @@ PPCTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   if (!isTailCall && CS && CS->isMustTailCall())
     report_fatal_error("failed to perform tail call elimination on a call "
                        "site marked musttail");
+
+  // When long calls (i.e. indirect calls) are always used, calls are always
+  // made via function pointer. If we have a function name, first translate it
+  // into a pointer.
+  if (Subtarget.useLongCalls() && isa<GlobalAddressSDNode>(Callee) &&
+      !isTailCall)
+    Callee = LowerGlobalAddress(Callee, DAG);
 
   if (Subtarget.isSVR4ABI()) {
     if (Subtarget.isPPC64())
@@ -6179,6 +6192,17 @@ SDValue PPCTargetLowering::LowerDYNAMIC_STACKALLOC(SDValue Op,
   return DAG.getNode(PPCISD::DYNALLOC, dl, VTs, Ops);
 }
 
+SDValue PPCTargetLowering::LowerEH_DWARF_CFA(SDValue Op,
+                                                     SelectionDAG &DAG) const {
+  MachineFunction &MF = DAG.getMachineFunction();
+
+  bool isPPC64 = Subtarget.isPPC64();
+  EVT PtrVT = getPointerTy(DAG.getDataLayout());
+
+  int FI = MF.getFrameInfo().CreateFixedObject(isPPC64 ? 8 : 4, 0, false);
+  return DAG.getFrameIndex(FI, PtrVT);
+}
+
 SDValue PPCTargetLowering::lowerEH_SJLJ_SETJMP(SDValue Op,
                                                SelectionDAG &DAG) const {
   SDLoc DL(Op);
@@ -6459,10 +6483,7 @@ SDValue PPCTargetLowering::LowerFP_TO_INT(SDValue Op, SelectionDAG &DAG,
   LowerFP_TO_INTForReuse(Op, RLI, DAG, dl);
 
   return DAG.getLoad(Op.getValueType(), dl, RLI.Chain, RLI.Ptr, RLI.MPI,
-                     RLI.Alignment,
-                     RLI.IsInvariant ? MachineMemOperand::MOInvariant
-                                     : MachineMemOperand::MONone,
-                     RLI.AAInfo, RLI.Ranges);
+                     RLI.Alignment, RLI.MMOFlags(), RLI.AAInfo, RLI.Ranges);
 }
 
 // We're trying to insert a regular store, S, and then a load, L. If the
@@ -6505,6 +6526,7 @@ bool PPCTargetLowering::canReuseLoadAddress(SDValue Op, EVT MemVT,
 
   RLI.Chain = LD->getChain();
   RLI.MPI = LD->getPointerInfo();
+  RLI.IsDereferenceable = LD->isDereferenceable();
   RLI.IsInvariant = LD->isInvariant();
   RLI.Alignment = LD->getAlignment();
   RLI.AAInfo = LD->getAAInfo();
@@ -6697,11 +6719,8 @@ SDValue PPCTargetLowering::LowerINT_TO_FP(SDValue Op,
 
     MachineFunction &MF = DAG.getMachineFunction();
     if (canReuseLoadAddress(SINT, MVT::i64, RLI, DAG)) {
-      Bits =
-          DAG.getLoad(MVT::f64, dl, RLI.Chain, RLI.Ptr, RLI.MPI, RLI.Alignment,
-                      RLI.IsInvariant ? MachineMemOperand::MOInvariant
-                                      : MachineMemOperand::MONone,
-                      RLI.AAInfo, RLI.Ranges);
+      Bits = DAG.getLoad(MVT::f64, dl, RLI.Chain, RLI.Ptr, RLI.MPI,
+                         RLI.Alignment, RLI.MMOFlags(), RLI.AAInfo, RLI.Ranges);
       spliceIntoChain(RLI.ResChain, Bits.getValue(1), DAG);
     } else if (Subtarget.hasLFIWAX() &&
                canReuseLoadAddress(SINT, MVT::i32, RLI, DAG, ISD::SEXTLOAD)) {
@@ -7861,6 +7880,17 @@ SDValue PPCTargetLowering::LowerSCALAR_TO_VECTOR(SDValue Op,
   return DAG.getLoad(Op.getValueType(), dl, Store, FIdx, MachinePointerInfo());
 }
 
+SDValue PPCTargetLowering::LowerINSERT_VECTOR_ELT(SDValue Op,
+                                                  SelectionDAG &DAG) const {
+  assert(Op.getOpcode() == ISD::INSERT_VECTOR_ELT &&
+         "Should only be called for ISD::INSERT_VECTOR_ELT");
+  ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op.getOperand(2));
+  // We have legal lowering for constant indices but not for variable ones.
+  if (C)
+    return Op;
+  return SDValue();
+}
+
 SDValue PPCTargetLowering::LowerEXTRACT_VECTOR_ELT(SDValue Op,
                                                    SelectionDAG &DAG) const {
   SDLoc dl(Op);
@@ -8237,6 +8267,9 @@ SDValue PPCTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::GET_DYNAMIC_AREA_OFFSET:
     return LowerGET_DYNAMIC_AREA_OFFSET(Op, DAG);
 
+  case ISD::EH_DWARF_CFA:
+    return LowerEH_DWARF_CFA(Op, DAG);
+
   case ISD::EH_SJLJ_SETJMP:     return lowerEH_SJLJ_SETJMP(Op, DAG);
   case ISD::EH_SJLJ_LONGJMP:    return lowerEH_SJLJ_LONGJMP(Op, DAG);
 
@@ -8263,6 +8296,7 @@ SDValue PPCTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::SCALAR_TO_VECTOR:   return LowerSCALAR_TO_VECTOR(Op, DAG);
   case ISD::SIGN_EXTEND_INREG:  return LowerSIGN_EXTEND_INREG(Op, DAG);
   case ISD::EXTRACT_VECTOR_ELT: return LowerEXTRACT_VECTOR_ELT(Op, DAG);
+  case ISD::INSERT_VECTOR_ELT:  return LowerINSERT_VECTOR_ELT(Op, DAG);
   case ISD::MUL:                return LowerMUL(Op, DAG);
 
   // For counter-based loop handling.
@@ -8387,7 +8421,9 @@ Instruction* PPCTargetLowering::emitTrailingFence(IRBuilder<> &Builder,
 MachineBasicBlock *
 PPCTargetLowering::EmitAtomicBinary(MachineInstr &MI, MachineBasicBlock *BB,
                                     unsigned AtomicSize,
-                                    unsigned BinOpcode) const {
+                                    unsigned BinOpcode,
+                                    unsigned CmpOpcode,
+                                    unsigned CmpPred) const {
   // This also handles ATOMIC_SWAP, indicated by BinOpcode==0.
   const TargetInstrInfo *TII = Subtarget.getInstrInfo();
 
@@ -8427,8 +8463,12 @@ PPCTargetLowering::EmitAtomicBinary(MachineInstr &MI, MachineBasicBlock *BB,
   DebugLoc dl = MI.getDebugLoc();
 
   MachineBasicBlock *loopMBB = F->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *loop2MBB =
+    CmpOpcode ? F->CreateMachineBasicBlock(LLVM_BB) : nullptr;
   MachineBasicBlock *exitMBB = F->CreateMachineBasicBlock(LLVM_BB);
   F->insert(It, loopMBB);
+  if (CmpOpcode)
+    F->insert(It, loop2MBB);
   F->insert(It, exitMBB);
   exitMBB->splice(exitMBB->begin(), BB,
                   std::next(MachineBasicBlock::iterator(MI)), BB->end());
@@ -8450,11 +8490,31 @@ PPCTargetLowering::EmitAtomicBinary(MachineInstr &MI, MachineBasicBlock *BB,
   //   st[wd]cx. r0, ptr
   //   bne- loopMBB
   //   fallthrough --> exitMBB
+
+  // For max/min...
+  //  loopMBB:
+  //   l[wd]arx dest, ptr
+  //   cmpl?[wd] incr, dest
+  //   bgt exitMBB
+  //  loop2MBB:
+  //   st[wd]cx. dest, ptr
+  //   bne- loopMBB
+  //   fallthrough --> exitMBB
+
   BB = loopMBB;
   BuildMI(BB, dl, TII->get(LoadMnemonic), dest)
     .addReg(ptrA).addReg(ptrB);
   if (BinOpcode)
     BuildMI(BB, dl, TII->get(BinOpcode), TmpReg).addReg(incr).addReg(dest);
+  if (CmpOpcode) {
+    BuildMI(BB, dl, TII->get(CmpOpcode), PPC::CR0)
+      .addReg(incr).addReg(dest);
+    BuildMI(BB, dl, TII->get(PPC::BCC))
+      .addImm(CmpPred).addReg(PPC::CR0).addMBB(exitMBB);
+    BB->addSuccessor(loop2MBB);
+    BB->addSuccessor(exitMBB);
+    BB = loop2MBB;
+  }
   BuildMI(BB, dl, TII->get(StoreMnemonic))
     .addReg(TmpReg).addReg(ptrA).addReg(ptrB);
   BuildMI(BB, dl, TII->get(PPC::BCC))
@@ -8472,10 +8532,13 @@ MachineBasicBlock *
 PPCTargetLowering::EmitPartwordAtomicBinary(MachineInstr &MI,
                                             MachineBasicBlock *BB,
                                             bool is8bit, // operation
-                                            unsigned BinOpcode) const {
+                                            unsigned BinOpcode,
+                                            unsigned CmpOpcode,
+                                            unsigned CmpPred) const {
   // If we support part-word atomic mnemonics, just use them
   if (Subtarget.hasPartwordAtomics())
-    return EmitAtomicBinary(MI, BB, is8bit ? 1 : 2, BinOpcode);
+    return EmitAtomicBinary(MI, BB, is8bit ? 1 : 2, BinOpcode,
+                            CmpOpcode, CmpPred);
 
   // This also handles ATOMIC_SWAP, indicated by BinOpcode==0.
   const TargetInstrInfo *TII = Subtarget.getInstrInfo();
@@ -8484,6 +8547,7 @@ PPCTargetLowering::EmitPartwordAtomicBinary(MachineInstr &MI,
   // registers without caring whether they're 32 or 64, but here we're
   // doing actual arithmetic on the addresses.
   bool is64bit = Subtarget.isPPC64();
+  bool isLittleEndian = Subtarget.isLittleEndian();
   unsigned ZeroReg = is64bit ? PPC::ZERO8 : PPC::ZERO;
 
   const BasicBlock *LLVM_BB = BB->getBasicBlock();
@@ -8497,8 +8561,12 @@ PPCTargetLowering::EmitPartwordAtomicBinary(MachineInstr &MI,
   DebugLoc dl = MI.getDebugLoc();
 
   MachineBasicBlock *loopMBB = F->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *loop2MBB =
+    CmpOpcode ? F->CreateMachineBasicBlock(LLVM_BB) : nullptr;
   MachineBasicBlock *exitMBB = F->CreateMachineBasicBlock(LLVM_BB);
   F->insert(It, loopMBB);
+  if (CmpOpcode)
+    F->insert(It, loop2MBB);
   F->insert(It, exitMBB);
   exitMBB->splice(exitMBB->begin(), BB,
                   std::next(MachineBasicBlock::iterator(MI)), BB->end());
@@ -8509,7 +8577,8 @@ PPCTargetLowering::EmitPartwordAtomicBinary(MachineInstr &MI,
                                           : &PPC::GPRCRegClass;
   unsigned PtrReg = RegInfo.createVirtualRegister(RC);
   unsigned Shift1Reg = RegInfo.createVirtualRegister(RC);
-  unsigned ShiftReg = RegInfo.createVirtualRegister(RC);
+  unsigned ShiftReg =
+    isLittleEndian ? Shift1Reg : RegInfo.createVirtualRegister(RC);
   unsigned Incr2Reg = RegInfo.createVirtualRegister(RC);
   unsigned MaskReg = RegInfo.createVirtualRegister(RC);
   unsigned Mask2Reg = RegInfo.createVirtualRegister(RC);
@@ -8554,8 +8623,9 @@ PPCTargetLowering::EmitPartwordAtomicBinary(MachineInstr &MI,
   }
   BuildMI(BB, dl, TII->get(PPC::RLWINM), Shift1Reg).addReg(Ptr1Reg)
       .addImm(3).addImm(27).addImm(is8bit ? 28 : 27);
-  BuildMI(BB, dl, TII->get(is64bit ? PPC::XORI8 : PPC::XORI), ShiftReg)
-      .addReg(Shift1Reg).addImm(is8bit ? 24 : 16);
+  if (!isLittleEndian)
+    BuildMI(BB, dl, TII->get(is64bit ? PPC::XORI8 : PPC::XORI), ShiftReg)
+        .addReg(Shift1Reg).addImm(is8bit ? 24 : 16);
   if (is64bit)
     BuildMI(BB, dl, TII->get(PPC::RLDICR), PtrReg)
       .addReg(Ptr1Reg).addImm(0).addImm(61);
@@ -8583,6 +8653,32 @@ PPCTargetLowering::EmitPartwordAtomicBinary(MachineInstr &MI,
     .addReg(TmpDestReg).addReg(MaskReg);
   BuildMI(BB, dl, TII->get(is64bit ? PPC::AND8 : PPC::AND), Tmp3Reg)
     .addReg(TmpReg).addReg(MaskReg);
+  if (CmpOpcode) {
+    // For unsigned comparisons, we can directly compare the shifted values.
+    // For signed comparisons we shift and sign extend.
+    unsigned SReg = RegInfo.createVirtualRegister(RC);
+    BuildMI(BB, dl, TII->get(is64bit ? PPC::AND8 : PPC::AND), SReg)
+      .addReg(TmpDestReg).addReg(MaskReg);
+    unsigned ValueReg = SReg;
+    unsigned CmpReg = Incr2Reg;
+    if (CmpOpcode == PPC::CMPW) {
+      ValueReg = RegInfo.createVirtualRegister(RC);
+      BuildMI(BB, dl, TII->get(PPC::SRW), ValueReg)
+        .addReg(SReg).addReg(ShiftReg);
+      unsigned ValueSReg = RegInfo.createVirtualRegister(RC);
+      BuildMI(BB, dl, TII->get(is8bit ? PPC::EXTSB : PPC::EXTSH), ValueSReg)
+        .addReg(ValueReg);
+      ValueReg = ValueSReg;
+      CmpReg = incr;
+    }
+    BuildMI(BB, dl, TII->get(CmpOpcode), PPC::CR0)
+      .addReg(CmpReg).addReg(ValueReg);
+    BuildMI(BB, dl, TII->get(PPC::BCC))
+      .addImm(CmpPred).addReg(PPC::CR0).addMBB(exitMBB);
+    BB->addSuccessor(loop2MBB);
+    BB->addSuccessor(exitMBB);
+    BB = loop2MBB;
+  }
   BuildMI(BB, dl, TII->get(is64bit ? PPC::OR8 : PPC::OR), Tmp4Reg)
     .addReg(Tmp3Reg).addReg(Tmp2Reg);
   BuildMI(BB, dl, TII->get(PPC::STWCX))
@@ -9089,6 +9185,42 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
   else if (MI.getOpcode() == PPC::ATOMIC_LOAD_SUB_I64)
     BB = EmitAtomicBinary(MI, BB, 8, PPC::SUBF8);
 
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_MIN_I8)
+    BB = EmitPartwordAtomicBinary(MI, BB, true, 0, PPC::CMPW, PPC::PRED_GE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_MIN_I16)
+    BB = EmitPartwordAtomicBinary(MI, BB, false, 0, PPC::CMPW, PPC::PRED_GE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_MIN_I32)
+    BB = EmitAtomicBinary(MI, BB, 4, 0, PPC::CMPW, PPC::PRED_GE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_MIN_I64)
+    BB = EmitAtomicBinary(MI, BB, 8, 0, PPC::CMPD, PPC::PRED_GE);
+
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_MAX_I8)
+    BB = EmitPartwordAtomicBinary(MI, BB, true, 0, PPC::CMPW, PPC::PRED_LE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_MAX_I16)
+    BB = EmitPartwordAtomicBinary(MI, BB, false, 0, PPC::CMPW, PPC::PRED_LE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_MAX_I32)
+    BB = EmitAtomicBinary(MI, BB, 4, 0, PPC::CMPW, PPC::PRED_LE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_MAX_I64)
+    BB = EmitAtomicBinary(MI, BB, 8, 0, PPC::CMPD, PPC::PRED_LE);
+
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_UMIN_I8)
+    BB = EmitPartwordAtomicBinary(MI, BB, true, 0, PPC::CMPLW, PPC::PRED_GE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_UMIN_I16)
+    BB = EmitPartwordAtomicBinary(MI, BB, false, 0, PPC::CMPLW, PPC::PRED_GE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_UMIN_I32)
+    BB = EmitAtomicBinary(MI, BB, 4, 0, PPC::CMPLW, PPC::PRED_GE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_UMIN_I64)
+    BB = EmitAtomicBinary(MI, BB, 8, 0, PPC::CMPLD, PPC::PRED_GE);
+
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_UMAX_I8)
+    BB = EmitPartwordAtomicBinary(MI, BB, true, 0, PPC::CMPLW, PPC::PRED_LE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_UMAX_I16)
+    BB = EmitPartwordAtomicBinary(MI, BB, false, 0, PPC::CMPLW, PPC::PRED_LE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_UMAX_I32)
+    BB = EmitAtomicBinary(MI, BB, 4, 0, PPC::CMPLW, PPC::PRED_LE);
+  else if (MI.getOpcode() == PPC::ATOMIC_LOAD_UMAX_I64)
+    BB = EmitAtomicBinary(MI, BB, 8, 0, PPC::CMPLD, PPC::PRED_LE);
+
   else if (MI.getOpcode() == PPC::ATOMIC_SWAP_I8)
     BB = EmitPartwordAtomicBinary(MI, BB, true, 0);
   else if (MI.getOpcode() == PPC::ATOMIC_SWAP_I16)
@@ -9198,6 +9330,7 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     // since we're actually doing arithmetic on them.  Other registers
     // can be 32-bit.
     bool is64bit = Subtarget.isPPC64();
+    bool isLittleEndian = Subtarget.isLittleEndian();
     bool is8bit = MI.getOpcode() == PPC::ATOMIC_CMP_SWAP_I8;
 
     unsigned dest = MI.getOperand(0).getReg();
@@ -9224,7 +9357,8 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
                                             : &PPC::GPRCRegClass;
     unsigned PtrReg = RegInfo.createVirtualRegister(RC);
     unsigned Shift1Reg = RegInfo.createVirtualRegister(RC);
-    unsigned ShiftReg = RegInfo.createVirtualRegister(RC);
+    unsigned ShiftReg =
+      isLittleEndian ? Shift1Reg : RegInfo.createVirtualRegister(RC);
     unsigned NewVal2Reg = RegInfo.createVirtualRegister(RC);
     unsigned NewVal3Reg = RegInfo.createVirtualRegister(RC);
     unsigned OldVal2Reg = RegInfo.createVirtualRegister(RC);
@@ -9279,8 +9413,9 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     }
     BuildMI(BB, dl, TII->get(PPC::RLWINM), Shift1Reg).addReg(Ptr1Reg)
         .addImm(3).addImm(27).addImm(is8bit ? 28 : 27);
-    BuildMI(BB, dl, TII->get(is64bit ? PPC::XORI8 : PPC::XORI), ShiftReg)
-        .addReg(Shift1Reg).addImm(is8bit ? 24 : 16);
+    if (!isLittleEndian)
+      BuildMI(BB, dl, TII->get(is64bit ? PPC::XORI8 : PPC::XORI), ShiftReg)
+          .addReg(Shift1Reg).addImm(is8bit ? 24 : 16);
     if (is64bit)
       BuildMI(BB, dl, TII->get(PPC::RLDICR), PtrReg)
         .addReg(Ptr1Reg).addImm(0).addImm(61);
@@ -10887,11 +11022,9 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
         int Bits = IID == Intrinsic::ppc_qpx_qvlpcld ?
                    5 /* 32 byte alignment */ : 4 /* 16 byte alignment */;
 
-        if (DAG.MaskedValueIsZero(
-                Add->getOperand(1),
-                APInt::getAllOnesValue(Bits /* alignment */)
-                    .zext(
-                        Add.getValueType().getScalarType().getSizeInBits()))) {
+        if (DAG.MaskedValueIsZero(Add->getOperand(1),
+                                  APInt::getAllOnesValue(Bits /* alignment */)
+                                      .zext(Add.getScalarValueSizeInBits()))) {
           SDNode *BasePtr = Add->getOperand(0).getNode();
           for (SDNode::use_iterator UI = BasePtr->use_begin(),
                                     UE = BasePtr->use_end();

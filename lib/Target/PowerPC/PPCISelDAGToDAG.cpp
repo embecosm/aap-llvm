@@ -3200,7 +3200,7 @@ SDValue PPCDAGToDAGISel::combineToCMPB(SDNode *N) {
           Op0.getOperand(1) == Op1.getOperand(1) && CC == ISD::SETEQ &&
           isa<ConstantSDNode>(Op0.getOperand(1))) {
 
-        unsigned Bits = Op0.getValueType().getSizeInBits();
+        unsigned Bits = Op0.getValueSizeInBits();
         if (b != Bits/8-1)
           return false;
         if (Op0.getConstantOperandVal(1) != Bits-8)
@@ -3228,9 +3228,9 @@ SDValue PPCDAGToDAGISel::combineToCMPB(SDNode *N) {
 
         // Now we need to make sure that the upper bytes are known to be
         // zero.
-        unsigned Bits = Op0.getValueType().getSizeInBits();
-        if (!CurDAG->MaskedValueIsZero(Op0,
-              APInt::getHighBitsSet(Bits, Bits - (b+1)*8)))
+        unsigned Bits = Op0.getValueSizeInBits();
+        if (!CurDAG->MaskedValueIsZero(
+                Op0, APInt::getHighBitsSet(Bits, Bits - (b + 1) * 8)))
           return false;
 
         LHS = Op0.getOperand(0);
@@ -3263,7 +3263,7 @@ SDValue PPCDAGToDAGISel::combineToCMPB(SDNode *N) {
     } else if (Op.getOpcode() == ISD::SRL) {
       if (!isa<ConstantSDNode>(Op.getOperand(1)))
         return false;
-      unsigned Bits = Op.getValueType().getSizeInBits();
+      unsigned Bits = Op.getValueSizeInBits();
       if (b != Bits/8-1)
         return false;
       if (Op.getConstantOperandVal(1) != Bits-8)
@@ -4326,13 +4326,6 @@ void PPCDAGToDAGISel::PeepholePPC64() {
     if (!Base.isMachineOpcode())
       continue;
 
-    // On targets with fusion, we don't want this to fire and remove a fusion
-    // opportunity, unless a) it results in another fusion opportunity or
-    // b) optimizing for size.
-    if (PPCSubTarget->hasFusion() &&
-        (!MF->getFunction()->optForSize() && !Base.hasOneUse()))
-      continue;
-
     unsigned Flags = 0;
     bool ReplaceFlags = true;
 
@@ -4377,15 +4370,64 @@ void PPCDAGToDAGISel::PeepholePPC64() {
     }
 
     SDValue ImmOpnd = Base.getOperand(1);
-    int MaxDisplacement = 0;
+
+    // On PPC64, the TOC base pointer is guaranteed by the ABI only to have
+    // 8-byte alignment, and so we can only use offsets less than 8 (otherwise,
+    // we might have needed different @ha relocation values for the offset
+    // pointers).
+    int MaxDisplacement = 7;
     if (GlobalAddressSDNode *GA = dyn_cast<GlobalAddressSDNode>(ImmOpnd)) {
       const GlobalValue *GV = GA->getGlobal();
-      MaxDisplacement = GV->getAlignment() - 1;
+      MaxDisplacement = std::min((int) GV->getAlignment() - 1, MaxDisplacement);
     }
 
+    bool UpdateHBase = false;
+    SDValue HBase = Base.getOperand(0);
+
     int Offset = N->getConstantOperandVal(FirstOp);
-    if (Offset < 0 || Offset > MaxDisplacement)
-      continue;
+    if (ReplaceFlags) {
+      if (Offset < 0 || Offset > MaxDisplacement) {
+        // If we have a addi(toc@l)/addis(toc@ha) pair, and the addis has only
+        // one use, then we can do this for any offset, we just need to also
+        // update the offset (i.e. the symbol addend) on the addis also.
+        if (Base.getMachineOpcode() != PPC::ADDItocL)
+          continue;
+
+        if (!HBase.isMachineOpcode() ||
+            HBase.getMachineOpcode() != PPC::ADDIStocHA)
+          continue;
+
+        if (!Base.hasOneUse() || !HBase.hasOneUse())
+          continue;
+
+        SDValue HImmOpnd = HBase.getOperand(1);
+        if (HImmOpnd != ImmOpnd)
+          continue;
+
+        UpdateHBase = true;
+      }
+    } else {
+      // If we're directly folding the addend from an addi instruction, then:
+      //  1. In general, the offset on the memory access must be zero.
+      //  2. If the addend is a constant, then it can be combined with a
+      //     non-zero offset, but only if the result meets the encoding
+      //     requirements.
+      if (auto *C = dyn_cast<ConstantSDNode>(ImmOpnd)) {
+        Offset += C->getSExtValue();
+
+        if ((StorageOpcode == PPC::LWA || StorageOpcode == PPC::LD ||
+             StorageOpcode == PPC::STD) && (Offset % 4) != 0)
+          continue;
+
+        if (!isInt<16>(Offset))
+          continue;
+
+        ImmOpnd = CurDAG->getTargetConstant(Offset, SDLoc(ImmOpnd),
+                                            ImmOpnd.getValueType());
+      } else if (Offset != 0) {
+        continue;
+      }
+    }
 
     // We found an opportunity.  Reverse the operands from the add
     // immediate and substitute them into the load or store.  If
@@ -4427,6 +4469,10 @@ void PPCDAGToDAGISel::PeepholePPC64() {
     else // Load
       (void)CurDAG->UpdateNodeOperands(N, ImmOpnd, Base.getOperand(0),
                                        N->getOperand(2));
+
+    if (UpdateHBase)
+      (void)CurDAG->UpdateNodeOperands(HBase.getNode(), HBase.getOperand(0),
+                                       ImmOpnd);
 
     // The add-immediate may now be dead, in which case remove it.
     if (Base.getNode()->use_empty())

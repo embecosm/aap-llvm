@@ -49,6 +49,7 @@ STATISTIC(NumDeadBlocks, "Number of dead blocks removed");
 STATISTIC(NumBranchOpts, "Number of branches optimized");
 STATISTIC(NumTailMerge , "Number of block tails merged");
 STATISTIC(NumHoist     , "Number of times common instructions are hoisted");
+STATISTIC(NumTailCalls,  "Number of tail calls optimized");
 
 static cl::opt<cl::boolOrDefault> FlagEnableTailMerge("enable-tail-merge",
                               cl::init(cl::BOU_UNSET), cl::Hidden);
@@ -514,14 +515,14 @@ static void FixTail(MachineBasicBlock *CurMBB, MachineBasicBlock *SuccBB,
   if (I != MF->end() && !TII->analyzeBranch(*CurMBB, TBB, FBB, Cond, true)) {
     MachineBasicBlock *NextBB = &*I;
     if (TBB == NextBB && !Cond.empty() && !FBB) {
-      if (!TII->ReverseBranchCondition(Cond)) {
-        TII->RemoveBranch(*CurMBB);
-        TII->InsertBranch(*CurMBB, SuccBB, nullptr, Cond, dl);
+      if (!TII->reverseBranchCondition(Cond)) {
+        TII->removeBranch(*CurMBB);
+        TII->insertBranch(*CurMBB, SuccBB, nullptr, Cond, dl);
         return;
       }
     }
   }
-  TII->InsertBranch(*CurMBB, SuccBB, nullptr,
+  TII->insertBranch(*CurMBB, SuccBB, nullptr,
                     SmallVector<MachineOperand, 0>(), dl);
 }
 
@@ -1070,7 +1071,7 @@ bool BranchFolder::TailMergeBlocks(MachineFunction &MF) {
         // branch.
         SmallVector<MachineOperand, 4> NewCond(Cond);
         if (!Cond.empty() && TBB == IBB) {
-          if (TII->ReverseBranchCondition(NewCond))
+          if (TII->reverseBranchCondition(NewCond))
             continue;
           // This is the QBB case described above
           if (!FBB) {
@@ -1106,10 +1107,10 @@ bool BranchFolder::TailMergeBlocks(MachineFunction &MF) {
         // Remove the unconditional branch at the end, if any.
         if (TBB && (Cond.empty() || FBB)) {
           DebugLoc dl;  // FIXME: this is nowhere
-          TII->RemoveBranch(*PBB);
+          TII->removeBranch(*PBB);
           if (!Cond.empty())
             // reinsert conditional branch only, for now
-            TII->InsertBranch(*PBB, (TBB == IBB) ? FBB : TBB, nullptr,
+            TII->insertBranch(*PBB, (TBB == IBB) ? FBB : TBB, nullptr,
                               NewCond, dl);
         }
 
@@ -1325,10 +1326,10 @@ ReoptimizeBlock:
     // a fall-through.
     if (PriorTBB && PriorTBB == PriorFBB) {
       DebugLoc dl = getBranchDebugLoc(PrevBB);
-      TII->RemoveBranch(PrevBB);
+      TII->removeBranch(PrevBB);
       PriorCond.clear();
       if (PriorTBB != MBB)
-        TII->InsertBranch(PrevBB, PriorTBB, nullptr, PriorCond, dl);
+        TII->insertBranch(PrevBB, PriorTBB, nullptr, PriorCond, dl);
       MadeChange = true;
       ++NumBranchOpts;
       goto ReoptimizeBlock;
@@ -1373,7 +1374,7 @@ ReoptimizeBlock:
     // If the previous branch *only* branches to *this* block (conditional or
     // not) remove the branch.
     if (PriorTBB == MBB && !PriorFBB) {
-      TII->RemoveBranch(PrevBB);
+      TII->removeBranch(PrevBB);
       MadeChange = true;
       ++NumBranchOpts;
       goto ReoptimizeBlock;
@@ -1383,8 +1384,8 @@ ReoptimizeBlock:
     // the condition is false, remove the uncond second branch.
     if (PriorFBB == MBB) {
       DebugLoc dl = getBranchDebugLoc(PrevBB);
-      TII->RemoveBranch(PrevBB);
-      TII->InsertBranch(PrevBB, PriorTBB, nullptr, PriorCond, dl);
+      TII->removeBranch(PrevBB);
+      TII->insertBranch(PrevBB, PriorTBB, nullptr, PriorCond, dl);
       MadeChange = true;
       ++NumBranchOpts;
       goto ReoptimizeBlock;
@@ -1395,10 +1396,10 @@ ReoptimizeBlock:
     // fall-through.
     if (PriorTBB == MBB) {
       SmallVector<MachineOperand, 4> NewPriorCond(PriorCond);
-      if (!TII->ReverseBranchCondition(NewPriorCond)) {
+      if (!TII->reverseBranchCondition(NewPriorCond)) {
         DebugLoc dl = getBranchDebugLoc(PrevBB);
-        TII->RemoveBranch(PrevBB);
-        TII->InsertBranch(PrevBB, PriorFBB, nullptr, NewPriorCond, dl);
+        TII->removeBranch(PrevBB);
+        TII->insertBranch(PrevBB, PriorFBB, nullptr, NewPriorCond, dl);
         MadeChange = true;
         ++NumBranchOpts;
         goto ReoptimizeBlock;
@@ -1430,13 +1431,13 @@ ReoptimizeBlock:
       if (DoTransform) {
         // Reverse the branch so we will fall through on the previous true cond.
         SmallVector<MachineOperand, 4> NewPriorCond(PriorCond);
-        if (!TII->ReverseBranchCondition(NewPriorCond)) {
+        if (!TII->reverseBranchCondition(NewPriorCond)) {
           DEBUG(dbgs() << "\nMoving MBB: " << *MBB
                        << "To make fallthrough to: " << *PriorTBB << "\n");
 
           DebugLoc dl = getBranchDebugLoc(PrevBB);
-          TII->RemoveBranch(PrevBB);
-          TII->InsertBranch(PrevBB, MBB, nullptr, NewPriorCond, dl);
+          TII->removeBranch(PrevBB);
+          TII->insertBranch(PrevBB, MBB, nullptr, NewPriorCond, dl);
 
           // Move this block to the end of the function.
           MBB->moveAfter(&MF.back());
@@ -1445,6 +1446,42 @@ ReoptimizeBlock:
           return MadeChange;
         }
       }
+    }
+  }
+
+  if (!IsEmptyBlock(MBB) && MBB->pred_size() == 1 &&
+      MF.getFunction()->optForSize()) {
+    // Changing "Jcc foo; foo: jmp bar;" into "Jcc bar;" might change the branch
+    // direction, thereby defeating careful block placement and regressing
+    // performance. Therefore, only consider this for optsize functions.
+    MachineInstr &TailCall = *MBB->getFirstNonDebugInstr();
+    if (TII->isUnconditionalTailCall(TailCall)) {
+      MachineBasicBlock *Pred = *MBB->pred_begin();
+      MachineBasicBlock *PredTBB = nullptr, *PredFBB = nullptr;
+      SmallVector<MachineOperand, 4> PredCond;
+      bool PredAnalyzable =
+          !TII->analyzeBranch(*Pred, PredTBB, PredFBB, PredCond, true);
+
+      if (PredAnalyzable && !PredCond.empty() && PredTBB == MBB) {
+        // The predecessor has a conditional branch to this block which consists
+        // of only a tail call. Try to fold the tail call into the conditional
+        // branch.
+        if (TII->canMakeTailCallConditional(PredCond, TailCall)) {
+          // TODO: It would be nice if analyzeBranch() could provide a pointer
+          // to the branch insturction so replaceBranchWithTailCall() doesn't
+          // have to search for it.
+          TII->replaceBranchWithTailCall(*Pred, PredCond, TailCall);
+          ++NumTailCalls;
+          Pred->removeSuccessor(MBB);
+          MadeChange = true;
+          return MadeChange;
+        }
+      }
+      // If the predecessor is falling through to this block, we could reverse
+      // the branch condition and fold the tail call into that. However, after
+      // that we might have to re-arrange the CFG to fall through to the other
+      // block and there is a high risk of regressing code size rather than
+      // improving it.
     }
   }
 
@@ -1464,10 +1501,10 @@ ReoptimizeBlock:
     //    Loop: xxx; jncc Loop; jmp Out
     if (CurTBB && CurFBB && CurFBB == MBB && CurTBB != MBB) {
       SmallVector<MachineOperand, 4> NewCond(CurCond);
-      if (!TII->ReverseBranchCondition(NewCond)) {
+      if (!TII->reverseBranchCondition(NewCond)) {
         DebugLoc dl = getBranchDebugLoc(*MBB);
-        TII->RemoveBranch(*MBB);
-        TII->InsertBranch(*MBB, CurFBB, CurTBB, NewCond, dl);
+        TII->removeBranch(*MBB);
+        TII->insertBranch(*MBB, CurFBB, CurTBB, NewCond, dl);
         MadeChange = true;
         ++NumBranchOpts;
         goto ReoptimizeBlock;
@@ -1483,7 +1520,7 @@ ReoptimizeBlock:
       // This block may contain just an unconditional branch.  Because there can
       // be 'non-branch terminators' in the block, try removing the branch and
       // then seeing if the block is empty.
-      TII->RemoveBranch(*MBB);
+      TII->removeBranch(*MBB);
       // If the only things remaining in the block are debug info, remove these
       // as well, so this will behave the same as an empty block in non-debug
       // mode.
@@ -1514,8 +1551,8 @@ ReoptimizeBlock:
               PriorFBB = MBB;
             }
             DebugLoc pdl = getBranchDebugLoc(PrevBB);
-            TII->RemoveBranch(PrevBB);
-            TII->InsertBranch(PrevBB, PriorTBB, PriorFBB, PriorCond, pdl);
+            TII->removeBranch(PrevBB);
+            TII->insertBranch(PrevBB, PriorTBB, PriorFBB, PriorCond, pdl);
           }
 
           // Iterate through all the predecessors, revectoring each in-turn.
@@ -1540,9 +1577,9 @@ ReoptimizeBlock:
                   *PMBB, NewCurTBB, NewCurFBB, NewCurCond, true);
               if (!NewCurUnAnalyzable && NewCurTBB && NewCurTBB == NewCurFBB) {
                 DebugLoc pdl = getBranchDebugLoc(*PMBB);
-                TII->RemoveBranch(*PMBB);
+                TII->removeBranch(*PMBB);
                 NewCurCond.clear();
-                TII->InsertBranch(*PMBB, NewCurTBB, nullptr, NewCurCond, pdl);
+                TII->insertBranch(*PMBB, NewCurTBB, nullptr, NewCurCond, pdl);
                 MadeChange = true;
                 ++NumBranchOpts;
                 PMBB->CorrectExtraCFGEdges(NewCurTBB, nullptr, false);
@@ -1562,7 +1599,7 @@ ReoptimizeBlock:
       }
 
       // Add the branch back if the block is more than just an uncond branch.
-      TII->InsertBranch(*MBB, CurTBB, nullptr, CurCond, dl);
+      TII->insertBranch(*MBB, CurTBB, nullptr, CurCond, dl);
     }
   }
 
@@ -1599,7 +1636,7 @@ ReoptimizeBlock:
           if (CurFallsThru) {
             MachineBasicBlock *NextBB = &*std::next(MBB->getIterator());
             CurCond.clear();
-            TII->InsertBranch(*MBB, NextBB, nullptr, CurCond, DebugLoc());
+            TII->insertBranch(*MBB, NextBB, nullptr, CurCond, DebugLoc());
           }
           MBB->moveAfter(PredBB);
           MadeChange = true;
@@ -1935,12 +1972,19 @@ bool BranchFolder::HoistCommonCodeInSuccs(MachineBasicBlock *MBB) {
   FBB->erase(FBB->begin(), FIB);
 
   // Update livein's.
+  bool AddedLiveIns = false;
   for (unsigned i = 0, e = LocalDefs.size(); i != e; ++i) {
     unsigned Def = LocalDefs[i];
     if (LocalDefsSet.count(Def)) {
       TBB->addLiveIn(Def);
       FBB->addLiveIn(Def);
+      AddedLiveIns = true;
     }
+  }
+
+  if (AddedLiveIns) {
+    TBB->sortUniqueLiveIns();
+    FBB->sortUniqueLiveIns();
   }
 
   ++NumHoist;
