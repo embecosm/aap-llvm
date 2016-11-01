@@ -668,7 +668,7 @@ bool AAPAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
 bool AAPAsmParser::ParseDirective(AsmToken DirectiveID) { return true; }
 
 extern "C" void LLVMInitializeAAPAsmParser() {
-  RegisterMCAsmParser<AAPAsmParser> X(TheAAPTarget);
+  RegisterMCAsmParser<AAPAsmParser> X(getTheAAPTarget());
 }
 
 #define GET_REGISTER_MATCHER

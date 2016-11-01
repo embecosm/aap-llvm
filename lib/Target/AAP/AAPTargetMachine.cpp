@@ -22,7 +22,7 @@ using namespace llvm;
 
 extern "C" void LLVMInitializeAAPTarget() {
   // Register the target
-  RegisterTargetMachine<AAPTargetMachine> X(TheAAPTarget);
+  RegisterTargetMachine<AAPTargetMachine> X(getTheAAPTarget());
 }
 
 static Reloc::Model getEffectiveRelocModel(Optional<Reloc::Model> RM) {

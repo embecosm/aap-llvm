@@ -65,27 +65,26 @@ static MCInstPrinter *createAAPMCInstPrinter(const Triple &T,
 
 extern "C" void LLVMInitializeAAPTargetMC() {
   // Register the MC asm info.
-  RegisterMCAsmInfo<AAPMCAsmInfo> X(TheAAPTarget);
+  RegisterMCAsmInfo<AAPMCAsmInfo> X(getTheAAPTarget());
 
   // Register the MC codegen info.
-  TargetRegistry::registerMCAdjustCodeGenOpts(TheAAPTarget, adjustCodeGenOpts);
-
+  TargetRegistry::registerMCAdjustCodeGenOpts(getTheAAPTarget(),
+                                              adjustCodeGenOpts);
   // Register the MC instruction info.
-  TargetRegistry::RegisterMCInstrInfo(TheAAPTarget, createAAPMCInstrInfo);
+  TargetRegistry::RegisterMCInstrInfo(getTheAAPTarget(), createAAPMCInstrInfo);
 
   // Register the MC register info.
-  TargetRegistry::RegisterMCRegInfo(TheAAPTarget, createAAPMCRegisterInfo);
+  TargetRegistry::RegisterMCRegInfo(getTheAAPTarget(), createAAPMCRegisterInfo);
 
   // Register the MC Code Emitter
-  TargetRegistry::RegisterMCCodeEmitter(TheAAPTarget, createAAPMCCodeEmitter);
-
+  TargetRegistry::RegisterMCCodeEmitter(getTheAAPTarget(),
+                                        createAAPMCCodeEmitter);
   // Register the MC subtarget info.
-  TargetRegistry::RegisterMCSubtargetInfo(TheAAPTarget,
+  TargetRegistry::RegisterMCSubtargetInfo(getTheAAPTarget(),
                                           createAAPMCSubtargetInfo);
-
   // Register the MCInstPrinter.
-  TargetRegistry::RegisterMCInstPrinter(TheAAPTarget, createAAPMCInstPrinter);
-
+  TargetRegistry::RegisterMCInstPrinter(getTheAAPTarget(),
+                                        createAAPMCInstPrinter);
   // Register the asm backend
-  TargetRegistry::RegisterMCAsmBackend(TheAAPTarget, createAAPAsmBackend);
+  TargetRegistry::RegisterMCAsmBackend(getTheAAPTarget(), createAAPAsmBackend);
 }

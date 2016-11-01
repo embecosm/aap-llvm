@@ -13,9 +13,12 @@
 using namespace llvm;
 
 namespace llvm {
-Target TheAAPTarget;
+Target &getTheAAPTarget() {
+  static Target TheAAPTarget;
+  return TheAAPTarget;
+}
 }
 
 extern "C" void LLVMInitializeAAPTargetInfo() {
-  RegisterTarget<Triple::aap> X(TheAAPTarget, "aap", "AAP [experimental]");
+  RegisterTarget<Triple::aap> X(getTheAAPTarget(), "aap", "AAP [experimental]");
 }

@@ -115,5 +115,5 @@ void AAPAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
 // Force static initialization.
 extern "C" void LLVMInitializeAAPAsmPrinter() {
-  RegisterAsmPrinter<AAPAsmPrinter> X(TheAAPTarget);
+  RegisterAsmPrinter<AAPAsmPrinter> X(getTheAAPTarget());
 }

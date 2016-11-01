@@ -29,7 +29,7 @@ class Target;
 class Triple;
 class raw_pwrite_stream;
 
-extern Target TheAAPTarget;
+Target &getTheAAPTarget();
 
 MCCodeEmitter *createAAPMCCodeEmitter(MCInstrInfo const &MCII,
                                       MCRegisterInfo const &MRI,
