@@ -86,26 +86,9 @@ public:
       return;
     }
     for (unsigned i = 0; i < Size; ++i) {
-      Data[i + Fixup.getOffset()] = static_cast<uint8_t>(Value >> (i * 8));
+      Data[i + Fixup.getOffset()] |= static_cast<uint8_t>(Value >> (i * 8));
     }
     return;
-  }
-
-  void processFixupValue(const MCAssembler &Asm, const MCAsmLayout &Layout,
-                         const MCFixup &Fixup, const MCFragment *DF,
-                         const MCValue &Target, uint64_t &Value,
-                         bool &isResolved) override {
-    // No AAP specific fixups are processed in the backend.
-    switch ((unsigned)Fixup.getKind()) {
-    case FK_Data_1:
-    case FK_Data_2:
-    case FK_Data_4:
-    case FK_Data_8:
-      isResolved = true;
-    default:
-      return;
-    }
-    isResolved = false;
   }
 
 //===------------------------ Relaxation interface ------------------------===//
