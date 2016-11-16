@@ -133,10 +133,9 @@ define i8 @select07(i8 %a.0, i8 %b.0, i8 %m) {
 ; CHECK-NEXT:    kmovw %edx, %k0
 ; CHECK-NEXT:    kmovw %edi, %k1
 ; CHECK-NEXT:    kmovw %esi, %k2
-; CHECK-NEXT:    kandw %k0, %k1, %k1
-; CHECK-NEXT:    knotw %k0, %k0
-; CHECK-NEXT:    kandw %k0, %k2, %k0
-; CHECK-NEXT:    korw %k0, %k1, %k0
+; CHECK-NEXT:    kandnw %k2, %k0, %k2
+; CHECK-NEXT:    kandw %k0, %k1, %k0
+; CHECK-NEXT:    korw %k2, %k0, %k0
 ; CHECK-NEXT:    kmovw %k0, %eax
 ; CHECK-NEXT:    retq
   %mask = bitcast i8 %m to <8 x i1>
@@ -157,4 +156,26 @@ define i64 @pr30249() {
 ; CHECK-NEXT:    retq
   %v = select i1 undef , i64 1, i64 2
   ret i64 %v
+}
+
+define double @pr30561_f64(double %b, double %a, i1 %c) {
+; CHECK-LABEL: pr30561_f64:
+; CHECK:       ## BB#0:
+; CHECK-NEXT:    andl $1, %edi
+; CHECK-NEXT:    kmovw %edi, %k1
+; CHECK-NEXT:    vmovsd %xmm1, %xmm0, %xmm0 {%k1}
+; CHECK-NEXT:    retq
+  %cond = select i1 %c, double %a, double %b
+  ret double %cond
+}
+
+define float @pr30561_f32(float %b, float %a, i1 %c) {
+; CHECK-LABEL: pr30561_f32:
+; CHECK:       ## BB#0:
+; CHECK-NEXT:    andl $1, %edi
+; CHECK-NEXT:    kmovw %edi, %k1
+; CHECK-NEXT:    vmovss %xmm1, %xmm0, %xmm0 {%k1}
+; CHECK-NEXT:    retq
+  %cond = select i1 %c, float %a, float %b
+  ret float %cond
 }

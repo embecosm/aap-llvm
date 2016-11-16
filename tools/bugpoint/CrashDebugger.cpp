@@ -19,6 +19,7 @@
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
@@ -54,6 +55,12 @@ cl::opt<bool> DontReducePassList("disable-pass-list-reduction",
 cl::opt<bool> NoNamedMDRM("disable-namedmd-remove",
                           cl::desc("Do not remove global named metadata"),
                           cl::init(false));
+cl::opt<bool> NoStripDebugInfo("disable-strip-debuginfo",
+                               cl::desc("Do not strip debug info metadata"),
+                               cl::init(false));
+cl::opt<bool> NoStripDebugTypeInfo("disable-strip-debug-types",
+                               cl::desc("Do not strip debug type info metadata"),
+                               cl::init(false));
 cl::opt<bool> VerboseErrors("verbose-errors",
                             cl::desc("Print the output of crashing program"),
                             cl::init(false));
@@ -461,8 +468,7 @@ bool ReduceCrashingBlocks::TestBlocks(std::vector<const BasicBlock *> &BBs) {
     const ValueSymbolTable &GST = M->getValueSymbolTable();
     for (unsigned i = 0, e = BlockInfo.size(); i != e; ++i) {
       Function *F = cast<Function>(GST.lookup(BlockInfo[i].first));
-      ValueSymbolTable &ST = F->getValueSymbolTable();
-      Value *V = ST.lookup(BlockInfo[i].second);
+      Value *V = F->getValueSymbolTable()->lookup(BlockInfo[i].second);
       if (V && V->getType() == Type::getLabelTy(V->getContext()))
         BBs.push_back(cast<BasicBlock>(V));
     }
@@ -572,8 +578,7 @@ bool ReduceCrashingConditionals::TestBlocks(
     const ValueSymbolTable &GST = M->getValueSymbolTable();
     for (auto &BI : BlockInfo) {
       auto *F = cast<Function>(GST.lookup(BI.first));
-      ValueSymbolTable &ST = F->getValueSymbolTable();
-      Value *V = ST.lookup(BI.second);
+      Value *V = F->getValueSymbolTable()->lookup(BI.second);
       if (V && V->getType() == Type::getLabelTy(V->getContext()))
         BBs.push_back(cast<BasicBlock>(V));
     }
@@ -666,8 +671,7 @@ bool ReduceSimplifyCFG::TestBlocks(std::vector<const BasicBlock *> &BBs) {
     const ValueSymbolTable &GST = M->getValueSymbolTable();
     for (auto &BI : BlockInfo) {
       auto *F = cast<Function>(GST.lookup(BI.first));
-      ValueSymbolTable &ST = F->getValueSymbolTable();
-      Value *V = ST.lookup(BI.second);
+      Value *V = F->getValueSymbolTable()->lookup(BI.second);
       if (V && V->getType() == Type::getLabelTy(V->getContext()))
         BBs.push_back(cast<BasicBlock>(V));
     }
@@ -736,7 +740,7 @@ bool ReduceCrashingInstructions::TestInsts(
 
   // Verify that this is still valid.
   legacy::PassManager Passes;
-  Passes.add(createVerifierPass());
+  Passes.add(createVerifierPass(/*FatalErrors=*/false));
   Passes.run(*M);
 
   // Try running on the hacked up program...
@@ -812,7 +816,7 @@ bool ReduceCrashingNamedMD::TestNamedMDs(std::vector<std::string> &NamedMDs) {
 
   // Verify that this is still valid.
   legacy::PassManager Passes;
-  Passes.add(createVerifierPass());
+  Passes.add(createVerifierPass(/*FatalErrors=*/false));
   Passes.run(*M);
 
   // Try running on the hacked up program...
@@ -879,7 +883,7 @@ bool ReduceCrashingNamedMDOps::TestNamedMDOps(
 
   // Verify that this is still valid.
   legacy::PassManager Passes;
-  Passes.add(createVerifierPass());
+  Passes.add(createVerifierPass(/*FatalErrors=*/false));
   Passes.run(*M);
 
   // Try running on the hacked up program...
@@ -1125,6 +1129,22 @@ static Error DebugACrash(BugDriver &BD,
   if (!BugpointIsInterrupted)
     if (Error E = ReduceInsts(BD, TestFn))
       return E;
+
+  // Attempt to strip debug info metadata.
+  auto stripMetadata = [&](std::function<bool(Module &)> strip) {
+    std::unique_ptr<Module> M = CloneModule(BD.getProgram());
+    strip(*M);
+    if (TestFn(BD, M.get()))
+      BD.setNewProgram(M.release());
+  };
+  if (!NoStripDebugInfo && !BugpointIsInterrupted) {
+    outs() << "\n*** Attempting to strip the debug info: ";
+    stripMetadata(StripDebugInfo);
+  }
+  if (!NoStripDebugTypeInfo && !BugpointIsInterrupted) {
+    outs() << "\n*** Attempting to strip the debug type info: ";
+    stripMetadata(stripNonLineTableDebugInfo);
+  }
 
   if (!NoNamedMDRM) {
     if (!BugpointIsInterrupted) {

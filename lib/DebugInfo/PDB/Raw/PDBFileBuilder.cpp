@@ -14,6 +14,7 @@
 #include "llvm/DebugInfo/MSF/MSFBuilder.h"
 #include "llvm/DebugInfo/MSF/StreamInterface.h"
 #include "llvm/DebugInfo/MSF/StreamWriter.h"
+#include "llvm/DebugInfo/PDB/GenericError.h"
 #include "llvm/DebugInfo/PDB/Raw/DbiStream.h"
 #include "llvm/DebugInfo/PDB/Raw/DbiStreamBuilder.h"
 #include "llvm/DebugInfo/PDB/Raw/InfoStream.h"
@@ -31,18 +32,11 @@ using namespace llvm::support;
 PDBFileBuilder::PDBFileBuilder(BumpPtrAllocator &Allocator)
     : Allocator(Allocator) {}
 
-Error PDBFileBuilder::initialize(const msf::SuperBlock &Super) {
-  auto ExpectedMsf =
-      MSFBuilder::create(Allocator, Super.BlockSize, Super.NumBlocks);
+Error PDBFileBuilder::initialize(uint32_t BlockSize) {
+  auto ExpectedMsf = MSFBuilder::create(Allocator, BlockSize);
   if (!ExpectedMsf)
     return ExpectedMsf.takeError();
-
-  auto &MsfResult = *ExpectedMsf;
-  if (auto EC = MsfResult.setBlockMapAddr(Super.BlockMapAddr))
-    return EC;
-  Msf = llvm::make_unique<MSFBuilder>(std::move(MsfResult));
-  Msf->setFreePageMap(Super.FreeBlockMapBlock);
-  Msf->setUnknown1(Super.Unknown1);
+  Msf = llvm::make_unique<MSFBuilder>(std::move(*ExpectedMsf));
   return Error::success();
 }
 
@@ -62,8 +56,14 @@ DbiStreamBuilder &PDBFileBuilder::getDbiBuilder() {
 
 TpiStreamBuilder &PDBFileBuilder::getTpiBuilder() {
   if (!Tpi)
-    Tpi = llvm::make_unique<TpiStreamBuilder>(*Msf);
+    Tpi = llvm::make_unique<TpiStreamBuilder>(*Msf, StreamTPI);
   return *Tpi;
+}
+
+TpiStreamBuilder &PDBFileBuilder::getIpiBuilder() {
+  if (!Ipi)
+    Ipi = llvm::make_unique<TpiStreamBuilder>(*Msf, StreamIPI);
+  return *Ipi;
 }
 
 Expected<msf::MSFLayout> PDBFileBuilder::finalizeMsfLayout() const {
@@ -77,6 +77,10 @@ Expected<msf::MSFLayout> PDBFileBuilder::finalizeMsfLayout() const {
   }
   if (Tpi) {
     if (auto EC = Tpi->finalizeMsfLayout())
+      return std::move(EC);
+  }
+  if (Ipi) {
+    if (auto EC = Ipi->finalizeMsfLayout())
       return std::move(EC);
   }
 
@@ -93,24 +97,31 @@ PDBFileBuilder::build(std::unique_ptr<msf::WritableStream> PdbFileBuffer) {
   File->ContainerLayout = *ExpectedLayout;
 
   if (Info) {
-    auto ExpectedInfo = Info->build(*File, *PdbFileBuffer);
+    auto ExpectedInfo = Info->build(*File);
     if (!ExpectedInfo)
       return ExpectedInfo.takeError();
     File->Info = std::move(*ExpectedInfo);
   }
 
   if (Dbi) {
-    auto ExpectedDbi = Dbi->build(*File, *PdbFileBuffer);
+    auto ExpectedDbi = Dbi->build(*File);
     if (!ExpectedDbi)
       return ExpectedDbi.takeError();
     File->Dbi = std::move(*ExpectedDbi);
   }
 
   if (Tpi) {
-    auto ExpectedTpi = Tpi->build(*File, *PdbFileBuffer);
+    auto ExpectedTpi = Tpi->build(*File);
     if (!ExpectedTpi)
       return ExpectedTpi.takeError();
     File->Tpi = std::move(*ExpectedTpi);
+  }
+
+  if (Ipi) {
+    auto ExpectedIpi = Ipi->build(*File);
+    if (!ExpectedIpi)
+      return ExpectedIpi.takeError();
+    File->Ipi = std::move(*ExpectedIpi);
   }
 
   if (File->Info && File->Dbi && File->Info->getAge() != File->Dbi->getAge())
@@ -121,12 +132,19 @@ PDBFileBuilder::build(std::unique_ptr<msf::WritableStream> PdbFileBuffer) {
   return std::move(File);
 }
 
-Error PDBFileBuilder::commit(const msf::WritableStream &Buffer) {
-  StreamWriter Writer(Buffer);
+Error PDBFileBuilder::commit(StringRef Filename) {
   auto ExpectedLayout = finalizeMsfLayout();
   if (!ExpectedLayout)
     return ExpectedLayout.takeError();
   auto &Layout = *ExpectedLayout;
+
+  uint64_t Filesize = Layout.SB->BlockSize * Layout.SB->NumBlocks;
+  auto OutFileOrError = FileOutputBuffer::create(Filename, Filesize);
+  if (OutFileOrError.getError())
+    return llvm::make_error<pdb::GenericError>(generic_error_code::invalid_path,
+                                               Filename);
+  FileBufferByteStream Buffer(std::move(*OutFileOrError));
+  StreamWriter Writer(Buffer);
 
   if (auto EC = Writer.writeObject(*Layout.SB))
     return EC;
@@ -163,6 +181,11 @@ Error PDBFileBuilder::commit(const msf::WritableStream &Buffer) {
 
   if (Tpi) {
     if (auto EC = Tpi->commit(Layout, Buffer))
+      return EC;
+  }
+
+  if (Ipi) {
+    if (auto EC = Ipi->commit(Layout, Buffer))
       return EC;
   }
 

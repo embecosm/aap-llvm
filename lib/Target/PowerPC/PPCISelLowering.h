@@ -50,6 +50,10 @@ namespace llvm {
       /// unsigned integers.
       FCTIDUZ, FCTIWUZ,
 
+      /// VEXTS, ByteWidth - takes an input in VSFRC and produces an output in
+      /// VSFRC that is sign-extended from ByteWidth to a 64-byte integer.
+      VEXTS,
+
       /// Reciprocal estimate instructions (unary FP ops).
       FRE, FRSQRTE,
 
@@ -364,6 +368,16 @@ namespace llvm {
       /// load which zero-extends from a 32-bit integer value into the
       /// destination 64-bit register.
       LFIWZX,
+
+      /// GPRC, CHAIN = LXSIZX, CHAIN, Ptr, ByteWidth - This is a load of an
+      /// integer smaller than 64 bits into a VSR. The integer is zero-extended.
+      /// This can be used for converting loaded integers to floating point.
+      LXSIZX,
+
+      /// STXSIX - The STXSI[bh]X instruction. The first operand is an input
+      /// chain, then an f64 value to store, then an address to store it to,
+      /// followed by a byte-width for the store.
+      STXSIX,
 
       /// VSRC, CHAIN = LXVD2X_LE CHAIN, Ptr - Occurs only for little endian.
       /// Maps directly to an lxvd2x instruction that will be followed by
@@ -755,6 +769,16 @@ namespace llvm {
     bool useLoadStackGuardNode() const override;
     void insertSSPDeclarations(Module &M) const override;
 
+    bool isFPImmLegal(const APFloat &Imm, EVT VT) const override;
+
+    unsigned getJumpTableEncoding() const override;
+    bool isJumpTableRelative() const override;
+    SDValue getPICJumpTableRelocBase(SDValue Table,
+                                     SelectionDAG &DAG) const override;
+    const MCExpr *getPICJumpTableRelocBaseExpr(const MachineFunction *MF,
+                                               unsigned JTI,
+                                               MCContext &Ctx) const override;
+
   private:
     struct ReuseLoadInfo {
       SDValue Ptr;
@@ -953,11 +977,11 @@ namespace llvm {
     SDValue DAGCombineTruncBoolExt(SDNode *N, DAGCombinerInfo &DCI) const;
     SDValue combineFPToIntToFP(SDNode *N, DAGCombinerInfo &DCI) const;
 
-    SDValue getRsqrtEstimate(SDValue Operand, DAGCombinerInfo &DCI,
-                             unsigned &RefinementSteps,
-                             bool &UseOneConstNR) const override;
-    SDValue getRecipEstimate(SDValue Operand, DAGCombinerInfo &DCI,
-                             unsigned &RefinementSteps) const override;
+    SDValue getSqrtEstimate(SDValue Operand, SelectionDAG &DAG, int Enabled,
+                            int &RefinementSteps, bool &UseOneConstNR,
+                            bool Reciprocal) const override;
+    SDValue getRecipEstimate(SDValue Operand, SelectionDAG &DAG, int Enabled,
+                             int &RefinementSteps) const override;
     unsigned combineRepeatedFPDivisors() const override;
 
     CCAssignFn *useFastISelCCs(unsigned Flag) const;

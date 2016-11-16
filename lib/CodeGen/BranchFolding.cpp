@@ -145,59 +145,6 @@ void BranchFolder::RemoveDeadBlock(MachineBasicBlock *MBB) {
     MLI->removeBlock(MBB);
 }
 
-/// OptimizeImpDefsBlock - If a basic block is just a bunch of implicit_def
-/// followed by terminators, and if the implicitly defined registers are not
-/// used by the terminators, remove those implicit_def's. e.g.
-/// BB1:
-///   r0 = implicit_def
-///   r1 = implicit_def
-///   br
-/// This block can be optimized away later if the implicit instructions are
-/// removed.
-bool BranchFolder::OptimizeImpDefsBlock(MachineBasicBlock *MBB) {
-  SmallSet<unsigned, 4> ImpDefRegs;
-  MachineBasicBlock::iterator I = MBB->begin();
-  while (I != MBB->end()) {
-    if (!I->isImplicitDef())
-      break;
-    unsigned Reg = I->getOperand(0).getReg();
-    if (TargetRegisterInfo::isPhysicalRegister(Reg)) {
-      for (MCSubRegIterator SubRegs(Reg, TRI, /*IncludeSelf=*/true);
-           SubRegs.isValid(); ++SubRegs)
-        ImpDefRegs.insert(*SubRegs);
-    } else {
-      ImpDefRegs.insert(Reg);
-    }
-    ++I;
-  }
-  if (ImpDefRegs.empty())
-    return false;
-
-  MachineBasicBlock::iterator FirstTerm = I;
-  while (I != MBB->end()) {
-    if (!TII->isUnpredicatedTerminator(*I))
-      return false;
-    // See if it uses any of the implicitly defined registers.
-    for (const MachineOperand &MO : I->operands()) {
-      if (!MO.isReg() || !MO.isUse())
-        continue;
-      unsigned Reg = MO.getReg();
-      if (ImpDefRegs.count(Reg))
-        return false;
-    }
-    ++I;
-  }
-
-  I = MBB->begin();
-  while (I != FirstTerm) {
-    MachineInstr *ImpDefMI = &*I;
-    ++I;
-    MBB->erase(ImpDefMI);
-  }
-
-  return true;
-}
-
 /// OptimizeFunction - Perhaps branch folding, tail merging and other
 /// CFG optimizations on the given function.  Block placement changes the layout
 /// and may create new tail merging opportunities.
@@ -228,7 +175,6 @@ bool BranchFolder::OptimizeFunction(MachineFunction &MF,
     SmallVector<MachineOperand, 4> Cond;
     if (!TII->analyzeBranch(MBB, TBB, FBB, Cond, true))
       MadeChange |= MBB.CorrectExtraCFGEdges(TBB, FBB, !Cond.empty());
-    MadeChange |= OptimizeImpDefsBlock(&MBB);
   }
 
   // Recalculate funclet membership.
@@ -774,8 +720,6 @@ bool BranchFolder::CreateCommonTailOnlyBlock(MachineBasicBlock *&PredBB,
     SameTails[commonTailIndex].getTailStartPos();
   MachineBasicBlock *MBB = SameTails[commonTailIndex].getBlock();
 
-  // If the common tail includes any debug info we will take it pretty
-  // randomly from one of the inputs.  Might be better to remove it?
   DEBUG(dbgs() << "\nSplitting BB#" << MBB->getNumber() << ", size "
                << maxCommonTailLength);
 
@@ -801,9 +745,8 @@ bool BranchFolder::CreateCommonTailOnlyBlock(MachineBasicBlock *&PredBB,
 }
 
 static void
-mergeMMOsFromMemoryOperations(MachineBasicBlock::iterator MBBIStartPos,
-                              MachineBasicBlock &MBBCommon) {
-  // Merge MMOs from memory operations in the common block.
+mergeOperations(MachineBasicBlock::iterator MBBIStartPos,
+                MachineBasicBlock &MBBCommon) {
   MachineBasicBlock *MBB = MBBIStartPos->getParent();
   // Note CommonTailLen does not necessarily matches the size of
   // the common BB nor all its instructions because of debug
@@ -833,8 +776,18 @@ mergeMMOsFromMemoryOperations(MachineBasicBlock::iterator MBBIStartPos,
            "Reached BB end within common tail length!");
     assert(MBBICommon->isIdenticalTo(*MBBI) && "Expected matching MIIs!");
 
+    // Merge MMOs from memory operations in the common block.
     if (MBBICommon->mayLoad() || MBBICommon->mayStore())
       MBBICommon->setMemRefs(MBBICommon->mergeMemRefsWith(*MBBI));
+    // Drop undef flags if they aren't present in all merged instructions.
+    for (unsigned I = 0, E = MBBICommon->getNumOperands(); I != E; ++I) {
+      MachineOperand &MO = MBBICommon->getOperand(I);
+      if (MO.isReg() && MO.isUndef()) {
+        const MachineOperand &OtherMO = MBBI->getOperand(I);
+        if (!OtherMO.isUndef())
+          MO.setIsUndef(false);
+      }
+    }
 
     ++MBBI;
     ++MBBICommon;
@@ -943,6 +896,11 @@ bool BranchFolder::TryTailMergeBlocks(MachineBasicBlock *SuccBB,
     // Recompute common tail MBB's edge weights and block frequency.
     setCommonTailEdgeWeights(*MBB);
 
+    // Remove the original debug location from the common tail.
+    for (auto &MI : *MBB)
+      if (!MI.isDebugValue())
+        MI.setDebugLoc(DebugLoc());
+
     // MBB is common tail.  Adjust all other BB's to jump to this one.
     // Traversal must be forwards so erases work.
     DEBUG(dbgs() << "\nUsing common tail in BB#" << MBB->getNumber()
@@ -952,8 +910,8 @@ bool BranchFolder::TryTailMergeBlocks(MachineBasicBlock *SuccBB,
         continue;
       DEBUG(dbgs() << "BB#" << SameTails[i].getBlock()->getNumber()
                    << (i == e-1 ? "" : ", "));
-      // Merge MMOs from memory operations as needed.
-      mergeMMOsFromMemoryOperations(SameTails[i].getTailStartPos(), *MBB);
+      // Merge operations (MMOs, undef flags)
+      mergeOperations(SameTails[i].getTailStartPos(), *MBB);
       // Hack the end off BB i, making it jump to BB commonTailIndex instead.
       ReplaceTailWithBranchTo(SameTails[i].getTailStartPos(), MBB);
       // BB i is no longer a predecessor of SuccBB; remove it from the worklist.

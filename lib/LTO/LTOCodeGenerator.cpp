@@ -19,7 +19,7 @@
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/CodeGen/ParallelCG.h"
 #include "llvm/CodeGen/RuntimeLibcalls.h"
 #include "llvm/Config/config.h"
@@ -58,6 +58,7 @@
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/ObjCARC.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 #include <system_error>
 using namespace llvm;
 
@@ -131,7 +132,7 @@ void LTOCodeGenerator::initializeLTOPasses() {
 }
 
 void LTOCodeGenerator::setAsmUndefinedRefs(LTOModule *Mod) {
-  const std::vector<const char *> &undefs = Mod->getAsmUndefinedRefs();
+  const std::vector<StringRef> &undefs = Mod->getAsmUndefinedRefs();
   for (int i = 0, e = undefs.size(); i != e; ++i)
     AsmUndefinedRefs[undefs[i]] = 1;
 }
@@ -199,7 +200,7 @@ void LTOCodeGenerator::setOptLevel(unsigned Level) {
   llvm_unreachable("Unknown optimization level!");
 }
 
-bool LTOCodeGenerator::writeMergedModules(const char *Path) {
+bool LTOCodeGenerator::writeMergedModules(StringRef Path) {
   if (!determineTarget())
     return false;
 
@@ -240,7 +241,7 @@ bool LTOCodeGenerator::compileOptimizedToFile(const char **Name) {
   SmallString<128> Filename;
   int FD;
 
-  const char *Extension =
+  StringRef Extension
       (FileType == TargetMachine::CGFT_AssemblyFile ? "s" : "o");
 
   std::error_code EC =
@@ -251,11 +252,12 @@ bool LTOCodeGenerator::compileOptimizedToFile(const char **Name) {
   }
 
   // generate object file
-  tool_output_file objFile(Filename.c_str(), FD);
+  tool_output_file objFile(Filename, FD);
 
   bool genResult = compileOptimized(&objFile.os());
   objFile.os().close();
   if (objFile.os().has_error()) {
+    emitError((Twine("could not write object file: ") + Filename).str());
     objFile.os().clear_error();
     sys::fs::remove(Twine(Filename));
     return false;
@@ -364,18 +366,10 @@ std::unique_ptr<TargetMachine> LTOCodeGenerator::createTargetMachine() {
 void LTOCodeGenerator::preserveDiscardableGVs(
     Module &TheModule,
     llvm::function_ref<bool(const GlobalValue &)> mustPreserveGV) {
-  SetVector<Constant *> UsedValuesSet;
-  if (GlobalVariable *LLVMUsed =
-          TheModule.getGlobalVariable("llvm.compiler.used")) {
-    ConstantArray *Inits = cast<ConstantArray>(LLVMUsed->getInitializer());
-    for (auto &V : Inits->operands())
-      UsedValuesSet.insert(cast<Constant>(&V));
-    LLVMUsed->eraseFromParent();
-  }
-  llvm::Type *i8PTy = llvm::Type::getInt8PtrTy(TheModule.getContext());
+  std::vector<GlobalValue *> Used;
   auto mayPreserveGlobal = [&](GlobalValue &GV) {
     if (!GV.isDiscardableIfUnused() || GV.isDeclaration() ||
-        !mustPreserveGV(GV)) 
+        !mustPreserveGV(GV))
       return;
     if (GV.hasAvailableExternallyLinkage())
       return emitWarning(
@@ -384,7 +378,7 @@ void LTOCodeGenerator::preserveDiscardableGVs(
     if (GV.hasInternalLinkage())
       return emitWarning((Twine("Linker asked to preserve internal global: '") +
                    GV.getName() + "'").str());
-    UsedValuesSet.insert(ConstantExpr::getBitCast(&GV, i8PTy));
+    Used.push_back(&GV);
   };
   for (auto &GV : TheModule)
     mayPreserveGlobal(GV);
@@ -393,15 +387,10 @@ void LTOCodeGenerator::preserveDiscardableGVs(
   for (auto &GV : TheModule.aliases())
     mayPreserveGlobal(GV);
 
-  if (UsedValuesSet.empty())
+  if (Used.empty())
     return;
 
-  llvm::ArrayType *ATy = llvm::ArrayType::get(i8PTy, UsedValuesSet.size());
-  auto *LLVMUsed = new llvm::GlobalVariable(
-      TheModule, ATy, false, llvm::GlobalValue::AppendingLinkage,
-      llvm::ConstantArray::get(ATy, UsedValuesSet.getArrayRef()),
-      "llvm.compiler.used");
-  LLVMUsed->setSection("llvm.metadata");
+  appendToCompilerUsed(TheModule, Used);
 }
 
 void LTOCodeGenerator::applyScopeRestrictions() {
@@ -410,6 +399,7 @@ void LTOCodeGenerator::applyScopeRestrictions() {
 
   // Declare a callback for the internalize pass that will ask for every
   // candidate GlobalValue if it can be internalized or not.
+  Mangler Mang;
   SmallString<64> MangledName;
   auto mustPreserveGV = [&](const GlobalValue &GV) -> bool {
     // Unnamed globals can't be mangled, but they can't be preserved either.
@@ -421,8 +411,7 @@ void LTOCodeGenerator::applyScopeRestrictions() {
     // underscore.
     MangledName.clear();
     MangledName.reserve(GV.getName().size() + 1);
-    Mangler::getNameWithPrefix(MangledName, GV.getName(),
-                               MergedModule->getDataLayout());
+    Mang.getNameWithPrefix(MangledName, &GV, /*CannotUsePrivateLabel=*/false);
     return MustPreserveSymbols.count(MangledName);
   };
 
@@ -586,7 +575,7 @@ bool LTOCodeGenerator::compileOptimized(ArrayRef<raw_pwrite_stream *> Out) {
 
 /// setCodeGenDebugOptions - Set codegen debugging options to aid in debugging
 /// LTO problems.
-void LTOCodeGenerator::setCodeGenDebugOptions(const char *Options) {
+void LTOCodeGenerator::setCodeGenDebugOptions(StringRef Options) {
   for (std::pair<StringRef, StringRef> o = getToken(Options); !o.first.empty();
        o = getToken(o.second))
     CodegenOptions.push_back(o.first);

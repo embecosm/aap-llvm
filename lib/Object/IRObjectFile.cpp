@@ -14,7 +14,7 @@
 #include "llvm/Object/IRObjectFile.h"
 #include "RecordStreamer.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Bitcode/ReaderWriter.h"
+#include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/GVMaterializer.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Mangler.h"
@@ -54,8 +54,7 @@ void IRObjectFile::CollectAsmUndefinedRefs(
 
   std::string Err;
   const Target *T = TargetRegistry::lookupTarget(TT.str(), Err);
-  if (!T)
-    return;
+  assert(T && T->hasMCAsmParser());
 
   std::unique_ptr<MCRegisterInfo> MRI(T->createMCRegInfo(TT.str()));
   if (!MRI)
@@ -102,7 +101,7 @@ void IRObjectFile::CollectAsmUndefinedRefs(
     uint32_t Res = BasicSymbolRef::SF_None;
     switch (Value) {
     case RecordStreamer::NeverSeen:
-      llvm_unreachable("foo");
+      llvm_unreachable("NeverSeen should have been replaced earlier");
     case RecordStreamer::DefinedGlobal:
       Res |= BasicSymbolRef::SF_Global;
       break;
@@ -113,10 +112,13 @@ void IRObjectFile::CollectAsmUndefinedRefs(
       Res |= BasicSymbolRef::SF_Undefined;
       Res |= BasicSymbolRef::SF_Global;
       break;
-    case RecordStreamer::GlobalWeak:
+    case RecordStreamer::DefinedWeak:
       Res |= BasicSymbolRef::SF_Weak;
       Res |= BasicSymbolRef::SF_Global;
       break;
+    case RecordStreamer::UndefinedWeak:
+      Res |= BasicSymbolRef::SF_Weak;
+      Res |= BasicSymbolRef::SF_Undefined;
     }
     AsmUndefinedRefs(Key, BasicSymbolRef::Flags(Res));
   }
@@ -307,21 +309,18 @@ ErrorOr<MemoryBufferRef> IRObjectFile::findBitcodeInMemBuffer(MemoryBufferRef Ob
   }
 }
 
-ErrorOr<std::unique_ptr<IRObjectFile>>
+Expected<std::unique_ptr<IRObjectFile>>
 llvm::object::IRObjectFile::create(MemoryBufferRef Object,
                                    LLVMContext &Context) {
   ErrorOr<MemoryBufferRef> BCOrErr = findBitcodeInMemBuffer(Object);
   if (!BCOrErr)
-    return BCOrErr.getError();
+    return errorCodeToError(BCOrErr.getError());
 
-  std::unique_ptr<MemoryBuffer> Buff =
-      MemoryBuffer::getMemBuffer(BCOrErr.get(), false);
-
-  ErrorOr<std::unique_ptr<Module>> MOrErr =
-      getLazyBitcodeModule(std::move(Buff), Context,
+  Expected<std::unique_ptr<Module>> MOrErr =
+      getLazyBitcodeModule(*BCOrErr, Context,
                            /*ShouldLazyLoadMetadata*/ true);
-  if (std::error_code EC = MOrErr.getError())
-    return EC;
+  if (!MOrErr)
+    return MOrErr.takeError();
 
   std::unique_ptr<Module> &M = MOrErr.get();
   return llvm::make_unique<IRObjectFile>(BCOrErr.get(), std::move(M));

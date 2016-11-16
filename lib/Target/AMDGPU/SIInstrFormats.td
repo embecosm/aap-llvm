@@ -15,46 +15,59 @@ class InstSI <dag outs, dag ins, string asm = "",
               list<dag> pattern = []> :
   AMDGPUInst<outs, ins, asm, pattern>, PredicateControl {
 
-  field bits<1> VM_CNT = 0;
-  field bits<1> EXP_CNT = 0;
-  field bits<1> LGKM_CNT = 0;
+  field bit VM_CNT = 0;
+  field bit EXP_CNT = 0;
+  field bit LGKM_CNT = 0;
 
-  field bits<1> SALU = 0;
-  field bits<1> VALU = 0;
+  field bit SALU = 0;
+  field bit VALU = 0;
 
-  field bits<1> SOP1 = 0;
-  field bits<1> SOP2 = 0;
-  field bits<1> SOPC = 0;
-  field bits<1> SOPK = 0;
-  field bits<1> SOPP = 0;
+  field bit SOP1 = 0;
+  field bit SOP2 = 0;
+  field bit SOPC = 0;
+  field bit SOPK = 0;
+  field bit SOPP = 0;
 
-  field bits<1> VOP1 = 0;
-  field bits<1> VOP2 = 0;
-  field bits<1> VOP3 = 0;
-  field bits<1> VOPC = 0;
-  field bits<1> SDWA = 0;
-  field bits<1> DPP = 0;
+  field bit VOP1 = 0;
+  field bit VOP2 = 0;
+  field bit VOP3 = 0;
+  field bit VOPC = 0;
+  field bit SDWA = 0;
+  field bit DPP = 0;
 
-  field bits<1> MUBUF = 0;
-  field bits<1> MTBUF = 0;
-  field bits<1> SMRD = 0;
-  field bits<1> DS = 0;
-  field bits<1> MIMG = 0;
-  field bits<1> FLAT = 0;
+  field bit MUBUF = 0;
+  field bit MTBUF = 0;
+  field bit SMRD = 0;
+  field bit DS = 0;
+  field bit MIMG = 0;
+  field bit FLAT = 0;
 
   // Whether WQM _must_ be enabled for this instruction.
-  field bits<1> WQM = 0;
-  field bits<1> VGPRSpill = 0;
-  field bits<1> SGPRSpill = 0;
+  field bit WQM = 0;
+  field bit VGPRSpill = 0;
+  field bit SGPRSpill = 0;
 
   // This bit tells the assembler to use the 32-bit encoding in case it
   // is unable to infer the encoding from the operands.
-  field bits<1> VOPAsmPrefer32Bit = 0;
+  field bit VOPAsmPrefer32Bit = 0;
 
-  field bits<1> Gather4 = 0;
+  field bit Gather4 = 0;
 
   // Whether WQM _must_ be disabled for this instruction.
-  field bits<1> DisableWQM = 0;
+  field bit DisableWQM = 0;
+
+  // Most sopk treat the immediate as a signed 16-bit, however some
+  // use it as unsigned.
+  field bit SOPKZext = 0;
+
+  // This is an s_store_dword* instruction that requires a cache flush
+  // on wave termination. It is necessary to distinguish from mayStore
+  // SMEM instructions like the cache flush ones.
+  field bit ScalarStore = 0;
+
+  // Whether the operands can be ignored when computing the
+  // instruction size.
+  field bit FixedSize = 0;
 
   // These need to be kept in sync with the enum in SIInstrFlags.
   let TSFlags{0} = VM_CNT;
@@ -89,6 +102,9 @@ class InstSI <dag outs, dag ins, string asm = "",
   let TSFlags{25} = VOPAsmPrefer32Bit;
   let TSFlags{26} = Gather4;
   let TSFlags{27} = DisableWQM;
+  let TSFlags{28} = SOPKZext;
+  let TSFlags{29} = ScalarStore;
+  let TSFlags{30} = FixedSize;
 
   let SchedRW = [Write32Bit];
 
@@ -123,6 +139,9 @@ class CFPseudoInstSI<dag outs, dag ins, list<dag> pattern = [],
 
   let Uses = !if(UseExec, [EXEC], []);
   let Defs = !if(DefExec, [EXEC, SCC], [SCC]);
+  let mayLoad = 0;
+  let mayStore = 0;
+  let hasSideEffects = 0;
 }
 
 class Enc32 {
@@ -136,187 +155,6 @@ class Enc64 {
 }
 
 class VOPDstOperand <RegisterClass rc> : RegisterOperand <rc, "printVOPDst">;
-
-let Uses = [EXEC] in {
-
-class VOPAnyCommon <dag outs, dag ins, string asm, list<dag> pattern> :
-    InstSI <outs, ins, asm, pattern> {
-
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-  let UseNamedOperandTable = 1;
-  let VALU = 1;
-}
-
-class VOPCCommon <dag ins, string asm, list<dag> pattern> :
-    VOPAnyCommon <(outs), ins, asm, pattern> {
-
-  let VOPC = 1;
-  let Size = 4;
-  let Defs = [VCC];
-}
-
-class VOP1Common <dag outs, dag ins, string asm, list<dag> pattern> :
-    VOPAnyCommon <outs, ins, asm, pattern> {
-
-  let VOP1 = 1;
-  let Size = 4;
-}
-
-class VOP2Common <dag outs, dag ins, string asm, list<dag> pattern> :
-    VOPAnyCommon <outs, ins, asm, pattern> {
-
-  let VOP2 = 1;
-  let Size = 4;
-}
-
-class VOP3Common <dag outs, dag ins, string asm = "",
-                  list<dag> pattern = [], bit HasMods = 0,
-                  bit VOP3Only = 0> :
-  VOPAnyCommon <outs, ins, asm, pattern> {
-
-  // Using complex patterns gives VOP3 patterns a very high complexity rating,
-  // but standalone patterns are almost always prefered, so we need to adjust the
-  // priority lower.  The goal is to use a high number to reduce complexity to
-  // zero (or less than zero).
-  let AddedComplexity = -1000;
-
-  let VOP3 = 1;
-  let VALU = 1;
-
-  let AsmMatchConverter =
-    !if(!eq(VOP3Only,1),
-        "cvtVOP3",
-        !if(!eq(HasMods,1), "cvtVOP3_2_mod", ""));
-
-  let AsmVariantName = AMDGPUAsmVariants.VOP3;
-
-  let isCodeGenOnly = 0;
-
-  int Size = 8;
-
-  // Because SGPRs may be allowed if there are multiple operands, we
-  // need a post-isel hook to insert copies in order to avoid
-  // violating constant bus requirements.
-  let hasPostISelHook = 1;
-}
-
-} // End Uses = [EXEC]
-
-//===----------------------------------------------------------------------===//
-// Vector ALU operations
-//===----------------------------------------------------------------------===//
-
-class VOP1e <bits<8> op> : Enc32 {
-  bits<8> vdst;
-  bits<9> src0;
-
-  let Inst{8-0} = src0;
-  let Inst{16-9} = op;
-  let Inst{24-17} = vdst;
-  let Inst{31-25} = 0x3f; //encoding
-}
-
-class VOP2e <bits<6> op> : Enc32 {
-  bits<8> vdst;
-  bits<9> src0;
-  bits<8> src1;
-
-  let Inst{8-0} = src0;
-  let Inst{16-9} = src1;
-  let Inst{24-17} = vdst;
-  let Inst{30-25} = op;
-  let Inst{31} = 0x0; //encoding
-}
-
-class VOP2_MADKe <bits<6> op> : Enc64 {
-
-  bits<8>  vdst;
-  bits<9>  src0;
-  bits<8>  src1;
-  bits<32> imm;
-
-  let Inst{8-0} = src0;
-  let Inst{16-9} = src1;
-  let Inst{24-17} = vdst;
-  let Inst{30-25} = op;
-  let Inst{31} = 0x0; // encoding
-  let Inst{63-32} = imm;
-}
-
-class VOP3a <bits<9> op> : Enc64 {
-  bits<2> src0_modifiers;
-  bits<9> src0;
-  bits<2> src1_modifiers;
-  bits<9> src1;
-  bits<2> src2_modifiers;
-  bits<9> src2;
-  bits<1> clamp;
-  bits<2> omod;
-
-  let Inst{8} = src0_modifiers{1};
-  let Inst{9} = src1_modifiers{1};
-  let Inst{10} = src2_modifiers{1};
-  let Inst{11} = clamp;
-  let Inst{25-17} = op;
-  let Inst{31-26} = 0x34; //encoding
-  let Inst{40-32} = src0;
-  let Inst{49-41} = src1;
-  let Inst{58-50} = src2;
-  let Inst{60-59} = omod;
-  let Inst{61} = src0_modifiers{0};
-  let Inst{62} = src1_modifiers{0};
-  let Inst{63} = src2_modifiers{0};
-}
-
-class VOP3e <bits<9> op> : VOP3a <op> {
-  bits<8> vdst;
-
-  let Inst{7-0} = vdst;
-}
-
-// Encoding used for VOPC instructions encoded as VOP3
-// Differs from VOP3e by destination name (sdst) as VOPC doesn't have vector dst
-class VOP3ce <bits<9> op> : VOP3a <op> {
-  bits<8> sdst;
-
-  let Inst{7-0} = sdst;
-}
-
-class VOP3be <bits<9> op> : Enc64 {
-  bits<8> vdst;
-  bits<2> src0_modifiers;
-  bits<9> src0;
-  bits<2> src1_modifiers;
-  bits<9> src1;
-  bits<2> src2_modifiers;
-  bits<9> src2;
-  bits<7> sdst;
-  bits<2> omod;
-
-  let Inst{7-0} = vdst;
-  let Inst{14-8} = sdst;
-  let Inst{25-17} = op;
-  let Inst{31-26} = 0x34; //encoding
-  let Inst{40-32} = src0;
-  let Inst{49-41} = src1;
-  let Inst{58-50} = src2;
-  let Inst{60-59} = omod;
-  let Inst{61} = src0_modifiers{0};
-  let Inst{62} = src1_modifiers{0};
-  let Inst{63} = src2_modifiers{0};
-}
-
-class VOPCe <bits<8> op> : Enc32 {
-  bits<9> src0;
-  bits<8> src1;
-
-  let Inst{8-0} = src0;
-  let Inst{16-9} = src1;
-  let Inst{24-17} = op;
-  let Inst{31-25} = 0x3e;
-}
 
 class VINTRPe <bits<2> op> : Enc32 {
   bits<8> vdst;
@@ -386,20 +224,6 @@ class EXPe : Enc64 {
 }
 
 let Uses = [EXEC] in {
-
-class VOP1 <bits<8> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    VOP1Common <outs, ins, asm, pattern>,
-    VOP1e<op> {
-  let isCodeGenOnly = 0;
-}
-
-class VOP2 <bits<6> op, dag outs, dag ins, string asm, list<dag> pattern> :
-    VOP2Common <outs, ins, asm, pattern>, VOP2e<op> {
-  let isCodeGenOnly = 0;
-}
-
-class VOPC <bits<8> op, dag ins, string asm, list<dag> pattern> :
-    VOPCCommon <ins, asm, pattern>, VOPCe <op>;
 
 class VINTRPCommon <dag outs, dag ins, string asm, list<dag> pattern> :
     InstSI <outs, ins, asm, pattern> {

@@ -29,7 +29,7 @@ void CoveragePrinterText::closeViewFile(OwnedStream OS) {
 }
 
 Error CoveragePrinterText::createIndexFile(
-    ArrayRef<StringRef> SourceFiles,
+    ArrayRef<std::string> SourceFiles,
     const coverage::CoverageMapping &Coverage) {
   auto OSOrErr = createOutputStream("index", "txt", /*InToplevel=*/true);
   if (Error E = OSOrErr.takeError())
@@ -38,7 +38,7 @@ Error CoveragePrinterText::createIndexFile(
   raw_ostream &OSRef = *OS.get();
 
   CoverageReport Report(Opts, Coverage);
-  Report.renderFileReports(OSRef);
+  Report.renderFileReports(OSRef, SourceFiles);
 
   Opts.colored_ostream(OSRef, raw_ostream::CYAN) << "\n"
                                                  << Opts.getLLVMVersionString();
@@ -70,8 +70,8 @@ void SourceCoverageViewText::renderViewHeader(raw_ostream &) {}
 void SourceCoverageViewText::renderViewFooter(raw_ostream &) {}
 
 void SourceCoverageViewText::renderSourceName(raw_ostream &OS, bool WholeFile) {
-  std::string ViewInfo = WholeFile ? getVerboseSourceName() : getSourceName();
-  getOptions().colored_ostream(OS, raw_ostream::CYAN) << ViewInfo << ":\n";
+  getOptions().colored_ostream(OS, raw_ostream::CYAN) << getSourceName()
+                                                      << ":\n";
 }
 
 void SourceCoverageViewText::renderLinePrefix(raw_ostream &OS,

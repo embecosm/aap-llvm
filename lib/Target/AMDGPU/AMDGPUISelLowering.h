@@ -25,6 +25,13 @@ class AMDGPUSubtarget;
 class MachineRegisterInfo;
 
 class AMDGPUTargetLowering : public TargetLowering {
+private:
+  /// \returns AMDGPUISD::FFBH_U32 node if the incoming \p Op may have been
+  /// legalized from a smaller type VT. Need to match pre-legalized type because
+  /// the generic legalization inserts the add/sub between the select and
+  /// compare.
+  SDValue getFFBH_U32(SelectionDAG &DAG, SDValue Op, const SDLoc &DL) const;
+
 protected:
   const AMDGPUSubtarget *Subtarget;
 
@@ -53,6 +60,7 @@ protected:
   SDValue LowerSINT_TO_FP(SDValue Op, SelectionDAG &DAG) const;
 
   SDValue LowerFP64_TO_INT(SDValue Op, SelectionDAG &DAG, bool Signed) const;
+  SDValue LowerFP_TO_FP16(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerFP_TO_UINT(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerFP_TO_SINT(SDValue Op, SelectionDAG &DAG) const;
 
@@ -100,16 +108,8 @@ protected:
   SDValue LowerDIVREM24(SDValue Op, SelectionDAG &DAG, bool sign) const;
   void LowerUDIVREM64(SDValue Op, SelectionDAG &DAG,
                                     SmallVectorImpl<SDValue> &Results) const;
-  /// The SelectionDAGBuilder will automatically promote function arguments
-  /// with illegal types.  However, this does not work for the AMDGPU targets
-  /// since the function arguments are stored in memory as these illegal types.
-  /// In order to handle this properly we need to get the origianl types sizes
-  /// from the LLVM IR Function and fixup the ISD:InputArg values before
-  /// passing them to AnalyzeFormalArguments()
-  void getOriginalFunctionArgs(SelectionDAG &DAG,
-                               const Function *F,
-                               const SmallVectorImpl<ISD::InputArg> &Ins,
-                               SmallVectorImpl<ISD::InputArg> &OrigIns) const;
+  void analyzeFormalArgumentsCompute(CCState &State,
+                              const SmallVectorImpl<ISD::InputArg> &Ins) const;
   void AnalyzeFormalArguments(CCState &State,
                               const SmallVectorImpl<ISD::InputArg> &Ins) const;
   void AnalyzeReturn(CCState &State,
@@ -172,13 +172,11 @@ public:
   bool isFsqrtCheap(SDValue Operand, SelectionDAG &DAG) const override {
     return true;
   }
-  SDValue getRsqrtEstimate(SDValue Operand,
-                           DAGCombinerInfo &DCI,
-                           unsigned &RefinementSteps,
-                           bool &UseOneConstNR) const override;
-  SDValue getRecipEstimate(SDValue Operand,
-                           DAGCombinerInfo &DCI,
-                           unsigned &RefinementSteps) const override;
+  SDValue getSqrtEstimate(SDValue Operand, SelectionDAG &DAG, int Enabled,
+                           int &RefinementSteps, bool &UseOneConstNR,
+                           bool Reciprocal) const override;
+  SDValue getRecipEstimate(SDValue Operand, SelectionDAG &DAG, int Enabled,
+                           int &RefinementSteps) const override;
 
   virtual SDNode *PostISelFolding(MachineSDNode *N,
                                   SelectionDAG &DAG) const = 0;

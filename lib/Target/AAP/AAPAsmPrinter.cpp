@@ -41,7 +41,7 @@ public:
   AAPAsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer)
       : AsmPrinter(TM, std::move(Streamer)) {}
 
-  const char *getPassName() const override { return "AAP Assembly Printer"; }
+  StringRef getPassName() const override { return "AAP Assembly Printer"; }
 
   void printOperand(const MachineInstr *MI, int OpNum, raw_ostream &O,
                     const char *Modifier = nullptr);

@@ -551,6 +551,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(nsw);
   KEYWORD(exact);
   KEYWORD(inbounds);
+  KEYWORD(inrange);
   KEYWORD(align);
   KEYWORD(addrspace);
   KEYWORD(section);
@@ -585,6 +586,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(intel_ocl_bicc);
   KEYWORD(x86_64_sysvcc);
   KEYWORD(x86_64_win64cc);
+  KEYWORD(x86_regcallcc);
   KEYWORD(webkit_jscc);
   KEYWORD(swiftcc);
   KEYWORD(anyregcc);

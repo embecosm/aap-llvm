@@ -653,8 +653,6 @@ public:
     return CurInst ? CurInst->getDebugLoc() : DebugLoc();
   }
 
-  unsigned getSDNodeOrder() const { return SDNodeOrder; }
-
   void CopyValueToVirtualRegister(const Value *V, unsigned Reg);
 
   void visit(const Instruction &I);
@@ -876,8 +874,8 @@ private:
   void visitAlloca(const AllocaInst &I);
   void visitLoad(const LoadInst &I);
   void visitStore(const StoreInst &I);
-  void visitMaskedLoad(const CallInst &I);
-  void visitMaskedStore(const CallInst &I);
+  void visitMaskedLoad(const CallInst &I, bool IsExpanding = false);
+  void visitMaskedStore(const CallInst &I, bool IsCompressing = false);
   void visitMaskedGather(const CallInst &I);
   void visitMaskedScatter(const CallInst &I);
   void visitAtomicCmpXchg(const AtomicCmpXchgInst &I);

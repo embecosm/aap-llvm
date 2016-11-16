@@ -211,12 +211,12 @@ static unsigned getSameOpcode(ArrayRef<Value *> VL) {
 /// of each scalar operation (VL) that will be converted into a vector (I).
 /// Flag set: NSW, NUW, exact, and all of fast-math.
 static void propagateIRFlags(Value *I, ArrayRef<Value *> VL) {
-  if (auto *VecOp = dyn_cast<BinaryOperator>(I)) {
-    if (auto *Intersection = dyn_cast<BinaryOperator>(VL[0])) {
+  if (auto *VecOp = dyn_cast<Instruction>(I)) {
+    if (auto *Intersection = dyn_cast<Instruction>(VL[0])) {
       // Intersection is initialized to the 0th scalar,
       // so start counting from index '1'.
       for (int i = 1, e = VL.size(); i < e; ++i) {
-        if (auto *Scalar = dyn_cast<BinaryOperator>(VL[i]))
+        if (auto *Scalar = dyn_cast<Instruction>(VL[i]))
           Intersection->andIRFlags(Scalar);
       }
       VecOp->copyIRFlags(Intersection);
@@ -1793,7 +1793,10 @@ bool BoUpSLP::isFullyVectorizableTinyTree() {
   DEBUG(dbgs() << "SLP: Check whether the tree with height " <<
         VectorizableTree.size() << " is fully vectorizable .\n");
 
-  // We only handle trees of height 2.
+  // We only handle trees of heights 1 and 2.
+  if (VectorizableTree.size() == 1 && !VectorizableTree[0].NeedToGather)
+    return true;
+
   if (VectorizableTree.size() != 2)
     return false;
 
@@ -2427,6 +2430,7 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E) {
         V = Builder.CreateICmp(P0, L, R);
 
       E->VectorizedValue = V;
+      propagateIRFlags(E->VectorizedValue, E->Scalars);
       ++NumVectorInstructions;
       return V;
     }
@@ -2637,6 +2641,7 @@ Value *BoUpSLP::vectorizeTree(TreeEntry *E) {
         ExternalUses.push_back(ExternalUser(ScalarArg, cast<User>(V), 0));
 
       E->VectorizedValue = V;
+      propagateIRFlags(E->VectorizedValue, E->Scalars);
       ++NumVectorInstructions;
       return V;
     }
@@ -4059,7 +4064,14 @@ class HorizontalReduction {
   SmallVector<Value *, 32> ReducedVals;
 
   BinaryOperator *ReductionRoot;
-  PHINode *ReductionPHI;
+  // After successfull horizontal reduction vectorization attempt for PHI node
+  // vectorizer tries to update root binary op by combining vectorized tree and
+  // the ReductionPHI node. But during vectorization this ReductionPHI can be
+  // vectorized itself and replaced by the undef value, while the instruction
+  // itself is marked for deletion. This 'marked for deletion' PHI node then can
+  // be used in new binary operation, causing "Use still stuck around after Def
+  // is destroyed" crash upon PHI node deletion.
+  WeakVH ReductionPHI;
 
   /// The opcode of the reduction.
   unsigned ReductionOpcode;
@@ -4078,8 +4090,8 @@ public:
   unsigned MinVecRegSize;
 
   HorizontalReduction(unsigned MinVecRegSize)
-      : ReductionRoot(nullptr), ReductionPHI(nullptr), ReductionOpcode(0),
-        ReducedValueOpcode(0), IsPairwiseReduction(false), ReduxWidth(0),
+      : ReductionRoot(nullptr), ReductionOpcode(0), ReducedValueOpcode(0),
+        IsPairwiseReduction(false), ReduxWidth(0),
         MinVecRegSize(MinVecRegSize) {}
 
   /// \brief Try to find a reduction tree.
@@ -4165,12 +4177,21 @@ public:
 
       // Visit left or right.
       Value *NextV = TreeN->getOperand(EdgeToVist);
-      // We currently only allow BinaryOperator's and SelectInst's as reduction
-      // values in our tree.
-      if (isa<BinaryOperator>(NextV) || isa<SelectInst>(NextV))
-        Stack.push_back(std::make_pair(cast<Instruction>(NextV), 0));
-      else if (NextV != Phi)
+      if (NextV != Phi) {
+        auto *I = dyn_cast<Instruction>(NextV);
+        // Continue analysis if the next operand is a reduction operation or
+        // (possibly) a reduced value. If the reduced value opcode is not set,
+        // the first met operation != reduction operation is considered as the
+        // reduced value class.
+        if (I && (!ReducedValueOpcode || I->getOpcode() == ReducedValueOpcode ||
+                  I->getOpcode() == ReductionOpcode)) {
+          if (!ReducedValueOpcode && I->getOpcode() != ReductionOpcode)
+            ReducedValueOpcode = I->getOpcode();
+          Stack.push_back(std::make_pair(I, 0));
+          continue;
+        }
         return false;
+      }
     }
     return true;
   }
@@ -4235,7 +4256,7 @@ public:
                                      ReducedVals[i]);
       }
       // Update users.
-      if (ReductionPHI) {
+      if (ReductionPHI && !isa<UndefValue>(ReductionPHI)) {
         assert(ReductionRoot && "Need a reduction operation");
         ReductionRoot->setOperand(0, VectorizedTree);
         ReductionRoot->setOperand(1, ReductionPHI);
@@ -4571,8 +4592,10 @@ bool SLPVectorizerPass::vectorizeChainsInBlock(BasicBlock *BB, BoUpSLP &R) {
         if (BinaryOperator *BinOp =
                 dyn_cast<BinaryOperator>(RI->getOperand(0))) {
           DEBUG(dbgs() << "SLP: Found a return to vectorize.\n");
-          if (tryToVectorizePair(BinOp->getOperand(0),
-                                 BinOp->getOperand(1), R)) {
+          if (canMatchHorizontalReduction(nullptr, BinOp, R, TTI,
+                                          R.getMinVecRegSize()) ||
+              tryToVectorizePair(BinOp->getOperand(0), BinOp->getOperand(1),
+                                 R)) {
             Changed = true;
             it = BB->begin();
             e = BB->end();

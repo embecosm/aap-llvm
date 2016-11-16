@@ -33,6 +33,7 @@ void MachineIRBuilder::setMF(MachineFunction &MF) {
 
 void MachineIRBuilder::setMBB(MachineBasicBlock &MBB, bool Beginning) {
   this->MBB = &MBB;
+  this->MI = nullptr;
   Before = Beginning;
   assert(&getMF() == MBB.getParent() &&
          "Basic block is in a different function");
@@ -70,7 +71,16 @@ void MachineIRBuilder::stopRecordingInsertions() {
 //------------------------------------------------------------------------------
 
 MachineInstrBuilder MachineIRBuilder::buildInstr(unsigned Opcode) {
+  return insertInstr(buildInstrNoInsert(Opcode));
+}
+
+MachineInstrBuilder MachineIRBuilder::buildInstrNoInsert(unsigned Opcode) {
   MachineInstrBuilder MIB = BuildMI(getMF(), DL, getTII().get(Opcode));
+  return MIB;
+}
+
+
+MachineInstrBuilder MachineIRBuilder::insertInstr(MachineInstrBuilder MIB) {
   getMBB().insert(getInsertPt(), MIB);
   if (InsertedInstr)
     InsertedInstr(MIB);
@@ -274,7 +284,7 @@ MachineInstrBuilder MachineIRBuilder::buildExtract(ArrayRef<unsigned> Results,
 MachineInstrBuilder
 MachineIRBuilder::buildSequence(unsigned Res,
                                 ArrayRef<unsigned> Ops,
-                                ArrayRef<unsigned> Indices) {
+                                ArrayRef<uint64_t> Indices) {
 #ifndef NDEBUG
   assert(Ops.size() == Indices.size() && "incompatible args");
   assert(!Ops.empty() && "invalid trivial sequence");

@@ -73,6 +73,12 @@ public:
   const TargetRegisterClass *getPointerRegClass(
     const MachineFunction &MF, unsigned Kind = 0) const override;
 
+  void spillSGPR(MachineBasicBlock::iterator MI,
+                 int FI, RegScavenger *RS) const;
+
+  void restoreSGPR(MachineBasicBlock::iterator MI,
+                   int FI, RegScavenger *RS) const;
+
   void eliminateFrameIndex(MachineBasicBlock::iterator MI, int SPAdj,
                            unsigned FIOperandNum,
                            RegScavenger *RS) const override;
@@ -239,12 +245,15 @@ public:
   /// unit requirement.
   unsigned getMaxNumVGPRs(const MachineFunction &MF) const;
 
+  ArrayRef<int16_t> getRegSplitParts(const TargetRegisterClass *RC,
+                                     unsigned EltSize) const;
+
 private:
-  void buildScratchLoadStore(MachineBasicBlock::iterator MI,
-                             unsigned LoadStoreOp, const MachineOperand *SrcDst,
-                             unsigned ScratchRsrcReg, unsigned ScratchOffset,
-                             int64_t Offset,
-                             RegScavenger *RS) const;
+  void buildSpillLoadStore(MachineBasicBlock::iterator MI,
+                           unsigned LoadStoreOp, const MachineOperand *SrcDst,
+                           unsigned ScratchRsrcReg, unsigned ScratchOffset,
+                           int64_t Offset,
+                           RegScavenger *RS) const;
 };
 
 } // End namespace llvm

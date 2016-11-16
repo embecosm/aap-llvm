@@ -68,9 +68,6 @@ public:
 
 private:
   MachineModuleInfoMachO &getMachOMMI() const;
-  Mangler *getMang() const {
-    return AsmPrinter.Mang;
-  }
 };
 
 } // end anonymous namespace
@@ -1023,16 +1020,6 @@ void X86AsmPrinter::LowerPATCHPOINT(const MachineInstr &MI,
            getSubtargetInfo());
 }
 
-void X86AsmPrinter::recordSled(MCSymbol *Sled, const MachineInstr &MI,
-                               SledKind Kind) {
-  auto Fn = MI.getParent()->getParent()->getFunction();
-  auto Attr = Fn->getFnAttribute("function-instrument");
-  bool AlwaysInstrument =
-      Attr.isStringAttribute() && Attr.getValueAsString() == "xray-always";
-  Sleds.emplace_back(
-      XRayFunctionEntry{Sled, CurrentFnSym, Kind, AlwaysInstrument, Fn});
-}
-
 void X86AsmPrinter::LowerPATCHABLE_FUNCTION_ENTER(const MachineInstr &MI,
                                                   X86MCInstLower &MCIL) {
   // We want to emit the following pattern:
@@ -1204,9 +1191,9 @@ static const Constant *getConstantFromPool(const MachineInstr &MI,
   return C;
 }
 
-static std::string getShuffleComment(const MachineOperand &DstOp,
-                                     const MachineOperand &SrcOp1,
-                                     const MachineOperand &SrcOp2,
+static std::string getShuffleComment(const MachineInstr *MI,
+                                     unsigned SrcOp1Idx,
+                                     unsigned SrcOp2Idx,
                                      ArrayRef<int> Mask) {
   std::string Comment;
 
@@ -1219,7 +1206,10 @@ static std::string getShuffleComment(const MachineOperand &DstOp,
     return X86ATTInstPrinter::getRegisterName(RegNum);
   };
 
-  // TODO: Add support for specifying an AVX512 style mask register in the comment.
+  const MachineOperand &DstOp = MI->getOperand(0);
+  const MachineOperand &SrcOp1 = MI->getOperand(SrcOp1Idx);
+  const MachineOperand &SrcOp2 = MI->getOperand(SrcOp2Idx);
+
   StringRef DstName = DstOp.isReg() ? GetRegisterName(DstOp.getReg()) : "mem";
   StringRef Src1Name =
       SrcOp1.isReg() ? GetRegisterName(SrcOp1.getReg()) : "mem";
@@ -1234,7 +1224,26 @@ static std::string getShuffleComment(const MachineOperand &DstOp,
         ShuffleMask[i] -= e;
 
   raw_string_ostream CS(Comment);
-  CS << DstName << " = ";
+  CS << DstName;
+
+  // Handle AVX512 MASK/MASXZ write mask comments.
+  // MASK: zmmX {%kY}
+  // MASKZ: zmmX {%kY} {z}
+  if (SrcOp1Idx > 1) {
+    assert((SrcOp1Idx == 2 || SrcOp1Idx == 3) && "Unexpected writemask");
+
+    const MachineOperand &WriteMaskOp = MI->getOperand(SrcOp1Idx - 1);
+    if (WriteMaskOp.isReg()) {
+      CS << " {%" << GetRegisterName(WriteMaskOp.getReg()) << "}";
+
+      if (SrcOp1Idx == 2) {
+        CS << " {z}";
+      }
+    }
+  }
+
+  CS << " = ";
+
   for (int i = 0, e = ShuffleMask.size(); i != e; ++i) {
     if (i != 0)
       CS << ",";
@@ -1433,37 +1442,45 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
     return;
 
   case X86::SEH_PushReg:
+    assert(MF->hasWinCFI() && "SEH_ instruction in function without WinCFI?");
     OutStreamer->EmitWinCFIPushReg(RI->getSEHRegNum(MI->getOperand(0).getImm()));
     return;
 
   case X86::SEH_SaveReg:
+    assert(MF->hasWinCFI() && "SEH_ instruction in function without WinCFI?");
     OutStreamer->EmitWinCFISaveReg(RI->getSEHRegNum(MI->getOperand(0).getImm()),
                                    MI->getOperand(1).getImm());
     return;
 
   case X86::SEH_SaveXMM:
+    assert(MF->hasWinCFI() && "SEH_ instruction in function without WinCFI?");
     OutStreamer->EmitWinCFISaveXMM(RI->getSEHRegNum(MI->getOperand(0).getImm()),
                                    MI->getOperand(1).getImm());
     return;
 
   case X86::SEH_StackAlloc:
+    assert(MF->hasWinCFI() && "SEH_ instruction in function without WinCFI?");
     OutStreamer->EmitWinCFIAllocStack(MI->getOperand(0).getImm());
     return;
 
   case X86::SEH_SetFrame:
+    assert(MF->hasWinCFI() && "SEH_ instruction in function without WinCFI?");
     OutStreamer->EmitWinCFISetFrame(RI->getSEHRegNum(MI->getOperand(0).getImm()),
                                     MI->getOperand(1).getImm());
     return;
 
   case X86::SEH_PushFrame:
+    assert(MF->hasWinCFI() && "SEH_ instruction in function without WinCFI?");
     OutStreamer->EmitWinCFIPushFrame(MI->getOperand(0).getImm());
     return;
 
   case X86::SEH_EndPrologue:
+    assert(MF->hasWinCFI() && "SEH_ instruction in function without WinCFI?");
     OutStreamer->EmitWinCFIEndProlog();
     return;
 
   case X86::SEH_Epilogue: {
+    assert(MF->hasWinCFI() && "SEH_ instruction in function without WinCFI?");
     MachineBasicBlock::const_iterator MBBI(MI);
     // Check if preceded by a call and emit nop if so.
     for (MBBI = PrevCrossBBInst(MBBI);
@@ -1519,37 +1536,13 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
 
     assert(MI->getNumOperands() >= 6 &&
            "We should always have at least 6 operands!");
-    const MachineOperand &DstOp = MI->getOperand(0);
-    const MachineOperand &SrcOp = MI->getOperand(SrcIdx);
-    const MachineOperand &MaskOp = MI->getOperand(MaskIdx);
 
+    const MachineOperand &MaskOp = MI->getOperand(MaskIdx);
     if (auto *C = getConstantFromPool(*MI, MaskOp)) {
       SmallVector<int, 16> Mask;
       DecodePSHUFBMask(C, Mask);
       if (!Mask.empty())
-        OutStreamer->AddComment(getShuffleComment(DstOp, SrcOp, SrcOp, Mask));
-    }
-    break;
-  }
-
-  case X86::VPERMILPDrm:
-  case X86::VPERMILPDYrm:
-  case X86::VPERMILPDZ128rm:
-  case X86::VPERMILPDZ256rm:
-  case X86::VPERMILPDZrm: {
-    if (!OutStreamer->isVerboseAsm())
-      break;
-    assert(MI->getNumOperands() > 5 &&
-           "We should always have at least 5 operands!");
-    const MachineOperand &DstOp = MI->getOperand(0);
-    const MachineOperand &SrcOp = MI->getOperand(1);
-    const MachineOperand &MaskOp = MI->getOperand(5);
-
-    if (auto *C = getConstantFromPool(*MI, MaskOp)) {
-      SmallVector<int, 8> Mask;
-      DecodeVPERMILPMask(C, 64, Mask);
-      if (!Mask.empty())
-        OutStreamer->AddComment(getShuffleComment(DstOp, SrcOp, SrcOp, Mask));
+        OutStreamer->AddComment(getShuffleComment(MI, SrcIdx, SrcIdx, Mask));
     }
     break;
   }
@@ -1557,21 +1550,70 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
   case X86::VPERMILPSrm:
   case X86::VPERMILPSYrm:
   case X86::VPERMILPSZ128rm:
+  case X86::VPERMILPSZ128rmk:
+  case X86::VPERMILPSZ128rmkz:
   case X86::VPERMILPSZ256rm:
-  case X86::VPERMILPSZrm: {
+  case X86::VPERMILPSZ256rmk:
+  case X86::VPERMILPSZ256rmkz:
+  case X86::VPERMILPSZrm:
+  case X86::VPERMILPSZrmk:
+  case X86::VPERMILPSZrmkz:
+  case X86::VPERMILPDrm:
+  case X86::VPERMILPDYrm:
+  case X86::VPERMILPDZ128rm:
+  case X86::VPERMILPDZ128rmk:
+  case X86::VPERMILPDZ128rmkz:
+  case X86::VPERMILPDZ256rm:
+  case X86::VPERMILPDZ256rmk:
+  case X86::VPERMILPDZ256rmkz:
+  case X86::VPERMILPDZrm:
+  case X86::VPERMILPDZrmk:
+  case X86::VPERMILPDZrmkz: {
     if (!OutStreamer->isVerboseAsm())
       break;
-    assert(MI->getNumOperands() > 5 &&
-           "We should always have at least 5 operands!");
-    const MachineOperand &DstOp = MI->getOperand(0);
-    const MachineOperand &SrcOp = MI->getOperand(1);
-    const MachineOperand &MaskOp = MI->getOperand(5);
+    unsigned SrcIdx, MaskIdx;
+    unsigned ElSize;
+    switch (MI->getOpcode()) {
+    default: llvm_unreachable("Invalid opcode");
+    case X86::VPERMILPSrm:
+    case X86::VPERMILPSYrm:
+    case X86::VPERMILPSZ128rm:
+    case X86::VPERMILPSZ256rm:
+    case X86::VPERMILPSZrm:
+      SrcIdx = 1; MaskIdx = 5; ElSize = 32; break;
+    case X86::VPERMILPSZ128rmkz:
+    case X86::VPERMILPSZ256rmkz:
+    case X86::VPERMILPSZrmkz:
+      SrcIdx = 2; MaskIdx = 6; ElSize = 32; break;
+    case X86::VPERMILPSZ128rmk:
+    case X86::VPERMILPSZ256rmk:
+    case X86::VPERMILPSZrmk:
+      SrcIdx = 3; MaskIdx = 7; ElSize = 32; break;
+    case X86::VPERMILPDrm:
+    case X86::VPERMILPDYrm:
+    case X86::VPERMILPDZ128rm:
+    case X86::VPERMILPDZ256rm:
+    case X86::VPERMILPDZrm:
+      SrcIdx = 1; MaskIdx = 5; ElSize = 64; break;
+    case X86::VPERMILPDZ128rmkz:
+    case X86::VPERMILPDZ256rmkz:
+    case X86::VPERMILPDZrmkz:
+      SrcIdx = 2; MaskIdx = 6; ElSize = 64; break;
+    case X86::VPERMILPDZ128rmk:
+    case X86::VPERMILPDZ256rmk:
+    case X86::VPERMILPDZrmk:
+      SrcIdx = 3; MaskIdx = 7; ElSize = 64; break;
+    }
 
+    assert(MI->getNumOperands() >= 6 &&
+           "We should always have at least 6 operands!");
+
+    const MachineOperand &MaskOp = MI->getOperand(MaskIdx);
     if (auto *C = getConstantFromPool(*MI, MaskOp)) {
       SmallVector<int, 16> Mask;
-      DecodeVPERMILPMask(C, 32, Mask);
+      DecodeVPERMILPMask(C, ElSize, Mask);
       if (!Mask.empty())
-        OutStreamer->AddComment(getShuffleComment(DstOp, SrcOp, SrcOp, Mask));
+        OutStreamer->AddComment(getShuffleComment(MI, SrcIdx, SrcIdx, Mask));
     }
     break;
   }
@@ -1582,14 +1624,10 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
   case X86::VPERMIL2PSrmY: {
     if (!OutStreamer->isVerboseAsm())
       break;
-    assert(MI->getNumOperands() > 7 &&
-      "We should always have at least 7 operands!");
-    const MachineOperand &DstOp = MI->getOperand(0);
-    const MachineOperand &SrcOp1 = MI->getOperand(1);
-    const MachineOperand &SrcOp2 = MI->getOperand(2);
-    const MachineOperand &MaskOp = MI->getOperand(6);
-    const MachineOperand &CtrlOp = MI->getOperand(MI->getNumOperands() - 1);
+    assert(MI->getNumOperands() >= 8 &&
+           "We should always have at least 8 operands!");
 
+    const MachineOperand &CtrlOp = MI->getOperand(MI->getNumOperands() - 1);
     if (!CtrlOp.isImm())
       break;
 
@@ -1600,11 +1638,12 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
     case X86::VPERMIL2PDrm: case X86::VPERMIL2PDrmY: ElSize = 64; break;
     }
 
+    const MachineOperand &MaskOp = MI->getOperand(6);
     if (auto *C = getConstantFromPool(*MI, MaskOp)) {
       SmallVector<int, 16> Mask;
       DecodeVPERMIL2PMask(C, (unsigned)CtrlOp.getImm(), ElSize, Mask);
       if (!Mask.empty())
-        OutStreamer->AddComment(getShuffleComment(DstOp, SrcOp1, SrcOp2, Mask));
+        OutStreamer->AddComment(getShuffleComment(MI, 1, 2, Mask));
     }
     break;
   }
@@ -1612,18 +1651,15 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
   case X86::VPPERMrrm: {
     if (!OutStreamer->isVerboseAsm())
       break;
-    assert(MI->getNumOperands() > 6 &&
-           "We should always have at least 6 operands!");
-    const MachineOperand &DstOp = MI->getOperand(0);
-    const MachineOperand &SrcOp1 = MI->getOperand(1);
-    const MachineOperand &SrcOp2 = MI->getOperand(2);
-    const MachineOperand &MaskOp = MI->getOperand(6);
+    assert(MI->getNumOperands() >= 7 &&
+           "We should always have at least 7 operands!");
 
+    const MachineOperand &MaskOp = MI->getOperand(6);
     if (auto *C = getConstantFromPool(*MI, MaskOp)) {
       SmallVector<int, 16> Mask;
       DecodeVPPERMMask(C, Mask);
       if (!Mask.empty())
-        OutStreamer->AddComment(getShuffleComment(DstOp, SrcOp1, SrcOp2, Mask));
+        OutStreamer->AddComment(getShuffleComment(MI, 1, 2, Mask));
     }
     break;
   }

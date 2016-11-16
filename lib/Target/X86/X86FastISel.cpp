@@ -1731,15 +1731,17 @@ bool X86FastISel::X86SelectBranch(const Instruction *I) {
   unsigned OpReg = getRegForValue(BI->getCondition());
   if (OpReg == 0) return false;
 
-  // In case OpReg is a K register, kortest against itself.
-  if (MRI.getRegClass(OpReg) == &X86::VK1RegClass)
-    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(X86::KORTESTWrr))
-        .addReg(OpReg)
-        .addReg(OpReg);
-  else
-    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(X86::TEST8ri))
-        .addReg(OpReg)
-        .addImm(1);
+  // In case OpReg is a K register, COPY to a GPR
+  if (MRI.getRegClass(OpReg) == &X86::VK1RegClass) {
+    unsigned KOpReg = OpReg;
+    OpReg = createResultReg(&X86::GR8RegClass);
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+            TII.get(TargetOpcode::COPY), OpReg)
+        .addReg(KOpReg);
+  }
+  BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(X86::TEST8ri))
+      .addReg(OpReg)
+      .addImm(1);
   BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(X86::JNE_1))
     .addMBB(TrueMBB);
   finishCondBranch(BI->getParent(), TrueMBB, FalseMBB);
@@ -2073,16 +2075,17 @@ bool X86FastISel::X86FastEmitCMoveSelect(MVT RetVT, const Instruction *I) {
       return false;
     bool CondIsKill = hasTrivialKill(Cond);
 
-    // In case OpReg is a K register, kortest against itself.
-    if (MRI.getRegClass(CondReg) == &X86::VK1RegClass)
+    // In case OpReg is a K register, COPY to a GPR
+    if (MRI.getRegClass(CondReg) == &X86::VK1RegClass) {
+      unsigned KCondReg = CondReg;
+      CondReg = createResultReg(&X86::GR8RegClass);
       BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
-              TII.get(X86::KORTESTWrr))
-          .addReg(CondReg, getKillRegState(CondIsKill))
-          .addReg(CondReg);
-    else
-      BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(X86::TEST8ri))
-          .addReg(CondReg, getKillRegState(CondIsKill))
-          .addImm(1);
+              TII.get(TargetOpcode::COPY), CondReg)
+          .addReg(KCondReg, getKillRegState(CondIsKill));
+    }
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(X86::TEST8ri))
+        .addReg(CondReg, getKillRegState(CondIsKill))
+        .addImm(1);
   }
 
   const Value *LHS = I->getOperand(1);
@@ -2254,16 +2257,17 @@ bool X86FastISel::X86FastEmitPseudoSelect(MVT RetVT, const Instruction *I) {
       return false;
     bool CondIsKill = hasTrivialKill(Cond);
 
-    // In case OpReg is a K register, kortest against itself.
-    if (MRI.getRegClass(CondReg) == &X86::VK1RegClass)
+    // In case OpReg is a K register, COPY to a GPR
+    if (MRI.getRegClass(CondReg) == &X86::VK1RegClass) {
+      unsigned KCondReg = CondReg;
+      CondReg = createResultReg(&X86::GR8RegClass);
       BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
-              TII.get(X86::KORTESTWrr))
-          .addReg(CondReg, getKillRegState(CondIsKill))
-          .addReg(CondReg);
-    else
-      BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(X86::TEST8ri))
-          .addReg(CondReg, getKillRegState(CondIsKill))
-          .addImm(1);
+              TII.get(TargetOpcode::COPY), CondReg)
+          .addReg(KCondReg, getKillRegState(CondIsKill));
+    }
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(X86::TEST8ri))
+        .addReg(CondReg, getKillRegState(CondIsKill))
+        .addImm(1);
   }
 
   const Value *LHS = I->getOperand(1);
@@ -2765,7 +2769,9 @@ bool X86FastISel::fastLowerIntrinsicCall(const IntrinsicInst *II) {
     const Function *Callee = II->getCalledFunction();
     auto *Ty = cast<StructType>(Callee->getReturnType());
     Type *RetTy = Ty->getTypeAtIndex(0U);
-    Type *CondTy = Ty->getTypeAtIndex(1);
+    assert(Ty->getTypeAtIndex(1)->isIntegerTy() &&
+           Ty->getTypeAtIndex(1)->getScalarSizeInBits() == 1 &&
+           "Overflow value expected to be an i1");
 
     MVT VT;
     if (!isTypeLegal(RetTy, VT))
@@ -2875,7 +2881,8 @@ bool X86FastISel::fastLowerIntrinsicCall(const IntrinsicInst *II) {
     if (!ResultReg)
       return false;
 
-    unsigned ResultReg2 = FuncInfo.CreateRegs(CondTy);
+    // Assign to a GPR since the overflow return value is lowered to a SETcc.
+    unsigned ResultReg2 = createResultReg(&X86::GR8RegClass);
     assert((ResultReg+1) == ResultReg2 && "Nonconsecutive result registers.");
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(CondOpc),
             ResultReg2);

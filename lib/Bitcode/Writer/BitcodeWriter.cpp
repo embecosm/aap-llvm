@@ -11,12 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "ValueEnumerator.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Bitcode/BitstreamWriter.h"
 #include "llvm/Bitcode/LLVMBitCodes.h"
-#include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfoMetadata.h"
@@ -990,8 +990,9 @@ static unsigned getEncodedLinkage(const GlobalValue &GV) {
 static uint64_t getEncodedGVSummaryFlags(GlobalValueSummary::GVFlags Flags) {
   uint64_t RawFlags = 0;
 
-  RawFlags |= Flags.HasSection; // bool
+  RawFlags |= Flags.NoRename; // bool
   RawFlags |= (Flags.IsNotViableToInline << 1);
+  RawFlags |= (Flags.HasInlineAsmMaybeReferencingInternal << 2);
   // Linkage don't need to be remapped at that time for the summary. Any future
   // change to the getEncodedLinkage() function will need to be taken into
   // account here as well.
@@ -1627,7 +1628,7 @@ void ModuleBitcodeWriter::writeDILexicalBlockFile(
 void ModuleBitcodeWriter::writeDINamespace(const DINamespace *N,
                                            SmallVectorImpl<uint64_t> &Record,
                                            unsigned Abbrev) {
-  Record.push_back(N->isDistinct());
+  Record.push_back(N->isDistinct() | N->getExportSymbols() << 1);
   Record.push_back(VE.getMetadataOrNullID(N->getScope()));
   Record.push_back(VE.getMetadataOrNullID(N->getFile()));
   Record.push_back(VE.getMetadataOrNullID(N->getRawName()));
@@ -1712,6 +1713,7 @@ void ModuleBitcodeWriter::writeDIGlobalVariable(
   Record.push_back(N->isDefinition());
   Record.push_back(VE.getMetadataOrNullID(N->getRawExpr()));
   Record.push_back(VE.getMetadataOrNullID(N->getStaticDataMemberDeclaration()));
+  Record.push_back(N->getAlignInBits());
 
   Stream.EmitRecord(bitc::METADATA_GLOBAL_VAR, Record, Abbrev);
   Record.clear();
@@ -1720,7 +1722,21 @@ void ModuleBitcodeWriter::writeDIGlobalVariable(
 void ModuleBitcodeWriter::writeDILocalVariable(
     const DILocalVariable *N, SmallVectorImpl<uint64_t> &Record,
     unsigned Abbrev) {
-  Record.push_back(N->isDistinct());
+  // In order to support all possible bitcode formats in BitcodeReader we need
+  // to distinguish the following cases:
+  // 1) Record has no artificial tag (Record[1]),
+  //   has no obsolete inlinedAt field (Record[9]).
+  //   In this case Record size will be 8, HasAlignment flag is false.
+  // 2) Record has artificial tag (Record[1]),
+  //   has no obsolete inlignedAt field (Record[9]).
+  //   In this case Record size will be 9, HasAlignment flag is false.
+  // 3) Record has both artificial tag (Record[1]) and
+  //   obsolete inlignedAt field (Record[9]).
+  //   In this case Record size will be 10, HasAlignment flag is false.
+  // 4) Record has neither artificial tag, nor inlignedAt field, but
+  //   HasAlignment flag is true and Record[8] contains alignment value.
+  const uint64_t HasAlignmentFlag = 1 << 1;
+  Record.push_back((uint64_t)N->isDistinct() | HasAlignmentFlag);
   Record.push_back(VE.getMetadataOrNullID(N->getScope()));
   Record.push_back(VE.getMetadataOrNullID(N->getRawName()));
   Record.push_back(VE.getMetadataOrNullID(N->getFile()));
@@ -1728,6 +1744,7 @@ void ModuleBitcodeWriter::writeDILocalVariable(
   Record.push_back(VE.getMetadataOrNullID(N->getType()));
   Record.push_back(N->getArg());
   Record.push_back(N->getFlags());
+  Record.push_back(N->getAlignInBits());
 
   Stream.EmitRecord(bitc::METADATA_LOCAL_VAR, Record, Abbrev);
   Record.clear();
@@ -2201,9 +2218,12 @@ void ModuleBitcodeWriter::writeConstants(unsigned FirstVal, unsigned LastVal,
       case Instruction::GetElementPtr: {
         Code = bitc::CST_CODE_CE_GEP;
         const auto *GO = cast<GEPOperator>(C);
-        if (GO->isInBounds())
-          Code = bitc::CST_CODE_CE_INBOUNDS_GEP;
         Record.push_back(VE.getTypeID(GO->getSourceElementType()));
+        if (Optional<unsigned> Idx = GO->getInRangeIndex()) {
+          Code = bitc::CST_CODE_CE_GEP_WITH_INRANGE_INDEX;
+          Record.push_back((*Idx << 1) | GO->isInBounds());
+        } else if (GO->isInBounds())
+          Code = bitc::CST_CODE_CE_INBOUNDS_GEP;
         for (unsigned i = 0, e = CE->getNumOperands(); i != e; ++i) {
           Record.push_back(VE.getTypeID(C->getOperand(i)->getType()));
           Record.push_back(VE.getValueID(C->getOperand(i)));
@@ -2500,7 +2520,7 @@ void ModuleBitcodeWriter::writeInstruction(const Instruction &I,
 
     // Emit type/value pairs for varargs params.
     if (FTy->isVarArg()) {
-      for (unsigned i = FTy->getNumParams(), e = I.getNumOperands()-3;
+      for (unsigned i = FTy->getNumParams(), e = II->getNumArgOperands();
            i != e; ++i)
         pushValueAndType(I.getOperand(i), InstID, Vals); // vararg
     }
@@ -2999,7 +3019,8 @@ void ModuleBitcodeWriter::writeFunction(
     }
 
   // Emit names for all the instructions etc.
-  writeValueSymbolTable(F.getValueSymbolTable());
+  if (auto *Symtab = F.getValueSymbolTable())
+    writeValueSymbolTable(*Symtab);
 
   if (NeedsMetadataAttachment)
     writeFunctionMetadataAttachment(F);
@@ -3014,7 +3035,7 @@ void ModuleBitcodeWriter::writeBlockInfo() {
   // We only want to emit block info records for blocks that have multiple
   // instances: CONSTANTS_BLOCK, FUNCTION_BLOCK and VALUE_SYMTAB_BLOCK.
   // Other blocks can define their abbrevs inline.
-  Stream.EnterBlockInfoBlock(2);
+  Stream.EnterBlockInfoBlock();
 
   { // 8-bit fixed-width VST_CODE_ENTRY/VST_CODE_BBENTRY strings.
     BitCodeAbbrev *Abbv = new BitCodeAbbrev();
@@ -3292,10 +3313,8 @@ void ModuleBitcodeWriter::writePerModuleFunctionSummaryRecord(
   bool HasProfileData = F.getEntryCount().hasValue();
   for (auto &ECI : Calls) {
     NameVals.push_back(getValueId(ECI.first));
-    assert(ECI.second.CallsiteCount > 0 && "Expected at least one callsite");
-    NameVals.push_back(ECI.second.CallsiteCount);
     if (HasProfileData)
-      NameVals.push_back(ECI.second.ProfileCount);
+      NameVals.push_back(static_cast<uint8_t>(ECI.second.Hotness));
   }
 
   unsigned FSAbbrev = (HasProfileData ? FSCallsProfileAbbrev : FSCallsAbbrev);
@@ -3312,13 +3331,18 @@ void ModuleBitcodeWriter::writePerModuleFunctionSummaryRecord(
 void ModuleBitcodeWriter::writeModuleLevelReferences(
     const GlobalVariable &V, SmallVector<uint64_t, 64> &NameVals,
     unsigned FSModRefsAbbrev) {
-  // Only interested in recording variable defs in the summary.
-  if (V.isDeclaration())
+  auto Summaries =
+      Index->findGlobalValueSummaryList(GlobalValue::getGUID(V.getName()));
+  if (Summaries == Index->end()) {
+    // Only declarations should not have a summary (a declaration might however
+    // have a summary if the def was in module level asm).
+    assert(V.isDeclaration());
     return;
+  }
+  auto *Summary = Summaries->second.front().get();
   NameVals.push_back(VE.getValueID(&V));
-  NameVals.push_back(getEncodedGVSummaryFlags(V));
-  auto *Summary = Index->getGlobalValueSummary(V);
   GlobalVarSummary *VS = cast<GlobalVarSummary>(Summary);
+  NameVals.push_back(getEncodedGVSummaryFlags(VS->flags()));
 
   unsigned SizeBeforeRefs = NameVals.size();
   for (auto &RI : VS->refs())
@@ -3335,17 +3359,19 @@ void ModuleBitcodeWriter::writeModuleLevelReferences(
 // Current version for the summary.
 // This is bumped whenever we introduce changes in the way some record are
 // interpreted, like flags for instance.
-static const uint64_t INDEX_VERSION = 1;
+static const uint64_t INDEX_VERSION = 2;
 
 /// Emit the per-module summary section alongside the rest of
 /// the module's bitcode.
 void ModuleBitcodeWriter::writePerModuleGlobalValueSummary() {
-  if (Index->begin() == Index->end())
-    return;
-
   Stream.EnterSubblock(bitc::GLOBALVAL_SUMMARY_BLOCK_ID, 4);
 
   Stream.EmitRecord(bitc::FS_VERSION, ArrayRef<uint64_t>{INDEX_VERSION});
+
+  if (Index->begin() == Index->end()) {
+    Stream.ExitBlock();
+    return;
+  }
 
   // Abbrev for FS_PERMODULE.
   BitCodeAbbrev *Abbv = new BitCodeAbbrev();
@@ -3354,7 +3380,7 @@ void ModuleBitcodeWriter::writePerModuleGlobalValueSummary() {
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));   // flags
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));   // instcount
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 4));   // numrefs
-  // numrefs x valueid, n x (valueid, callsitecount)
+  // numrefs x valueid, n x (valueid)
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
   unsigned FSCallsAbbrev = Stream.EmitAbbrev(Abbv);
@@ -3366,7 +3392,7 @@ void ModuleBitcodeWriter::writePerModuleGlobalValueSummary() {
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));   // flags
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));   // instcount
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 4));   // numrefs
-  // numrefs x valueid, n x (valueid, callsitecount, profilecount)
+  // numrefs x valueid, n x (valueid, hotness)
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
   unsigned FSCallsProfileAbbrev = Stream.EmitAbbrev(Abbv);
@@ -3392,14 +3418,20 @@ void ModuleBitcodeWriter::writePerModuleGlobalValueSummary() {
   // Iterate over the list of functions instead of the Index to
   // ensure the ordering is stable.
   for (const Function &F : M) {
-    if (F.isDeclaration())
-      continue;
     // Summary emission does not support anonymous functions, they have to
     // renamed using the anonymous function renaming pass.
     if (!F.hasName())
       report_fatal_error("Unexpected anonymous function when writing summary");
 
-    auto *Summary = Index->getGlobalValueSummary(F);
+    auto Summaries =
+        Index->findGlobalValueSummaryList(GlobalValue::getGUID(F.getName()));
+    if (Summaries == Index->end()) {
+      // Only declarations should not have a summary (a declaration might
+      // however have a summary if the def was in module level asm).
+      assert(F.isDeclaration());
+      continue;
+    }
+    auto *Summary = Summaries->second.front().get();
     writePerModuleFunctionSummaryRecord(NameVals, Summary, VE.getValueID(&F),
                                         FSCallsAbbrev, FSCallsProfileAbbrev, F);
   }
@@ -3417,7 +3449,9 @@ void ModuleBitcodeWriter::writePerModuleGlobalValueSummary() {
     auto AliasId = VE.getValueID(&A);
     auto AliaseeId = VE.getValueID(Aliasee);
     NameVals.push_back(AliasId);
-    NameVals.push_back(getEncodedGVSummaryFlags(A));
+    auto *Summary = Index->getGlobalValueSummary(A);
+    AliasSummary *AS = cast<AliasSummary>(Summary);
+    NameVals.push_back(getEncodedGVSummaryFlags(AS->flags()));
     NameVals.push_back(AliaseeId);
     Stream.EmitRecord(bitc::FS_ALIAS, NameVals, FSAliasAbbrev);
     NameVals.clear();
@@ -3439,7 +3473,7 @@ void IndexBitcodeWriter::writeCombinedGlobalValueSummary() {
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));   // flags
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));   // instcount
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 4));   // numrefs
-  // numrefs x valueid, n x (valueid, callsitecount)
+  // numrefs x valueid, n x (valueid)
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
   unsigned FSCallsAbbrev = Stream.EmitAbbrev(Abbv);
@@ -3452,7 +3486,7 @@ void IndexBitcodeWriter::writeCombinedGlobalValueSummary() {
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));   // flags
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));   // instcount
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 4));   // numrefs
-  // numrefs x valueid, n x (valueid, callsitecount, profilecount)
+  // numrefs x valueid, n x (valueid, hotness)
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
   Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
   unsigned FSCallsProfileAbbrev = Stream.EmitAbbrev(Abbv);
@@ -3539,7 +3573,7 @@ void IndexBitcodeWriter::writeCombinedGlobalValueSummary() {
 
     bool HasProfileData = false;
     for (auto &EI : FS->calls()) {
-      HasProfileData |= EI.second.ProfileCount != 0;
+      HasProfileData |= EI.second.Hotness != CalleeInfo::HotnessType::Unknown;
       if (HasProfileData)
         break;
     }
@@ -3550,10 +3584,8 @@ void IndexBitcodeWriter::writeCombinedGlobalValueSummary() {
       if (!hasValueId(EI.first.getGUID()))
         continue;
       NameVals.push_back(getValueId(EI.first.getGUID()));
-      assert(EI.second.CallsiteCount > 0 && "Expected at least one callsite");
-      NameVals.push_back(EI.second.CallsiteCount);
       if (HasProfileData)
-        NameVals.push_back(EI.second.ProfileCount);
+        NameVals.push_back(static_cast<uint8_t>(EI.second.Hotness));
     }
 
     unsigned FSAbbrev = (HasProfileData ? FSCallsProfileAbbrev : FSCallsAbbrev);
@@ -3613,15 +3645,10 @@ void ModuleBitcodeWriter::writeModuleHash(size_t BlockStartPos) {
   SHA1 Hasher;
   Hasher.update(ArrayRef<uint8_t>((const uint8_t *)&(Buffer)[BlockStartPos],
                                   Buffer.size() - BlockStartPos));
-  auto Hash = Hasher.result();
-  SmallVector<uint64_t, 20> Vals;
-  auto LShift = [&](unsigned char Val, unsigned Amount)
-                    -> uint64_t { return ((uint64_t)Val) << Amount; };
+  StringRef Hash = Hasher.result();
+  uint32_t Vals[5];
   for (int Pos = 0; Pos < 20; Pos += 4) {
-    uint32_t SubHash = LShift(Hash[Pos + 0], 24);
-    SubHash |= LShift(Hash[Pos + 1], 16) | LShift(Hash[Pos + 2], 8) |
-               (unsigned)(unsigned char)Hash[Pos + 3];
-    Vals.push_back(SubHash);
+    Vals[Pos / 4] = support::endian::read32be(Hash.data() + Pos);
   }
 
   // Emit the finished record.

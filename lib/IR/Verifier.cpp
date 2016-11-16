@@ -389,8 +389,9 @@ private:
                        SmallVectorImpl<const MDNode *> &Requirements);
   void visitFunction(const Function &F);
   void visitBasicBlock(BasicBlock &BB);
-  void visitRangeMetadata(Instruction& I, MDNode* Range, Type* Ty);
-  void visitDereferenceableMetadata(Instruction& I, MDNode* MD);
+  void visitRangeMetadata(Instruction &I, MDNode *Range, Type *Ty);
+  void visitDereferenceableMetadata(Instruction &I, MDNode *MD);
+  void visitTBAAMetadata(Instruction &I, MDNode *MD);
 
   template <class Ty> bool isValidMetadataArray(const MDTuple &N);
 #define HANDLE_SPECIALIZED_MDNODE_LEAF(CLASS) void visit##CLASS(const CLASS &N);
@@ -698,10 +699,15 @@ void Verifier::visitGlobalAlias(const GlobalAlias &GA) {
 }
 
 void Verifier::visitNamedMDNode(const NamedMDNode &NMD) {
+  // There used to be various other llvm.dbg.* nodes, but we don't support
+  // upgrading them and we want to reserve the namespace for future uses.
+  if (NMD.getName().startswith("llvm.dbg."))
+    AssertDI(NMD.getName() == "llvm.dbg.cu",
+             "unrecognized named metadata node in the llvm.dbg namespace",
+             &NMD);
   for (const MDNode *MD : NMD.operands()) {
-    if (NMD.getName() == "llvm.dbg.cu") {
+    if (NMD.getName() == "llvm.dbg.cu")
       AssertDI(MD && isa<DICompileUnit>(MD), "invalid compile unit", &NMD, MD);
-    }
 
     if (!MD)
       continue;
@@ -859,6 +865,7 @@ void Verifier::visitDIDerivedType(const DIDerivedType &N) {
                N.getTag() == dwarf::DW_TAG_const_type ||
                N.getTag() == dwarf::DW_TAG_volatile_type ||
                N.getTag() == dwarf::DW_TAG_restrict_type ||
+               N.getTag() == dwarf::DW_TAG_atomic_type ||
                N.getTag() == dwarf::DW_TAG_member ||
                N.getTag() == dwarf::DW_TAG_inheritance ||
                N.getTag() == dwarf::DW_TAG_friend,
@@ -2961,10 +2968,8 @@ static bool isContiguous(const ConstantRange &A, const ConstantRange &B) {
   return A.getUpper() == B.getLower() || A.getLower() == B.getUpper();
 }
 
-void Verifier::visitRangeMetadata(Instruction& I,
-                                  MDNode* Range, Type* Ty) {
-  assert(Range &&
-         Range == I.getMetadata(LLVMContext::MD_range) &&
+void Verifier::visitRangeMetadata(Instruction &I, MDNode *Range, Type *Ty) {
+  assert(Range && Range == I.getMetadata(LLVMContext::MD_range) &&
          "precondition violation");
 
   unsigned NumOperands = Range->getNumOperands();
@@ -3652,6 +3657,15 @@ void Verifier::visitDereferenceableMetadata(Instruction& I, MDNode* MD) {
          "dereferenceable_or_null metadata value must be an i64!", &I);
 }
 
+void Verifier::visitTBAAMetadata(Instruction &I, MDNode *MD) {
+  bool IsStructPathTBAA =
+      isa<MDNode>(MD->getOperand(0)) && MD->getNumOperands() >= 3;
+
+  Assert(IsStructPathTBAA,
+         "Old-style TBAA is no longer allowed, use struct-path TBAA instead",
+         &I);
+}
+
 /// verifyInstruction - Verify that an instruction is well formed.
 ///
 void Verifier::visitInstruction(Instruction &I) {
@@ -3786,6 +3800,9 @@ void Verifier::visitInstruction(Instruction &I) {
 
   if (MDNode *MD = I.getMetadata(LLVMContext::MD_dereferenceable_or_null))
     visitDereferenceableMetadata(I, MD);
+
+  if (MDNode *MD = I.getMetadata(LLVMContext::MD_tbaa))
+    visitTBAAMetadata(I, MD);
 
   if (MDNode *AlignMD = I.getMetadata(LLVMContext::MD_align)) {
     Assert(I.getType()->isPointerTy(), "align applies only to pointer types",

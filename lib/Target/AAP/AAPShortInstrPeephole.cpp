@@ -35,7 +35,7 @@ struct ShortInstrPeephole : public MachineFunctionPass {
   ShortInstrPeephole(TargetMachine &TM)
       : MachineFunctionPass(ID), TM(TM), MII(*TM.getMCInstrInfo()) {}
 
-  const char *getPassName() const override {
+  StringRef getPassName() const override {
     return "AAP Short Instruction Peephole";
   }
 

@@ -54,7 +54,7 @@ public:
       : SelectionDAGISel(tm), TM(tm) {}
 
   // Pass Name
-  virtual const char *getPassName() const override {
+  virtual StringRef getPassName() const override {
     return "AAP DAG->DAG Pattern Instruction Selection";
   }
 

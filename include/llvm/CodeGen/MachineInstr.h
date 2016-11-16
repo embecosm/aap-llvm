@@ -721,8 +721,11 @@ public:
     IgnoreVRegDefs  // Ignore virtual register definitions
   };
 
-  /// Return true if this instruction is identical to (same
-  /// opcode and same operands as) the specified instruction.
+  /// Return true if this instruction is identical to \p Other.
+  /// Two instructions are identical if they have the same opcode and all their
+  /// operands are identical (with respect to MachineOperand::isIdenticalTo()).
+  /// Note that this means liveness related flags (dead, undef, kill) do not
+  /// affect the notion of identical.
   bool isIdenticalTo(const MachineInstr &Other,
                      MICheckType Check = CheckDefs) const;
 

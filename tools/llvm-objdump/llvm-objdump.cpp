@@ -188,8 +188,7 @@ cl::opt<bool> PrintFaultMaps("fault-map-section",
 
 cl::opt<DIDumpType> llvm::DwarfDumpType(
     "dwarf", cl::init(DIDT_Null), cl::desc("Dump of dwarf debug sections:"),
-    cl::values(clEnumValN(DIDT_Frames, "frames", ".debug_frame"),
-               clEnumValEnd));
+    cl::values(clEnumValN(DIDT_Frames, "frames", ".debug_frame")));
 
 cl::opt<bool> PrintSource(
     "source",
@@ -320,14 +319,14 @@ LLVM_ATTRIBUTE_NORETURN void llvm::report_error(StringRef ArchiveName,
   if (ArchiveName != "")
     errs() << ArchiveName << "(" << FileName << ")";
   else
-    errs() << FileName;
+    errs() << "'" << FileName << "'";
   if (!ArchitectureName.empty())
     errs() << " (for architecture " << ArchitectureName << ")";
   std::string Buf;
   raw_string_ostream OS(Buf);
   logAllUnhandledErrors(std::move(E), OS, "");
   OS.flush();
-  errs() << " " << Buf;
+  errs() << ": " << Buf;
   exit(1);
 }
 
@@ -609,22 +608,22 @@ static std::error_code getRelocationValueString(const ELFObjectFile<ELFT> *Obj,
 
   const ELFFile<ELFT> &EF = *Obj->getELFFile();
 
-  ErrorOr<const Elf_Shdr *> SecOrErr = EF.getSection(Rel.d.a);
-  if (std::error_code EC = SecOrErr.getError())
-    return EC;
+  auto SecOrErr = EF.getSection(Rel.d.a);
+  if (!SecOrErr)
+    return errorToErrorCode(SecOrErr.takeError());
   const Elf_Shdr *Sec = *SecOrErr;
-  ErrorOr<const Elf_Shdr *> SymTabOrErr = EF.getSection(Sec->sh_link);
-  if (std::error_code EC = SymTabOrErr.getError())
-    return EC;
+  auto SymTabOrErr = EF.getSection(Sec->sh_link);
+  if (!SymTabOrErr)
+    return errorToErrorCode(SymTabOrErr.takeError());
   const Elf_Shdr *SymTab = *SymTabOrErr;
   assert(SymTab->sh_type == ELF::SHT_SYMTAB ||
          SymTab->sh_type == ELF::SHT_DYNSYM);
-  ErrorOr<const Elf_Shdr *> StrTabSec = EF.getSection(SymTab->sh_link);
-  if (std::error_code EC = StrTabSec.getError())
-    return EC;
-  ErrorOr<StringRef> StrTabOrErr = EF.getStringTable(*StrTabSec);
-  if (std::error_code EC = StrTabOrErr.getError())
-    return EC;
+  auto StrTabSec = EF.getSection(SymTab->sh_link);
+  if (!StrTabSec)
+    return errorToErrorCode(StrTabSec.takeError());
+  auto StrTabOrErr = EF.getStringTable(*StrTabSec);
+  if (!StrTabOrErr)
+    return errorToErrorCode(StrTabOrErr.takeError());
   StringRef StrTab = *StrTabOrErr;
   uint8_t type = RelRef.getType();
   StringRef res;
@@ -650,9 +649,9 @@ static std::error_code getRelocationValueString(const ELFObjectFile<ELFT> *Obj,
     if (!SymSI)
       return errorToErrorCode(SymSI.takeError());
     const Elf_Shdr *SymSec = Obj->getSection((*SymSI)->getRawDataRefImpl());
-    ErrorOr<StringRef> SecName = EF.getSectionName(SymSec);
-    if (std::error_code EC = SecName.getError())
-      return EC;
+    auto SecName = EF.getSectionName(SymSec);
+    if (!SecName)
+      return errorToErrorCode(SecName.takeError());
     Target = *SecName;
   } else {
     Expected<StringRef> SymName = symb->getName(StrTab);
@@ -688,6 +687,7 @@ static std::error_code getRelocationValueString(const ELFObjectFile<ELFT> *Obj,
     }
     break;
   case ELF::EM_LANAI:
+  case ELF::EM_AVR:
   case ELF::EM_AARCH64: {
     std::string fmtbuf;
     raw_string_ostream fmt(fmtbuf);
@@ -704,6 +704,7 @@ static std::error_code getRelocationValueString(const ELFObjectFile<ELFT> *Obj,
   case ELF::EM_HEXAGON:
   case ELF::EM_MIPS:
   case ELF::EM_BPF:
+  case ELF::EM_RISCV:
   case ELF::EM_AAP:
     res = Target;
     break;
@@ -1097,8 +1098,10 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   std::unique_ptr<const MCInstrInfo> MII(TheTarget->createMCInstrInfo());
   if (!MII)
     report_fatal_error("error: no instruction info for target " + TripleName);
-  std::unique_ptr<const MCObjectFileInfo> MOFI(new MCObjectFileInfo);
-  MCContext Ctx(AsmInfo.get(), MRI.get(), MOFI.get());
+  MCObjectFileInfo MOFI;
+  MCContext Ctx(AsmInfo.get(), MRI.get(), &MOFI);
+  // FIXME: for now initialize MCObjectFileInfo with default values
+  MOFI.InitMCObjectFileInfo(Triple(TripleName), false, CodeModel::Default, Ctx);
 
   std::unique_ptr<MCDisassembler> DisAsm(
     TheTarget->createMCDisassembler(*STI, Ctx));
@@ -1228,6 +1231,18 @@ static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
 
     std::sort(DataMappingSymsAddr.begin(), DataMappingSymsAddr.end());
     std::sort(TextMappingSymsAddr.begin(), TextMappingSymsAddr.end());
+
+    if (Obj->isELF() && Obj->getArch() == Triple::amdgcn) {
+      // AMDGPU disassembler uses symbolizer for printing labels
+      std::unique_ptr<MCRelocationInfo> RelInfo(
+        TheTarget->createMCRelocationInfo(TripleName, Ctx));
+      if (RelInfo) {
+        std::unique_ptr<MCSymbolizer> Symbolizer(
+          TheTarget->createMCSymbolizer(
+            TripleName, nullptr, nullptr, &Symbols, &Ctx, std::move(RelInfo)));
+        DisAsm->setSymbolizer(std::move(Symbolizer));
+      }
+    }
 
     // Make a list of all the relocations for this section.
     std::vector<RelocationRef> Rels;
@@ -1878,27 +1893,18 @@ static void printFaultMaps(const ObjectFile *Obj) {
   outs() << FMP;
 }
 
-static void printPrivateFileHeaders(const ObjectFile *o) {
+static void printPrivateFileHeaders(const ObjectFile *o, bool onlyFirst) {
   if (o->isELF())
-    printELFFileHeader(o);
-  else if (o->isCOFF())
-    printCOFFFileHeader(o);
-  else if (o->isMachO()) {
+    return printELFFileHeader(o);
+  if (o->isCOFF())
+    return printCOFFFileHeader(o);
+  if (o->isMachO()) {
     printMachOFileHeader(o);
-    printMachOLoadCommands(o);
-  } else
-    report_fatal_error("Invalid/Unsupported object file format");
-}
-
-static void printFirstPrivateFileHeader(const ObjectFile *o) {
-  if (o->isELF())
-    printELFFileHeader(o);
-  else if (o->isCOFF())
-    printCOFFFileHeader(o);
-  else if (o->isMachO())
-    printMachOFileHeader(o);
-  else
-    report_fatal_error("Invalid/Unsupported object file format");
+    if (!onlyFirst)
+      printMachOLoadCommands(o);
+    return;
+  }
+  report_fatal_error("Invalid/Unsupported object file format");
 }
 
 static void DumpObject(const ObjectFile *o, const Archive *a = nullptr) {
@@ -1925,10 +1931,8 @@ static void DumpObject(const ObjectFile *o, const Archive *a = nullptr) {
     PrintSymbolTable(o, ArchiveName);
   if (UnwindInfo)
     PrintUnwindInfo(o);
-  if (PrivateHeaders)
-    printPrivateFileHeaders(o);
-  if (FirstPrivateHeader)
-    printFirstPrivateFileHeader(o);
+  if (PrivateHeaders || FirstPrivateHeader)
+    printPrivateFileHeaders(o, FirstPrivateHeader);
   if (ExportsTrie)
     printExportsTrie(o);
   if (Rebase)
@@ -1966,7 +1970,7 @@ static void DumpObject(const COFFImportFile *I, const Archive *A) {
 
 /// @brief Dump each object file in \a a;
 static void DumpArchive(const Archive *a) {
-  Error Err;
+  Error Err = Error::success();
   for (auto &C : a->children(Err)) {
     Expected<std::unique_ptr<Binary>> ChildOrErr = C.getAsBinary();
     if (!ChildOrErr) {

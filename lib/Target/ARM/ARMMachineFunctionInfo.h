@@ -122,7 +122,10 @@ class ARMFunctionInfo : public MachineFunctionInfo {
   bool IsSplitCSR;
 
   /// Globals that have had their storage promoted into the constant pool.
-  SmallVector<const GlobalVariable*,2> PromotedGlobals;
+  SmallPtrSet<const GlobalVariable*,2> PromotedGlobals;
+
+  /// The amount the literal pool has been increasedby due to promoted globals.
+  int PromotedGlobalsIncrease;
   
 public:
   ARMFunctionInfo() :
@@ -134,7 +137,8 @@ public:
     FramePtrSpillOffset(0), GPRCS1Offset(0), GPRCS2Offset(0), DPRCSOffset(0),
     GPRCS1Size(0), GPRCS2Size(0), DPRCSAlignGapSize(0), DPRCSSize(0),
     NumAlignedDPRCS2Regs(0), PICLabelUId(0),
-    VarArgsFrameIndex(0), HasITBlocks(false), IsSplitCSR(false) {}
+    VarArgsFrameIndex(0), HasITBlocks(false), IsSplitCSR(false),
+    PromotedGlobalsIncrease(0) {}
 
   explicit ARMFunctionInfo(MachineFunction &MF);
 
@@ -234,10 +238,16 @@ public:
   /// a constant pool. This means it no longer needs to be emitted as a
   /// global variable.
   void markGlobalAsPromotedToConstantPool(const GlobalVariable *GV) {
-    PromotedGlobals.push_back(GV);
+    PromotedGlobals.insert(GV);
   }
-  ArrayRef<const GlobalVariable*> getGlobalsPromotedToConstantPool() {
+  SmallPtrSet<const GlobalVariable*, 2>& getGlobalsPromotedToConstantPool() {
     return PromotedGlobals;
+  }
+  int getPromotedConstpoolIncrease() const {
+    return PromotedGlobalsIncrease;
+  }
+  void setPromotedConstpoolIncrease(int Sz) {
+    PromotedGlobalsIncrease = Sz;
   }
 };
 } // End llvm namespace
