@@ -188,8 +188,8 @@ public:
     return Mem.Offset;
   }
 
-  static bool isConst(const MCExpr *Imm) {
-    return Imm->getKind() == MCExpr::Constant;
+  static bool isConst(const MCExpr *I) {
+    return I->getKind() == MCExpr::Constant;
   }
 
   static bool isConst3(const MCExpr *I) {

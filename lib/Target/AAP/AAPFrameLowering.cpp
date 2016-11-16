@@ -123,6 +123,7 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
 MachineBasicBlock::iterator AAPFrameLowering::eliminateCallFramePseudoInstr(
     MachineFunction &MF, MachineBasicBlock &MBB,
     MachineBasicBlock::iterator I) const {
+  // FIXME: Implement frame pointer support
   assert(!hasFP(MF) && "Frame pointer unsupported!");
   return MBB.erase(I);
 }

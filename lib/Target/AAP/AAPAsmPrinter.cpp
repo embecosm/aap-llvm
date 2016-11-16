@@ -86,7 +86,7 @@ void AAPAsmPrinter::printOperand(const MachineInstr *MI, int OpNum,
 void AAPAsmPrinter::printMemOffOperand(const MachineInstr *MI, int OpNum,
                                        raw_ostream &O, const char *Modifier) {
   printOperand(MI, OpNum, O);
-  O << ',' << ' ';
+  O << ", ";
   printOperand(MI, OpNum + 1, O);
 }
 

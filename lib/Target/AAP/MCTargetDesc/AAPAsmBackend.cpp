@@ -29,11 +29,10 @@ public:
     const static MCFixupKindInfo Infos[AAP::NumTargetFixupKinds] = {
       // We tell LLVM that branches are not PC relative to prevent it from
       // resolving them, these are more complex fields which we instead want
-      // populate in the linker.
+      // to populate in the linker.
 
       // This table *must* be in the order that the fixup_* kinds are defined
-      // in
-      // AAPFixupKinds.h.
+      // in AAPFixupKinds.h.
       //
       // Name                 offset  size  flags
       {"fixup_AAP_NONE",        0,    16,     0},

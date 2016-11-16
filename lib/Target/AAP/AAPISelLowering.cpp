@@ -53,12 +53,10 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
 
   // Only basic load with zero extension i8 -> i16 is supported
   // Note: EXTLOAD promotion will trigger an assertion
-  setLoadExtAction(ISD::EXTLOAD, MVT::i8,  MVT::i1, Promote);
-  setLoadExtAction(ISD::EXTLOAD, MVT::i16, MVT::i1, Promote);
-
+  setLoadExtAction(ISD::EXTLOAD,  MVT::i8,  MVT::i1, Promote);
+  setLoadExtAction(ISD::EXTLOAD,  MVT::i16, MVT::i1, Promote);
   setLoadExtAction(ISD::ZEXTLOAD, MVT::i8,  MVT::i1, Expand);
   setLoadExtAction(ISD::ZEXTLOAD, MVT::i16, MVT::i1, Expand);
-
   setLoadExtAction(ISD::SEXTLOAD, MVT::i8,  MVT::i1, Expand);
   setLoadExtAction(ISD::SEXTLOAD, MVT::i16, MVT::i1, Expand);
   setLoadExtAction(ISD::SEXTLOAD, MVT::i16, MVT::i8, Expand);
@@ -71,71 +69,66 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8, Expand);
 
   // Handle conditionals via brcc and selectcc
-  setOperationAction(ISD::BRCOND, MVT::i16,   Expand);
-  setOperationAction(ISD::BRCOND, MVT::Other, Expand);
-
-  setOperationAction(ISD::SELECT, MVT::i16, Expand);
-
-  setOperationAction(ISD::SETCC, MVT::i16,   Expand);
-  setOperationAction(ISD::SETCC, MVT::Other, Expand);
-
-  setOperationAction(ISD::SELECT_CC, MVT::i16, Custom);
-  setOperationAction(ISD::BR_CC, MVT::i16,     Custom);
+  setOperationAction(ISD::BRCOND,    MVT::i16,   Expand);
+  setOperationAction(ISD::BRCOND,    MVT::Other, Expand);
+  setOperationAction(ISD::SELECT,    MVT::i16,   Expand);
+  setOperationAction(ISD::SETCC,     MVT::i16,   Expand);
+  setOperationAction(ISD::SETCC,     MVT::Other, Expand);
+  setOperationAction(ISD::SELECT_CC, MVT::i16,   Custom);
+  setOperationAction(ISD::BR_CC,     MVT::i16,   Custom);
 
   // Expand some condition codes which are not natively supported
-  setCondCodeAction(ISD::SETGT,  MVT::i16, Expand);
-  setCondCodeAction(ISD::SETGE,  MVT::i16, Expand);
-  setCondCodeAction(ISD::SETUGT, MVT::i16, Expand);
-  setCondCodeAction(ISD::SETUGE, MVT::i16, Expand);
+  setCondCodeAction(ISD::SETGT,      MVT::i16,   Expand);
+  setCondCodeAction(ISD::SETGE,      MVT::i16,   Expand);
+  setCondCodeAction(ISD::SETUGT,     MVT::i16,   Expand);
+  setCondCodeAction(ISD::SETUGE,     MVT::i16,   Expand);
 
   // Currently no support for indirect branches
-  setOperationAction(ISD::BRIND, MVT::Other, Expand);
+  setOperationAction(ISD::BRIND,     MVT::Other, Expand);
 
   // No support for jump tables
-  setOperationAction(ISD::JumpTable, MVT::i16, Expand);
-  setOperationAction(ISD::BR_JT, MVT::Other, Expand);
+  setOperationAction(ISD::JumpTable, MVT::i16,   Expand);
+  setOperationAction(ISD::BR_JT,     MVT::Other, Expand);
 
   // vaarg
-  setOperationAction(ISD::VASTART, MVT::Other, Custom);
-  setOperationAction(ISD::VAARG, MVT::Other,  Expand);
-  setOperationAction(ISD::VAEND, MVT::Other,  Expand);
-  setOperationAction(ISD::VACOPY, MVT::Other, Expand);
+  setOperationAction(ISD::VASTART,   MVT::Other, Custom);
+  setOperationAction(ISD::VAARG,     MVT::Other, Expand);
+  setOperationAction(ISD::VAEND,     MVT::Other, Expand);
+  setOperationAction(ISD::VACOPY,    MVT::Other, Expand);
 
   // ALU operations unsupported by the architecture
-  setOperationAction(ISD::SDIV, MVT::i16, Expand);
-  setOperationAction(ISD::UDIV, MVT::i16, Expand);
-  setOperationAction(ISD::UREM, MVT::i16, Expand);
-  setOperationAction(ISD::SREM, MVT::i16, Expand);
-  setOperationAction(ISD::SDIVREM, MVT::i16, Expand);
-  setOperationAction(ISD::UDIVREM, MVT::i16, Expand);
+  setOperationAction(ISD::SDIV,      MVT::i16,   Expand);
+  setOperationAction(ISD::UDIV,      MVT::i16,   Expand);
+  setOperationAction(ISD::UREM,      MVT::i16,   Expand);
+  setOperationAction(ISD::SREM,      MVT::i16,   Expand);
+  setOperationAction(ISD::SDIVREM,   MVT::i16,   Expand);
+  setOperationAction(ISD::UDIVREM,   MVT::i16,   Expand);
 
-  setOperationAction(ISD::MUL, MVT::i16, Expand);
-  setOperationAction(ISD::MULHS, MVT::i16, Expand);
-  setOperationAction(ISD::MULHU, MVT::i16, Expand);
-  setOperationAction(ISD::SMUL_LOHI, MVT::i16, Expand);
-  setOperationAction(ISD::UMUL_LOHI, MVT::i16, Expand);
+  setOperationAction(ISD::MUL,       MVT::i16,   Expand);
+  setOperationAction(ISD::MULHS,     MVT::i16,   Expand);
+  setOperationAction(ISD::MULHU,     MVT::i16,   Expand);
+  setOperationAction(ISD::SMUL_LOHI, MVT::i16,   Expand);
+  setOperationAction(ISD::UMUL_LOHI, MVT::i16,   Expand);
 
   // Use ADDE/SUBE
   setOperationAction(ISD::SUBC, MVT::i16, Expand);
 
-  setOperationAction(ISD::ROTL, MVT::i16, Expand);
-  setOperationAction(ISD::ROTR, MVT::i16, Expand);
-
+  setOperationAction(ISD::ROTL,      MVT::i16, Expand);
+  setOperationAction(ISD::ROTR,      MVT::i16, Expand);
   setOperationAction(ISD::SHL_PARTS, MVT::i16, Expand);
   setOperationAction(ISD::SRL_PARTS, MVT::i16, Expand);
   setOperationAction(ISD::SRA_PARTS, MVT::i16, Expand);
 
-  setOperationAction(ISD::BSWAP, MVT::i16, Expand);
-
-  setOperationAction(ISD::CTTZ, MVT::i16, Expand);
+  setOperationAction(ISD::BSWAP,           MVT::i16, Expand);
+  setOperationAction(ISD::CTTZ,            MVT::i16, Expand);
   setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i16, Expand);
-  setOperationAction(ISD::CTLZ, MVT::i16, Expand);
+  setOperationAction(ISD::CTLZ,            MVT::i16, Expand);
   setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i16, Expand);
-  setOperationAction(ISD::CTPOP, MVT::i16, Expand);
+  setOperationAction(ISD::CTPOP,           MVT::i16, Expand);
 
   setOperationAction(ISD::FLT_ROUNDS_, MVT::i32, Custom);
 
-  // Custom DAGCombine operations
+  // Custom DAGCombine
   setTargetDAGCombine(ISD::ADD);
 
   setMinFunctionAlignment(1);

@@ -58,10 +58,10 @@ unsigned AAPELFObjectWriter::getRelocType(MCContext & /*Ctx*/,
   case AAP::fixup_AAP_SHIFT6: return ELF::R_AAP_SHIFT6;
   case AAP::fixup_AAP_OFF10:  return ELF::R_AAP_OFF10;
 
-  case FK_Data_1: return ELF::R_AAP_8;
-  case FK_Data_2: return ELF::R_AAP_16;
-  case FK_Data_4: return ELF::R_AAP_32;
-  case FK_Data_8: return ELF::R_AAP_64;
+  case FK_Data_1:             return ELF::R_AAP_8;
+  case FK_Data_2:             return ELF::R_AAP_16;
+  case FK_Data_4:             return ELF::R_AAP_32;
+  case FK_Data_8:             return ELF::R_AAP_64;
 
   // Instrs with these fixups should never be generated or parsed, so for now
   // we should not be emitting relocations for them.

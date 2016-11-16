@@ -1,4 +1,4 @@
-//===-- AAPMCTargetDesc.cpp - AAP Target Descriptions ---------------===//
+//===-- AAPMCTargetDesc.cpp - AAP Target Descriptions ---------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
