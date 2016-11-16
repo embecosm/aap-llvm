@@ -70,6 +70,10 @@ DecodeStatus AAPDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
   DecodeStatus Result;
 
   // First try a 16-bit instruction
+  if (Bytes.size() < 2) {
+    Size = 0;
+    return MCDisassembler::Fail;
+  }
   Insn = (Bytes[1] << 8) | (Bytes[0] << 0);
 
   // Next try generic 16-bit instructions
@@ -80,8 +84,12 @@ DecodeStatus AAPDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
   }
 
   // Finally try a 32-bit instruction
-  Insn =
-      (Bytes[3] << 24) | (Bytes[2] << 16) | (Bytes[1] << 8) | (Bytes[0] << 0);
+  if (Bytes.size() < 4) {
+    Size = 0;
+    return MCDisassembler::Fail;
+  }
+  Insn = (Bytes[3] << 24) | (Bytes[2] << 16) | (Bytes[1] << 8) |
+         (Bytes[0] << 0);
 
   // Call auto-generated decoder function
   Result = decodeInstruction(DecoderTable32, MI, Insn, Address, this, STI);
