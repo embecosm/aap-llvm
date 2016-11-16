@@ -61,32 +61,31 @@ unsigned AAPMCCodeEmitter::getMachineOpValue(MCInst const &MI,
   if (MO.isImm())
     return static_cast<unsigned>(MO.getImm());
 
-  // MO must be an expression
+  // Operand must be an expression
   assert(MO.isExpr());
-
   const MCExpr *Expr = MO.getExpr();
   MCExpr::ExprKind Kind = Expr->getKind();
 
-  if (Kind == MCExpr::Binary) {
-    Expr = static_cast<const MCBinaryExpr *>(Expr)->getLHS();
-    Kind = Expr->getKind();
-  }
+  int64_t Res;
+  if (Expr->evaluateAsAbsolute(Res))
+    return Res;
 
-  assert(Kind == MCExpr::SymbolRef);
+  assert(Kind == MCExpr::SymbolRef &&
+         "Currently only symbol operands are supported");
 
   AAP::Fixups FixupKind = AAP::Fixups(0);
   const unsigned Opcode = MI.getOpcode();
   if (Opcode == AAP::BAL) {
     FixupKind = AAP::fixup_AAP_BAL32;
-  } else if (Opcode == AAP::BAL_short) {
-    FixupKind = AAP::fixup_AAP_BAL16;
   } else {
-    llvm_unreachable("Unknown fixup kind!");
+    assert(Opcode == AAP::BAL_short &&
+           "Unhandled MCInst for getMachineOpValue");
+    FixupKind = AAP::fixup_AAP_BAL16;
   }
 
-  // Push fixup, encoding 0 as the current operand
+  // Push the fixup, and encode 0 in the operand
   Fixups.push_back(
-      MCFixup::create(0, MO.getExpr(), MCFixupKind(FixupKind), MI.getLoc()));
+      MCFixup::create(0, Expr, MCFixupKind(FixupKind), MI.getLoc()));
   return 0;
 }
 
