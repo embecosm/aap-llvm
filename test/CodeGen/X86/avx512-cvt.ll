@@ -84,14 +84,12 @@ define <2 x float> @sltof2f32(<2 x i64> %a) {
 ; KNL-NEXT:    vcvtsi2ssq %rax, %xmm2, %xmm0
 ; KNL-NEXT:    vinsertps {{.*#+}} xmm0 = xmm0[0],xmm1[0],xmm0[2,3]
 ; KNL-NEXT:    vcvtsi2ssq %rax, %xmm2, %xmm1
-; KNL-NEXT:    vinsertps {{.*#+}} xmm0 = xmm0[0,1],xmm1[0],xmm0[3]
-; KNL-NEXT:    vinsertps {{.*#+}} xmm0 = xmm0[0,1,2],xmm1[0]
+; KNL-NEXT:    vshufps {{.*#+}} xmm0 = xmm0[0,1],xmm1[0,0]
 ; KNL-NEXT:    retq
 ;
 ; SKX-LABEL: sltof2f32:
 ; SKX:       ## BB#0:
-; SKX-NEXT:    ## kill: %XMM0<def> %XMM0<kill> %YMM0<def>
-; SKX-NEXT:    vcvtqq2ps %ymm0, %xmm0
+; SKX-NEXT:    vcvtqq2ps %xmm0, %xmm0
 ; SKX-NEXT:    retq
   %b = sitofp <2 x i64> %a to <2 x float>
   ret <2 x float>%b
@@ -350,6 +348,40 @@ define <8 x double> @sitof64(<8 x i32> %a) {
   %b = sitofp <8 x i32> %a to <8 x double>
   ret <8 x double> %b
 }
+define <8 x double> @sitof64_mask(<8 x double> %a, <8 x i32> %b, i8 %c) nounwind {
+; KNL-LABEL: sitof64_mask:
+; KNL:       ## BB#0:
+; KNL-NEXT:    kmovw %edi, %k1
+; KNL-NEXT:    vcvtdq2pd %ymm1, %zmm0 {%k1}
+; KNL-NEXT:    retq
+;
+; SKX-LABEL: sitof64_mask:
+; SKX:       ## BB#0:
+; SKX-NEXT:    kmovb %edi, %k1
+; SKX-NEXT:    vcvtdq2pd %ymm1, %zmm0 {%k1}
+; SKX-NEXT:    retq
+  %1 = bitcast i8 %c to <8 x i1>
+  %2 = sitofp <8 x i32> %b to <8 x double>
+  %3 = select <8 x i1> %1, <8 x double> %2, <8 x double> %a
+  ret <8 x double> %3
+}
+define <8 x double> @sitof64_maskz(<8 x i32> %a, i8 %b) nounwind {
+; KNL-LABEL: sitof64_maskz:
+; KNL:       ## BB#0:
+; KNL-NEXT:    kmovw %edi, %k1
+; KNL-NEXT:    vcvtdq2pd %ymm0, %zmm0 {%k1} {z}
+; KNL-NEXT:    retq
+;
+; SKX-LABEL: sitof64_maskz:
+; SKX:       ## BB#0:
+; SKX-NEXT:    kmovb %edi, %k1
+; SKX-NEXT:    vcvtdq2pd %ymm0, %zmm0 {%k1} {z}
+; SKX-NEXT:    retq
+  %1 = bitcast i8 %b to <8 x i1>
+  %2 = sitofp <8 x i32> %a to <8 x double>
+  %3 = select <8 x i1> %1, <8 x double> %2, <8 x double> zeroinitializer
+  ret <8 x double> %3
+}
 
 define <8 x i32> @fptosi01(<8 x double> %a) {
 ; ALL-LABEL: fptosi01:
@@ -574,6 +606,40 @@ define <16 x double> @uitof64(<16 x i32> %a) nounwind {
 ; SKX-NEXT:    retq
   %b = uitofp <16 x i32> %a to <16 x double>
   ret <16 x double> %b
+}
+define <8 x double> @uitof64_mask(<8 x double> %a, <8 x i32> %b, i8 %c) nounwind {
+; KNL-LABEL: uitof64_mask:
+; KNL:       ## BB#0:
+; KNL-NEXT:    kmovw %edi, %k1
+; KNL-NEXT:    vcvtudq2pd %ymm1, %zmm0 {%k1}
+; KNL-NEXT:    retq
+;
+; SKX-LABEL: uitof64_mask:
+; SKX:       ## BB#0:
+; SKX-NEXT:    kmovb %edi, %k1
+; SKX-NEXT:    vcvtudq2pd %ymm1, %zmm0 {%k1}
+; SKX-NEXT:    retq
+  %1 = bitcast i8 %c to <8 x i1>
+  %2 = uitofp <8 x i32> %b to <8 x double>
+  %3 = select <8 x i1> %1, <8 x double> %2, <8 x double> %a
+  ret <8 x double> %3
+}
+define <8 x double> @uitof64_maskz(<8 x i32> %a, i8 %b) nounwind {
+; KNL-LABEL: uitof64_maskz:
+; KNL:       ## BB#0:
+; KNL-NEXT:    kmovw %edi, %k1
+; KNL-NEXT:    vcvtudq2pd %ymm0, %zmm0 {%k1} {z}
+; KNL-NEXT:    retq
+;
+; SKX-LABEL: uitof64_maskz:
+; SKX:       ## BB#0:
+; SKX-NEXT:    kmovb %edi, %k1
+; SKX-NEXT:    vcvtudq2pd %ymm0, %zmm0 {%k1} {z}
+; SKX-NEXT:    retq
+  %1 = bitcast i8 %b to <8 x i1>
+  %2 = uitofp <8 x i32> %a to <8 x double>
+  %3 = select <8 x i1> %1, <8 x double> %2, <8 x double> zeroinitializer
+  ret <8 x double> %3
 }
 
 define <4 x double> @uitof64_256(<4 x i32> %a) nounwind {
@@ -856,9 +922,7 @@ define <2 x float> @sitofp_2i1_float(<2 x float> %a) {
 ; KNL:       ## BB#0:
 ; KNL-NEXT:    vxorps %xmm1, %xmm1, %xmm1
 ; KNL-NEXT:    vcmpltps %xmm0, %xmm1, %xmm0
-; KNL-NEXT:    vpmovzxdq {{.*#+}} xmm0 = xmm0[0],zero,xmm0[1],zero
-; KNL-NEXT:    vpsllq $32, %xmm0, %xmm0
-; KNL-NEXT:    vpshufd {{.*#+}} xmm0 = xmm0[1,3,2,3]
+; KNL-NEXT:    vinsertps {{.*#+}} xmm0 = xmm0[0,1],zero,xmm0[1]
 ; KNL-NEXT:    vcvtdq2ps %xmm0, %xmm0
 ; KNL-NEXT:    retq
 ;
@@ -973,7 +1037,7 @@ define <8 x float> @uitofp_8i1_float(<8 x i32> %a) {
 ;
 ; SKX-LABEL: uitofp_8i1_float:
 ; SKX:       ## BB#0:
-; SKX-NEXT:    vpxord %ymm1, %ymm1, %ymm1
+; SKX-NEXT:    vpxor %ymm1, %ymm1, %ymm1
 ; SKX-NEXT:    vpcmpgtd %ymm0, %ymm1, %k1
 ; SKX-NEXT:    vpbroadcastd {{.*}}(%rip), %ymm0 {%k1} {z}
 ; SKX-NEXT:    vcvtudq2ps %ymm0, %ymm0
@@ -996,7 +1060,7 @@ define <8 x double> @uitofp_8i1_double(<8 x i32> %a) {
 ;
 ; SKX-LABEL: uitofp_8i1_double:
 ; SKX:       ## BB#0:
-; SKX-NEXT:    vpxord %ymm1, %ymm1, %ymm1
+; SKX-NEXT:    vpxor %ymm1, %ymm1, %ymm1
 ; SKX-NEXT:    vpcmpgtd %ymm0, %ymm1, %k1
 ; SKX-NEXT:    vpbroadcastd {{.*}}(%rip), %ymm0 {%k1} {z}
 ; SKX-NEXT:    vcvtudq2pd %ymm0, %zmm0
@@ -1017,7 +1081,7 @@ define <4 x float> @uitofp_4i1_float(<4 x i32> %a) {
 ;
 ; SKX-LABEL: uitofp_4i1_float:
 ; SKX:       ## BB#0:
-; SKX-NEXT:    vpxord %xmm1, %xmm1, %xmm1
+; SKX-NEXT:    vpxor %xmm1, %xmm1, %xmm1
 ; SKX-NEXT:    vpcmpgtd %xmm0, %xmm1, %k1
 ; SKX-NEXT:    vpbroadcastd {{.*}}(%rip), %xmm0 {%k1} {z}
 ; SKX-NEXT:    vcvtudq2ps %xmm0, %xmm0
@@ -1038,7 +1102,7 @@ define <4 x double> @uitofp_4i1_double(<4 x i32> %a) {
 ;
 ; SKX-LABEL: uitofp_4i1_double:
 ; SKX:       ## BB#0:
-; SKX-NEXT:    vpxord %xmm1, %xmm1, %xmm1
+; SKX-NEXT:    vpxor %xmm1, %xmm1, %xmm1
 ; SKX-NEXT:    vpcmpgtd %xmm0, %xmm1, %k1
 ; SKX-NEXT:    vpbroadcastd {{.*}}(%rip), %xmm0 {%k1} {z}
 ; SKX-NEXT:    vcvtudq2pd %xmm0, %ymm0
@@ -1067,7 +1131,7 @@ define <2 x float> @uitofp_2i1_float(<2 x i32> %a) {
 ;
 ; SKX-LABEL: uitofp_2i1_float:
 ; SKX:       ## BB#0:
-; SKX-NEXT:    vpxord %xmm1, %xmm1, %xmm1
+; SKX-NEXT:    vpxor %xmm1, %xmm1, %xmm1
 ; SKX-NEXT:    vpblendd {{.*#+}} xmm0 = xmm0[0],xmm1[1],xmm0[2],xmm1[3]
 ; SKX-NEXT:    vpcmpltuq %xmm1, %xmm0, %k1
 ; SKX-NEXT:    vpbroadcastd {{.*}}(%rip), %xmm0 {%k1} {z}
@@ -1091,7 +1155,7 @@ define <2 x double> @uitofp_2i1_double(<2 x i32> %a) {
 ;
 ; SKX-LABEL: uitofp_2i1_double:
 ; SKX:       ## BB#0:
-; SKX-NEXT:    vpxord %xmm1, %xmm1, %xmm1
+; SKX-NEXT:    vpxor %xmm1, %xmm1, %xmm1
 ; SKX-NEXT:    vpblendd {{.*#+}} xmm0 = xmm0[0],xmm1[1],xmm0[2],xmm1[3]
 ; SKX-NEXT:    vpcmpltuq %xmm1, %xmm0, %k1
 ; SKX-NEXT:    vmovdqa64 {{.*}}(%rip), %xmm0 {%k1} {z}

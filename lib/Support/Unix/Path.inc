@@ -53,7 +53,7 @@
 #include <sys/attr.h>
 #endif
 
-// Both stdio.h and cstdio are included via different pathes and
+// Both stdio.h and cstdio are included via different paths and
 // stdcxx's cstdio doesn't include stdio.h, so it doesn't #undef the macros
 // either.
 #undef ferror
@@ -280,6 +280,19 @@ std::error_code create_link(const Twine &to, const Twine &from) {
   StringRef t = to.toNullTerminatedStringRef(to_storage);
 
   if (::symlink(t.begin(), f.begin()) == -1)
+    return std::error_code(errno, std::generic_category());
+
+  return std::error_code();
+}
+
+std::error_code create_hard_link(const Twine &to, const Twine &from) {
+  // Get arguments.
+  SmallString<128> from_storage;
+  SmallString<128> to_storage;
+  StringRef f = from.toNullTerminatedStringRef(from_storage);
+  StringRef t = to.toNullTerminatedStringRef(to_storage);
+
+  if (::link(t.begin(), f.begin()) == -1)
     return std::error_code(errno, std::generic_category());
 
   return std::error_code();

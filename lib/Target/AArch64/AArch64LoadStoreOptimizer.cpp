@@ -767,6 +767,7 @@ AArch64LoadStoreOpt::promoteLoadFromStore(MachineBasicBlock::iterator LoadI,
     // Remove the load, if the destination register of the loads is the same
     // register for stored value.
     if (StRt == LdRt && LoadSize == 8) {
+      StoreI->clearRegisterKills(StRt, TRI);
       DEBUG(dbgs() << "Remove load instruction:\n    ");
       DEBUG(LoadI->print(dbgs()));
       DEBUG(dbgs() << "\n");
@@ -831,6 +832,8 @@ AArch64LoadStoreOpt::promoteLoadFromStore(MachineBasicBlock::iterator LoadI,
               .addImm(Imms);
     }
   }
+  StoreI->clearRegisterKills(StRt, TRI);
+
   (void)BitExtMI;
 
   DEBUG(dbgs() << "Promoting load by replacing :\n    ");
@@ -863,8 +866,10 @@ static void trackRegDefsUses(const MachineInstr &MI, BitVector &ModifiedRegs,
     if (!Reg)
       continue;
     if (MO.isDef()) {
-      for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
-        ModifiedRegs.set(*AI);
+      // WZR/XZR are not modified even when used as a destination register.
+      if (Reg != AArch64::WZR && Reg != AArch64::XZR)
+        for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
+          ModifiedRegs.set(*AI);
     } else {
       assert(MO.isUse() && "Reg operand not a def and not a use?!?");
       for (MCRegAliasIterator AI(Reg, TRI, true); AI.isValid(); ++AI)
@@ -1465,6 +1470,9 @@ bool AArch64LoadStoreOpt::tryToPairLdStInst(MachineBasicBlock::iterator &MBBI) {
   bool IsUnscaled = TII->isUnscaledLdSt(MI);
   int Offset = getLdStOffsetOp(MI).getImm();
   int OffsetStride = IsUnscaled ? getMemScale(MI) : 1;
+  // Allow one more for offset.
+  if (Offset > 0)
+    Offset -= OffsetStride;
   if (!inBoundsForPair(IsUnscaled, Offset, OffsetStride))
     return false;
 

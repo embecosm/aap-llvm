@@ -43,6 +43,15 @@ def IntrWriteMem : IntrinsicProperty;
 // reads from and (possibly volatile) writes to memory, it has no side effects.
 def IntrArgMemOnly : IntrinsicProperty;
 
+// IntrInaccessibleMemOnly -- This intrinsic only accesses memory that is not
+// accessible by the module being compiled. This is a weaker form of IntrNoMem.
+def IntrInaccessibleMemOnly : IntrinsicProperty;
+
+// IntrInaccessibleMemOrArgMemOnly -- This intrinsic only accesses memory that
+// its pointer-typed arguments point to or memory that is not accessible
+// by the module being compiled. This is a weaker form of IntrArgMemOnly.
+def IntrInaccessibleMemOrArgMemOnly : IntrinsicProperty;
+
 // Commutative - This intrinsic is commutative: X op Y == Y op X.
 def Commutative : IntrinsicProperty;
 
@@ -749,6 +758,15 @@ def int_type_checked_load : Intrinsic<[llvm_ptr_ty, llvm_i1_ty],
 
 def int_load_relative: Intrinsic<[llvm_ptr_ty], [llvm_ptr_ty, llvm_anyint_ty],
                                  [IntrReadMem, IntrArgMemOnly]>;
+
+//===------ Memory intrinsics with element-wise atomicity guarantees ------===//
+//
+
+def int_memcpy_element_atomic  : Intrinsic<[],
+                                           [llvm_anyptr_ty, llvm_anyptr_ty,
+                                            llvm_i64_ty, llvm_i32_ty],
+                                 [IntrArgMemOnly, NoCapture<0>, NoCapture<1>,
+                                  WriteOnly<0>, ReadOnly<1>]>;
 
 //===----------------------------------------------------------------------===//
 // Target-specific intrinsics

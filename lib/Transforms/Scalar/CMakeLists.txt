@@ -39,6 +39,7 @@ add_llvm_library(LLVMScalarOpts
   MemCpyOptimizer.cpp
   MergedLoadStoreMotion.cpp
   NaryReassociate.cpp
+  NewGVN.cpp
   PartiallyInlineLibCalls.cpp
   PlaceSafepoints.cpp
   Reassociate.cpp
@@ -59,6 +60,7 @@ add_llvm_library(LLVMScalarOpts
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms/Scalar
-  )
 
-add_dependencies(LLVMScalarOpts intrinsics_gen)
+  DEPENDS
+  intrinsics_gen
+  )

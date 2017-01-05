@@ -122,11 +122,16 @@ private:
 
   struct HandlerInfo {
     AsmPrinterHandler *Handler;
-    const char *TimerName, *TimerGroupName;
+    const char *TimerName;
+    const char *TimerDescription;
+    const char *TimerGroupName;
+    const char *TimerGroupDescription;
     HandlerInfo(AsmPrinterHandler *Handler, const char *TimerName,
-                const char *TimerGroupName)
+                const char *TimerDescription, const char *TimerGroupName,
+                const char *TimerGroupDescription)
         : Handler(Handler), TimerName(TimerName),
-          TimerGroupName(TimerGroupName) {}
+          TimerDescription(TimerDescription), TimerGroupName(TimerGroupName),
+          TimerGroupDescription(TimerGroupDescription) {}
   };
   /// A vector of all debug/EH info emitters we should use. This vector
   /// maintains ownership of the emitters.
@@ -143,6 +148,9 @@ public:
 
   DwarfDebug *getDwarfDebug() { return DD; }
   DwarfDebug *getDwarfDebug() const { return DD; }
+
+  uint16_t getDwarfVersion() const;
+  void setDwarfVersion(uint16_t Version);
 
   bool isPositionIndependent() const;
 
@@ -200,6 +208,8 @@ public:
     SledKind Kind;
     bool AlwaysInstrument;
     const class Function *Fn;
+
+    void emit(int, MCStreamer *, const MCSymbol *) const;
   };
 
   // All the sleds to be emitted.
@@ -207,6 +217,9 @@ public:
 
   // Helper function to record a given XRay sled.
   void recordSled(MCSymbol *Sled, const MachineInstr &MI, SledKind Kind);
+
+  /// Emit a table with all XRay instrumentation points.
+  void emitXRayTable();
 
   //===------------------------------------------------------------------===//
   // MachineFunctionPass Implementation.
@@ -459,10 +472,6 @@ public:
 
   /// Get the value for DW_AT_APPLE_isa. Zero if no isa encoding specified.
   virtual unsigned getISAEncoding() { return 0; }
-
-  /// EmitDwarfRegOp - Emit a dwarf register operation.
-  virtual void EmitDwarfRegOp(ByteStreamer &BS,
-                              const MachineLocation &MLoc) const;
 
   //===------------------------------------------------------------------===//
   // Dwarf Lowering Routines

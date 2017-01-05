@@ -30,6 +30,7 @@
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -43,6 +44,17 @@ using namespace llvm;
 using namespace cl;
 
 #define DEBUG_TYPE "commandline"
+
+#if LLVM_ENABLE_ABI_BREAKING_CHECKS
+namespace llvm {
+// If LLVM_ENABLE_ABI_BREAKING_CHECKS is set the flag -mllvm -reverse-iterate
+// can be used to toggle forward/reverse iteration of unordered containers.
+// This will help uncover differences in codegen caused due to undefined
+// iteration order.
+static cl::opt<bool, true> ReverseIteration("reverse-iterate",
+  cl::location(ReverseIterate<bool>::value));
+}
+#endif
 
 //===----------------------------------------------------------------------===//
 // Template instantiations and anchors.
@@ -361,6 +373,7 @@ void Option::removeArgument() { GlobalParser->removeOption(this); }
 void Option::setArgStr(StringRef S) {
   if (FullyInitialized)
     GlobalParser->updateArgStr(this, S);
+  assert(S[0] != '-' && "Option can't start with '-");
   ArgStr = S;
 }
 
@@ -911,6 +924,11 @@ static bool ExpandResponseFile(StringRef FName, StringSaver &Saver,
           if (llvm::sys::path::is_relative(FileName)) {
             SmallString<128> ResponseFile;
             ResponseFile.append(1, '@');
+            if (llvm::sys::path::is_relative(FName)) {
+              SmallString<128> curr_dir;
+              llvm::sys::fs::current_path(curr_dir);
+              ResponseFile.append(curr_dir.str());
+            }
             llvm::sys::path::append(
                 ResponseFile, llvm::sys::path::parent_path(FName), FileName);
             NewArgv[I] = Saver.save(ResponseFile.c_str()).data();

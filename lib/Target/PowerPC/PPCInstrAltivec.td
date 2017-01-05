@@ -243,7 +243,7 @@ def VSPLTISB_get_imm : SDNodeXForm<build_vector, [{
   return PPC::get_VSPLTI_elt(N, 1, *CurDAG);
 }]>;
 def vecspltisb : PatLeaf<(build_vector), [{
-  return PPC::get_VSPLTI_elt(N, 1, *CurDAG).getNode() != 0;
+  return PPC::get_VSPLTI_elt(N, 1, *CurDAG).getNode() != nullptr;
 }], VSPLTISB_get_imm>;
 
 // VSPLTISH_get_imm xform function: convert build_vector to VSPLTISH imm.
@@ -251,7 +251,7 @@ def VSPLTISH_get_imm : SDNodeXForm<build_vector, [{
   return PPC::get_VSPLTI_elt(N, 2, *CurDAG);
 }]>;
 def vecspltish : PatLeaf<(build_vector), [{
-  return PPC::get_VSPLTI_elt(N, 2, *CurDAG).getNode() != 0;
+  return PPC::get_VSPLTI_elt(N, 2, *CurDAG).getNode() != nullptr;
 }], VSPLTISH_get_imm>;
 
 // VSPLTISW_get_imm xform function: convert build_vector to VSPLTISW imm.
@@ -259,7 +259,7 @@ def VSPLTISW_get_imm : SDNodeXForm<build_vector, [{
   return PPC::get_VSPLTI_elt(N, 4, *CurDAG);
 }]>;
 def vecspltisw : PatLeaf<(build_vector), [{
-  return PPC::get_VSPLTI_elt(N, 4, *CurDAG).getNode() != 0;
+  return PPC::get_VSPLTI_elt(N, 4, *CurDAG).getNode() != nullptr;
 }], VSPLTISW_get_imm>;
 
 //===----------------------------------------------------------------------===//
@@ -1315,8 +1315,14 @@ let isCodeGenOnly = 1 in {
 }
 
 // Vector Integer Negate
-def VNEGW : VX_VT5_EO5_VB5<1538, 6, "vnegw", []>;
-def VNEGD : VX_VT5_EO5_VB5<1538, 7, "vnegd", []>;
+def VNEGW : VX_VT5_EO5_VB5<1538, 6, "vnegw",
+                           [(set v4i32:$vD,
+                            (sub (v4i32 immAllZerosV), v4i32:$vB))]>;
+
+def VNEGD : VX_VT5_EO5_VB5<1538, 7, "vnegd",
+                           [(set v2i64:$vD,
+                            (sub (v2i64 (bitconvert (v4i32 immAllZerosV))),
+                                  v2i64:$vB))]>;
 
 // Vector Parity Byte
 def VPRTYBW : VX_VT5_EO5_VB5<1538, 8, "vprtybw", [(set v4i32:$vD,

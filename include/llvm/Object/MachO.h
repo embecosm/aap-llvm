@@ -251,8 +251,8 @@ public:
   // TODO: Would be useful to have an iterator based version
   // of the load command interface too.
 
-  basic_symbol_iterator symbol_begin_impl() const override;
-  basic_symbol_iterator symbol_end_impl() const override;
+  basic_symbol_iterator symbol_begin() const override;
+  basic_symbol_iterator symbol_end() const override;
 
   // MachO specific.
   basic_symbol_iterator getSymbolByIndex(unsigned Index) const;
@@ -413,7 +413,8 @@ public:
 
   static Triple::ArchType getArch(uint32_t CPUType);
   static Triple getArchTriple(uint32_t CPUType, uint32_t CPUSubType,
-                              const char **McpuDefault = nullptr);
+                              const char **McpuDefault = nullptr,
+                              const char **ArchFlag = nullptr);
   static bool isValidArch(StringRef ArchFlag);
   static Triple getHostArch();
 

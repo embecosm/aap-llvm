@@ -40,6 +40,7 @@ set(sources
   X86InterleavedAccess.cpp
   X86InstrFMA3Info.cpp
   X86InstrInfo.cpp
+  X86EvexToVex.cpp
   X86MCInstLower.cpp
   X86MachineFunctionInfo.cpp
   X86OptimizeLEAs.cpp
@@ -54,6 +55,7 @@ set(sources
   X86VZeroUpper.cpp
   X86WinAllocaExpander.cpp
   X86WinEHState.cpp
+  X86CallingConv.cpp
   ${GLOBAL_ISEL_BUILD_FILES}
   )
 

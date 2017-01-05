@@ -37,6 +37,8 @@
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCSection.h"
+#include "llvm/MC/MCSectionELF.h"
+#include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbolELF.h"
 #include "llvm/MC/MCValue.h"
@@ -55,10 +57,15 @@ using namespace llvm;
 
 #define DEBUG_TYPE "asm-printer"
 
-static const char *const DWARFGroupName = "DWARF Emission";
-static const char *const DbgTimerName = "Debug Info Emission";
-static const char *const EHTimerName = "DWARF Exception Writer";
-static const char *const CodeViewLineTablesGroupName = "CodeView Line Tables";
+static const char *const DWARFGroupName = "dwarf";
+static const char *const DWARFGroupDescription = "DWARF Emission";
+static const char *const DbgTimerName = "emit";
+static const char *const DbgTimerDescription = "Debug Info Emission";
+static const char *const EHTimerName = "write_exception";
+static const char *const EHTimerDescription = "DWARF Exception Writer";
+static const char *const CodeViewLineTablesGroupName = "linetables";
+static const char *const CodeViewLineTablesGroupDescription =
+  "CodeView Line Tables";
 
 STATISTIC(EmittedInsts, "Number of machine instrs printed");
 
@@ -247,15 +254,18 @@ bool AsmPrinter::doInitialization(Module &M) {
 
   if (MAI->doesSupportDebugInformation()) {
     bool EmitCodeView = MMI->getModule()->getCodeViewFlag();
-    if (EmitCodeView && TM.getTargetTriple().isKnownWindowsMSVCEnvironment()) {
+    if (EmitCodeView && (TM.getTargetTriple().isKnownWindowsMSVCEnvironment() ||
+                         TM.getTargetTriple().isWindowsItaniumEnvironment())) {
       Handlers.push_back(HandlerInfo(new CodeViewDebug(this),
-                                     DbgTimerName,
-                                     CodeViewLineTablesGroupName));
+                                     DbgTimerName, DbgTimerDescription,
+                                     CodeViewLineTablesGroupName,
+                                     CodeViewLineTablesGroupDescription));
     }
     if (!EmitCodeView || MMI->getModule()->getDwarfVersion()) {
       DD = new DwarfDebug(this, &M);
       DD->beginModule();
-      Handlers.push_back(HandlerInfo(DD, DbgTimerName, DWARFGroupName));
+      Handlers.push_back(HandlerInfo(DD, DbgTimerName, DbgTimerDescription,
+                                     DWARFGroupName, DWARFGroupDescription));
     }
   }
 
@@ -283,7 +293,8 @@ bool AsmPrinter::doInitialization(Module &M) {
     break;
   }
   if (ES)
-    Handlers.push_back(HandlerInfo(ES, EHTimerName, DWARFGroupName));
+    Handlers.push_back(HandlerInfo(ES, EHTimerName, EHTimerDescription,
+                                   DWARFGroupName, DWARFGroupDescription));
   return false;
 }
 
@@ -341,7 +352,7 @@ void AsmPrinter::getNameWithPrefix(SmallVectorImpl<char> &Name,
 }
 
 MCSymbol *AsmPrinter::getSymbol(const GlobalValue *GV) const {
-  return TM.getSymbol(GV, getObjFileLowering().getMangler());
+  return TM.getSymbol(GV);
 }
 
 /// EmitGlobalVariable - Emit the specified global variable to the .s file.
@@ -404,7 +415,9 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
   unsigned AlignLog = getGVAlignmentLog2(GV, DL);
 
   for (const HandlerInfo &HI : Handlers) {
-    NamedRegionTimer T(HI.TimerName, HI.TimerGroupName, TimePassesIsEnabled);
+    NamedRegionTimer T(HI.TimerName, HI.TimerDescription,
+                       HI.TimerGroupName, HI.TimerGroupDescription,
+                       TimePassesIsEnabled);
     HI.Handler->setSymbolSize(GVSym, Size);
   }
 
@@ -531,7 +544,7 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
 
   if (MAI->hasDotTypeDotSizeDirective())
     // .size foo, 42
-    OutStreamer->emitELFSize(cast<MCSymbolELF>(EmittedInitSym),
+    OutStreamer->emitELFSize(EmittedInitSym,
                              MCConstantExpr::create(Size, OutContext));
 
   OutStreamer->AddBlankLine();
@@ -593,7 +606,8 @@ void AsmPrinter::EmitFunctionHeader() {
 
   // Emit pre-function debug and/or EH information.
   for (const HandlerInfo &HI : Handlers) {
-    NamedRegionTimer T(HI.TimerName, HI.TimerGroupName, TimePassesIsEnabled);
+    NamedRegionTimer T(HI.TimerName, HI.TimerDescription, HI.TimerGroupName,
+                       HI.TimerGroupDescription, TimePassesIsEnabled);
     HI.Handler->beginFunction(MF);
   }
 
@@ -706,9 +720,10 @@ static bool emitDebugValueComment(const MachineInstr *MI, AsmPrinter &AP) {
   OS << V->getName();
 
   const DIExpression *Expr = MI->getDebugExpression();
-  if (Expr->isBitPiece())
-    OS << " [bit_piece offset=" << Expr->getBitPieceOffset()
-       << " size=" << Expr->getBitPieceSize() << "]";
+  auto Fragment = Expr->getFragmentInfo();
+  if (Fragment)
+    OS << " [fragment offset=" << Fragment->OffsetInBits
+       << " size=" << Fragment->SizeInBits << "]";
   OS << " <- ";
 
   // The second operand is only an offset if it's an immediate.
@@ -717,7 +732,7 @@ static bool emitDebugValueComment(const MachineInstr *MI, AsmPrinter &AP) {
 
   for (unsigned i = 0; i < Expr->getNumElements(); ++i) {
     uint64_t Op = Expr->getElement(i);
-    if (Op == dwarf::DW_OP_bit_piece) {
+    if (Op == dwarf::DW_OP_LLVM_fragment) {
       // There can't be any operands after this in a valid expression
       break;
     } else if (Deref) {
@@ -751,7 +766,7 @@ static bool emitDebugValueComment(const MachineInstr *MI, AsmPrinter &AP) {
       // There is no good way to print long double.  Convert a copy to
       // double.  Ah well, it's only a comment.
       bool ignored;
-      APF.convert(APFloat::IEEEdouble, APFloat::rmNearestTiesToEven,
+      APF.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
                   &ignored);
       OS << "(long double) " << APF.convertToDouble();
     }
@@ -814,8 +829,7 @@ void AsmPrinter::emitCFIInstruction(const MachineInstr &MI) {
   if (needsCFIMoves() == CFI_M_None)
     return;
 
-  const MachineModuleInfo &MMI = MF->getMMI();
-  const std::vector<MCCFIInstruction> &Instrs = MMI.getFrameInstructions();
+  const std::vector<MCCFIInstruction> &Instrs = MF->getFrameInstructions();
   unsigned CFIIndex = MI.getOperand(0).getCFIIndex();
   const MCCFIInstruction &CFI = Instrs[CFIIndex];
   emitCFIInstruction(CFI);
@@ -857,7 +871,8 @@ void AsmPrinter::EmitFunctionBody() {
 
       if (ShouldPrintDebugScopes) {
         for (const HandlerInfo &HI : Handlers) {
-          NamedRegionTimer T(HI.TimerName, HI.TimerGroupName,
+          NamedRegionTimer T(HI.TimerName, HI.TimerDescription,
+                             HI.TimerGroupName, HI.TimerGroupDescription,
                              TimePassesIsEnabled);
           HI.Handler->beginInstruction(&MI);
         }
@@ -901,7 +916,8 @@ void AsmPrinter::EmitFunctionBody() {
 
       if (ShouldPrintDebugScopes) {
         for (const HandlerInfo &HI : Handlers) {
-          NamedRegionTimer T(HI.TimerName, HI.TimerGroupName,
+          NamedRegionTimer T(HI.TimerName, HI.TimerDescription,
+                             HI.TimerGroupName, HI.TimerGroupDescription,
                              TimePassesIsEnabled);
           HI.Handler->endInstruction();
         }
@@ -939,8 +955,8 @@ void AsmPrinter::EmitFunctionBody() {
   // Emit target-specific gunk after the function body.
   EmitFunctionBodyEnd();
 
-  if (!MMI->getLandingPads().empty() || MMI->hasDebugInfo() ||
-      MMI->hasEHFunclets() || MAI->hasDotTypeDotSizeDirective()) {
+  if (!MF->getLandingPads().empty() || MMI->hasDebugInfo() ||
+      MF->hasEHFunclets() || MAI->hasDotTypeDotSizeDirective()) {
     // Create a symbol for the end of function.
     CurrentFnEnd = createTempSymbol("func_end");
     OutStreamer->EmitLabel(CurrentFnEnd);
@@ -954,12 +970,12 @@ void AsmPrinter::EmitFunctionBody() {
     const MCExpr *SizeExp = MCBinaryExpr::createSub(
         MCSymbolRefExpr::create(CurrentFnEnd, OutContext),
         MCSymbolRefExpr::create(CurrentFnSymForSize, OutContext), OutContext);
-    if (auto Sym = dyn_cast<MCSymbolELF>(CurrentFnSym))
-      OutStreamer->emitELFSize(Sym, SizeExp);
+    OutStreamer->emitELFSize(CurrentFnSym, SizeExp);
   }
 
   for (const HandlerInfo &HI : Handlers) {
-    NamedRegionTimer T(HI.TimerName, HI.TimerGroupName, TimePassesIsEnabled);
+    NamedRegionTimer T(HI.TimerName, HI.TimerDescription, HI.TimerGroupName,
+                       HI.TimerGroupDescription, TimePassesIsEnabled);
     HI.Handler->markFunctionEnd();
   }
 
@@ -968,10 +984,10 @@ void AsmPrinter::EmitFunctionBody() {
 
   // Emit post-function debug and/or EH information.
   for (const HandlerInfo &HI : Handlers) {
-    NamedRegionTimer T(HI.TimerName, HI.TimerGroupName, TimePassesIsEnabled);
+    NamedRegionTimer T(HI.TimerName, HI.TimerDescription, HI.TimerGroupName,
+                       HI.TimerGroupDescription, TimePassesIsEnabled);
     HI.Handler->endFunction(MF);
   }
-  MMI->EndFunction();
 
   OutStreamer->AddBlankLine();
 }
@@ -1095,8 +1111,7 @@ void AsmPrinter::emitGlobalIndirectSymbol(Module &M,
         (!BaseObject || BaseObject->hasPrivateLinkage())) {
       const DataLayout &DL = M.getDataLayout();
       uint64_t Size = DL.getTypeAllocSize(GA->getValueType());
-      OutStreamer->emitELFSize(cast<MCSymbolELF>(Name),
-                               MCConstantExpr::create(Size, OutContext));
+      OutStreamer->emitELFSize(Name, MCConstantExpr::create(Size, OutContext));
     }
   }
 }
@@ -1159,8 +1174,8 @@ bool AsmPrinter::doFinalization(Module &M) {
 
   // Finalize debug and EH information.
   for (const HandlerInfo &HI : Handlers) {
-    NamedRegionTimer T(HI.TimerName, HI.TimerGroupName,
-                       TimePassesIsEnabled);
+    NamedRegionTimer T(HI.TimerName, HI.TimerDescription, HI.TimerGroupName,
+                       HI.TimerGroupDescription, TimePassesIsEnabled);
     HI.Handler->endModule();
     delete HI.Handler;
   }
@@ -1263,8 +1278,8 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   CurrentFnBegin = nullptr;
   CurExceptionSym = nullptr;
   bool NeedsLocalForSize = MAI->needsLocalForSize();
-  if (!MMI->getLandingPads().empty() || MMI->hasDebugInfo() ||
-      MMI->hasEHFunclets() || NeedsLocalForSize) {
+  if (!MF.getLandingPads().empty() || MMI->hasDebugInfo() ||
+      MF.hasEHFunclets() || NeedsLocalForSize) {
     CurrentFnBegin = createTempSymbol("func_begin");
     if (NeedsLocalForSize)
       CurrentFnSymForSize = CurrentFnBegin;
@@ -1681,7 +1696,9 @@ void AsmPrinter::EmitLabelPlusOffset(const MCSymbol *Label, uint64_t Offset,
                                      unsigned Size,
                                      bool IsSectionRelative) const {
   if (MAI->needsDwarfSectionOffsetDirective() && IsSectionRelative) {
-    OutStreamer->EmitCOFFSecRel32(Label);
+    OutStreamer->EmitCOFFSecRel32(Label, Offset);
+    if (Size > 4)
+      OutStreamer->EmitZeros(Size - 4);
     return;
   }
 
@@ -2600,6 +2617,61 @@ AsmPrinterHandler::~AsmPrinterHandler() {}
 
 void AsmPrinterHandler::markFunctionEnd() {}
 
+// In the binary's "xray_instr_map" section, an array of these function entries
+// describes each instrumentation point.  When XRay patches your code, the index
+// into this table will be given to your handler as a patch point identifier.
+void AsmPrinter::XRayFunctionEntry::emit(int Bytes, MCStreamer *Out,
+                                         const MCSymbol *CurrentFnSym) const {
+  Out->EmitSymbolValue(Sled, Bytes);
+  Out->EmitSymbolValue(CurrentFnSym, Bytes);
+  auto Kind8 = static_cast<uint8_t>(Kind);
+  Out->EmitBytes(StringRef(reinterpret_cast<const char *>(&Kind8), 1));
+  Out->EmitBytes(
+      StringRef(reinterpret_cast<const char *>(&AlwaysInstrument), 1));
+  Out->EmitZeros(2 * Bytes - 2);  // Pad the previous two entries
+}
+
+void AsmPrinter::emitXRayTable() {
+  if (Sleds.empty())
+    return;
+
+  auto PrevSection = OutStreamer->getCurrentSectionOnly();
+  auto Fn = MF->getFunction();
+  MCSection *Section = nullptr;
+  if (MF->getSubtarget().getTargetTriple().isOSBinFormatELF()) {
+    if (Fn->hasComdat()) {
+      Section = OutContext.getELFSection("xray_instr_map", ELF::SHT_PROGBITS,
+                                         ELF::SHF_ALLOC | ELF::SHF_GROUP, 0,
+                                         Fn->getComdat()->getName());
+    } else {
+      Section = OutContext.getELFSection("xray_instr_map", ELF::SHT_PROGBITS,
+                                         ELF::SHF_ALLOC);
+    }
+  } else if (MF->getSubtarget().getTargetTriple().isOSBinFormatMachO()) {
+    Section = OutContext.getMachOSection("__DATA", "xray_instr_map", 0,
+                                         SectionKind::getReadOnlyWithRel());
+  } else {
+    llvm_unreachable("Unsupported target");
+  }
+
+  // Before we switch over, we force a reference to a label inside the
+  // xray_instr_map section. Since this function is always called just
+  // before the function's end, we assume that this is happening after
+  // the last return instruction.
+
+  auto WordSizeBytes = TM.getPointerSize();
+  MCSymbol *Tmp = OutContext.createTempSymbol("xray_synthetic_", true);
+  OutStreamer->EmitCodeAlignment(16);
+  OutStreamer->EmitSymbolValue(Tmp, WordSizeBytes, false);
+  OutStreamer->SwitchSection(Section);
+  OutStreamer->EmitLabel(Tmp);
+  for (const auto &Sled : Sleds)
+    Sled.emit(WordSizeBytes, OutStreamer.get(), CurrentFnSym);
+
+  OutStreamer->SwitchSection(PrevSection);
+  Sleds.clear();
+}
+
 void AsmPrinter::recordSled(MCSymbol *Sled, const MachineInstr &MI,
   SledKind Kind) {
   auto Fn = MI.getParent()->getParent()->getFunction();
@@ -2608,4 +2680,12 @@ void AsmPrinter::recordSled(MCSymbol *Sled, const MachineInstr &MI,
     Attr.isStringAttribute() && Attr.getValueAsString() == "xray-always";
   Sleds.emplace_back(
     XRayFunctionEntry{ Sled, CurrentFnSym, Kind, AlwaysInstrument, Fn });
+}
+
+uint16_t AsmPrinter::getDwarfVersion() const {
+  return OutStreamer->getContext().getDwarfVersion();
+}
+
+void AsmPrinter::setDwarfVersion(uint16_t Version) {
+  OutStreamer->getContext().setDwarfVersion(Version);
 }

@@ -28,6 +28,10 @@
 
 namespace llvm {
 
+namespace yaml {
+template <typename T> struct MappingTraits;
+}
+
 /// \brief Class to accumulate and hold information about a callee.
 struct CalleeInfo {
   enum class HotnessType : uint8_t { Unknown = 0, Cold = 1, None = 2, Hot = 3 };
@@ -41,8 +45,8 @@ struct CalleeInfo {
   }
 };
 
-/// Struct to hold value either by GUID or Value*, depending on whether this
-/// is a combined or per-module index, respectively.
+/// Struct to hold value either by GUID or GlobalValue*. Values in combined
+/// indexes as well as indirect calls are GUIDs, all others are GlobalValues.
 struct ValueInfo {
   /// The value representation used in this instance.
   enum ValueInfoKind {
@@ -53,9 +57,9 @@ struct ValueInfo {
   /// Union of the two possible value types.
   union ValueUnion {
     GlobalValue::GUID Id;
-    const Value *V;
+    const GlobalValue *GV;
     ValueUnion(GlobalValue::GUID Id) : Id(Id) {}
-    ValueUnion(const Value *V) : V(V) {}
+    ValueUnion(const GlobalValue *GV) : GV(GV) {}
   };
 
   /// The value being represented.
@@ -64,19 +68,35 @@ struct ValueInfo {
   ValueInfoKind Kind;
   /// Constructor for a GUID value
   ValueInfo(GlobalValue::GUID Id = 0) : TheValue(Id), Kind(VI_GUID) {}
-  /// Constructor for a Value* value
-  ValueInfo(const Value *V) : TheValue(V), Kind(VI_Value) {}
+  /// Constructor for a GlobalValue* value
+  ValueInfo(const GlobalValue *V) : TheValue(V), Kind(VI_Value) {}
   /// Accessor for GUID value
   GlobalValue::GUID getGUID() const {
     assert(Kind == VI_GUID && "Not a GUID type");
     return TheValue.Id;
   }
-  /// Accessor for Value* value
-  const Value *getValue() const {
+  /// Accessor for GlobalValue* value
+  const GlobalValue *getValue() const {
     assert(Kind == VI_Value && "Not a Value type");
-    return TheValue.V;
+    return TheValue.GV;
   }
   bool isGUID() const { return Kind == VI_GUID; }
+};
+
+template <> struct DenseMapInfo<ValueInfo> {
+  static inline ValueInfo getEmptyKey() { return ValueInfo((GlobalValue *)-1); }
+  static inline ValueInfo getTombstoneKey() {
+    return ValueInfo((GlobalValue *)-2);
+  }
+  static bool isEqual(ValueInfo L, ValueInfo R) {
+    if (L.isGUID() != R.isGUID())
+      return false;
+    return L.isGUID() ? (L.getGUID() == R.getGUID())
+                      : (L.getValue() == R.getValue());
+  }
+  static unsigned getHashValue(ValueInfo I) {
+    return I.isGUID() ? I.getGUID() : (uintptr_t)I.getValue();
+  }
 };
 
 /// \brief Function and variable summary information to aid decisions and
@@ -84,7 +104,7 @@ struct ValueInfo {
 class GlobalValueSummary {
 public:
   /// \brief Sububclass discriminator (for dyn_cast<> et al.)
-  enum SummaryKind { AliasKind, FunctionKind, GlobalVarKind };
+  enum SummaryKind : unsigned { AliasKind, FunctionKind, GlobalVarKind };
 
   /// Group flags (Linkage, noRename, isOptSize, etc.) as a bitfield.
   struct GVFlags {
@@ -136,6 +156,8 @@ private:
   /// Kind of summary for use in dyn_cast<> et al.
   SummaryKind Kind;
 
+  GVFlags Flags;
+
   /// This is the hash of the name of the symbol in the original file. It is
   /// identical to the GUID for global symbols, but differs for local since the
   /// GUID includes the module level id in the hash.
@@ -150,8 +172,6 @@ private:
   /// module path string table.
   StringRef ModulePath;
 
-  GVFlags Flags;
-
   /// List of values referenced by this global value's definition
   /// (either by the initializer of a global variable, or referenced
   /// from within a function). This does not include functions called, which
@@ -160,7 +180,8 @@ private:
 
 protected:
   /// GlobalValueSummary constructor.
-  GlobalValueSummary(SummaryKind K, GVFlags Flags) : Kind(K), Flags(Flags) {}
+  GlobalValueSummary(SummaryKind K, GVFlags Flags, std::vector<ValueInfo> Refs)
+      : Kind(K), Flags(Flags), RefEdgeList(std::move(Refs)) {}
 
 public:
   virtual ~GlobalValueSummary() = default;
@@ -222,24 +243,8 @@ public:
     Flags.HasInlineAsmMaybeReferencingInternal = true;
   }
 
-  /// Record a reference from this global value to the global value identified
-  /// by \p RefGUID.
-  void addRefEdge(GlobalValue::GUID RefGUID) { RefEdgeList.push_back(RefGUID); }
-
-  /// Record a reference from this global value to the global value identified
-  /// by \p RefV.
-  void addRefEdge(const Value *RefV) { RefEdgeList.push_back(RefV); }
-
-  /// Record a reference from this global value to each global value identified
-  /// in \p RefEdges.
-  void addRefEdges(DenseSet<const Value *> &RefEdges) {
-    for (auto &RI : RefEdges)
-      addRefEdge(RI);
-  }
-
   /// Return the list of values referenced by this global value definition.
-  std::vector<ValueInfo> &refs() { return RefEdgeList; }
-  const std::vector<ValueInfo> &refs() const { return RefEdgeList; }
+  ArrayRef<ValueInfo> refs() const { return RefEdgeList; }
 };
 
 /// \brief Alias summary information.
@@ -248,7 +253,8 @@ class AliasSummary : public GlobalValueSummary {
 
 public:
   /// Summary constructors.
-  AliasSummary(GVFlags Flags) : GlobalValueSummary(AliasKind, Flags) {}
+  AliasSummary(GVFlags Flags, std::vector<ValueInfo> Refs)
+      : GlobalValueSummary(AliasKind, Flags, std::move(Refs)) {}
 
   /// Check if this is an alias summary.
   static bool classof(const GlobalValueSummary *GVS) {
@@ -282,10 +288,17 @@ private:
   /// List of <CalleeValueInfo, CalleeInfo> call edge pairs from this function.
   std::vector<EdgeTy> CallGraphEdgeList;
 
+  /// List of type identifiers used by this function, represented as GUIDs.
+  std::vector<GlobalValue::GUID> TypeIdList;
+
 public:
   /// Summary constructors.
-  FunctionSummary(GVFlags Flags, unsigned NumInsts)
-      : GlobalValueSummary(FunctionKind, Flags), InstCount(NumInsts) {}
+  FunctionSummary(GVFlags Flags, unsigned NumInsts, std::vector<ValueInfo> Refs,
+                  std::vector<EdgeTy> CGEdges,
+                  std::vector<GlobalValue::GUID> TypeIds)
+      : GlobalValueSummary(FunctionKind, Flags, std::move(Refs)),
+        InstCount(NumInsts), CallGraphEdgeList(std::move(CGEdges)),
+        TypeIdList(std::move(TypeIds)) {}
 
   /// Check if this is a function summary.
   static bool classof(const GlobalValueSummary *GVS) {
@@ -295,38 +308,11 @@ public:
   /// Get the instruction count recorded for this function.
   unsigned instCount() const { return InstCount; }
 
-  /// Record a call graph edge from this function to the function identified
-  /// by \p CalleeGUID, with \p CalleeInfo including the cumulative profile
-  /// count (across all calls from this function) or 0 if no PGO.
-  void addCallGraphEdge(GlobalValue::GUID CalleeGUID, CalleeInfo Info) {
-    CallGraphEdgeList.push_back(std::make_pair(CalleeGUID, Info));
-  }
-
-  /// Record a call graph edge from this function to each function GUID recorded
-  /// in \p CallGraphEdges.
-  void
-  addCallGraphEdges(DenseMap<GlobalValue::GUID, CalleeInfo> &CallGraphEdges) {
-    for (auto &EI : CallGraphEdges)
-      addCallGraphEdge(EI.first, EI.second);
-  }
-
-  /// Record a call graph edge from this function to the function identified
-  /// by \p CalleeV, with \p CalleeInfo including the cumulative profile
-  /// count (across all calls from this function) or 0 if no PGO.
-  void addCallGraphEdge(const Value *CalleeV, CalleeInfo Info) {
-    CallGraphEdgeList.push_back(std::make_pair(CalleeV, Info));
-  }
-
-  /// Record a call graph edge from this function to each function recorded
-  /// in \p CallGraphEdges.
-  void addCallGraphEdges(DenseMap<const Value *, CalleeInfo> &CallGraphEdges) {
-    for (auto &EI : CallGraphEdges)
-      addCallGraphEdge(EI.first, EI.second);
-  }
-
   /// Return the list of <CalleeValueInfo, CalleeInfo> pairs.
-  std::vector<EdgeTy> &calls() { return CallGraphEdgeList; }
-  const std::vector<EdgeTy> &calls() const { return CallGraphEdgeList; }
+  ArrayRef<EdgeTy> calls() const { return CallGraphEdgeList; }
+
+  /// Returns the list of type identifiers used by this function.
+  ArrayRef<GlobalValue::GUID> type_tests() const { return TypeIdList; }
 };
 
 /// \brief Global variable summary information to aid decisions and
@@ -339,12 +325,37 @@ class GlobalVarSummary : public GlobalValueSummary {
 
 public:
   /// Summary constructors.
-  GlobalVarSummary(GVFlags Flags) : GlobalValueSummary(GlobalVarKind, Flags) {}
+  GlobalVarSummary(GVFlags Flags, std::vector<ValueInfo> Refs)
+      : GlobalValueSummary(GlobalVarKind, Flags, std::move(Refs)) {}
 
   /// Check if this is a global variable summary.
   static bool classof(const GlobalValueSummary *GVS) {
     return GVS->getSummaryKind() == GlobalVarKind;
   }
+};
+
+struct TypeTestResolution {
+  /// Specifies which kind of type check we should emit for this byte array.
+  /// See http://clang.llvm.org/docs/ControlFlowIntegrityDesign.html for full
+  /// details on each kind of check; the enumerators are described with
+  /// reference to that document.
+  enum Kind {
+    Unsat,     ///< Unsatisfiable type (i.e. no global has this type metadata)
+    ByteArray, ///< Test a byte array (first example)
+    Inline,    ///< Inlined bit vector ("Short Inline Bit Vectors")
+    Single,    ///< Single element (last example in "Short Inline Bit Vectors")
+    AllOnes,   ///< All-ones bit vector ("Eliminating Bit Vector Checks for
+               ///  All-Ones Bit Vectors")
+  } TheKind = Unsat;
+
+  /// Range of the size expressed as a bit width. For example, if the size is in
+  /// range [0,256), this number will be 8. This helps generate the most compact
+  /// instruction sequences.
+  unsigned SizeBitWidth = 0;
+};
+
+struct TypeIdSummary {
+  TypeTestResolution TTRes;
 };
 
 /// 160 bits SHA1
@@ -386,6 +397,14 @@ private:
 
   /// Holds strings for combined index, mapping to the corresponding module ID.
   ModulePathStringTableTy ModulePathStringTable;
+
+  /// Mapping from type identifiers to summary information for that type
+  /// identifier.
+  // FIXME: Add bitcode read/write support for this field.
+  std::map<std::string, TypeIdSummary> TypeIdMap;
+
+  // YAML I/O support.
+  friend yaml::MappingTraits<ModuleSummaryIndex>;
 
 public:
   gvsummary_iterator begin() { return GlobalValueMap.begin(); }
