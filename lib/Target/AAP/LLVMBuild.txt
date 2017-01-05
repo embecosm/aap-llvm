@@ -1,4 +1,4 @@
-;===- ./lib/Target/AAP/LLVMBuild.txt -------------------------*- Conf -*--===;
+;===- ./lib/Target/AAP/LLVMBuild.txt ---------------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
