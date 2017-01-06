@@ -257,28 +257,6 @@ static AAPCC::CondCode getAAPCondCode(ISD::CondCode CC) {
   }
 }
 
-// Map the generic BR_CC instruction to a specific branch instruction based on
-// the provided AAP condition code. This always maps to a long instruction.
-static unsigned getBranchOpForCondition(AAPCC::CondCode CC) {
-  switch (CC) {
-  case AAPCC::COND_EQ:
-    return AAP::BEQ_;
-  case AAPCC::COND_NE:
-    return AAP::BNE_;
-  case AAPCC::COND_LTS:
-    return AAP::BLTS_;
-  case AAPCC::COND_LES:
-    return AAP::BLES_;
-  case AAPCC::COND_LTU:
-    return AAP::BLTU_;
-  case AAPCC::COND_LEU:
-    return AAP::BLEU_;
-  default:
-    llvm_unreachable("Unknown condition code!");
-    return 0;
-  }
-}
-
 SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
   SDValue Chain = Op.getOperand(0);
@@ -751,7 +729,8 @@ AAPTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
 
 MachineBasicBlock *AAPTargetLowering::emitBrCC(MachineInstr &MI,
                                                MachineBasicBlock *MBB) const {
-  const auto &TII = *MBB->getParent()->getSubtarget().getInstrInfo();
+  const auto &STI = MBB->getParent()->getSubtarget();
+  const auto &TII = *static_cast<const AAPInstrInfo*>(STI.getInstrInfo());
   DebugLoc DL = MI.getDebugLoc();
   AAPCC::CondCode CC = (AAPCC::CondCode)MI.getOperand(0).getImm();
 
@@ -759,7 +738,7 @@ MachineBasicBlock *AAPTargetLowering::emitBrCC(MachineInstr &MI,
   unsigned RhsReg = MI.getOperand(2).getReg();
   MachineBasicBlock *TargetMBB = MI.getOperand(3).getMBB();
 
-  unsigned BranchOp = getBranchOpForCondition(CC);
+  unsigned BranchOp = TII.getBranchOpcodeFromCond(CC);
   BuildMI(*MBB, &MI, DL, TII.get(BranchOp))
       .addMBB(TargetMBB)
       .addReg(LhsReg)
@@ -772,7 +751,8 @@ MachineBasicBlock *AAPTargetLowering::emitBrCC(MachineInstr &MI,
 MachineBasicBlock *
 AAPTargetLowering::emitSelectCC(MachineInstr &MI,
                                 MachineBasicBlock *MBB) const {
-  const auto &TII = *MBB->getParent()->getSubtarget().getInstrInfo();
+  const auto &STI = MBB->getParent()->getSubtarget();
+  const auto &TII = *static_cast<const AAPInstrInfo*>(STI.getInstrInfo());
   DebugLoc DL = MI.getDebugLoc();
 
   // insert a diamond control flow pattern to handle the select
@@ -797,7 +777,7 @@ AAPTargetLowering::emitSelectCC(MachineInstr &MI,
   EntryMBB->addSuccessor(SinkMBB);
 
   AAPCC::CondCode CC = (AAPCC::CondCode)MI.getOperand(5).getImm();
-  unsigned BranchOp = getBranchOpForCondition(CC);
+  unsigned BranchOp = TII.getBranchOpcodeFromCond(CC);
 
   unsigned InReg = MI.getOperand(0).getReg();
   unsigned LhsReg = MI.getOperand(1).getReg();

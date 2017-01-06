@@ -14,6 +14,7 @@
 #ifndef AAPINSTRINFO_H
 #define AAPINSTRINFO_H
 
+#include "AAP.h"
 #include "AAPRegisterInfo.h"
 #include "llvm/Target/TargetInstrInfo.h"
 
@@ -32,6 +33,9 @@ public:
   AAPInstrInfo(AAPSubtarget &STI);
 
   const TargetRegisterInfo &getRegisterInfo() const { return TRI; }
+
+  AAPCC::CondCode getCondFromBranchOpcode(unsigned Opcode) const;
+  unsigned getBranchOpcodeFromCond(AAPCC::CondCode CC) const;
 
   bool analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
                      MachineBasicBlock *&FBB,
