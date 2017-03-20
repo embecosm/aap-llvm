@@ -508,6 +508,12 @@ AAPTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
   RetOps.push_back(
       DAG.getRegister(AAPRegisterInfo::getLinkRegister(), MVT::i16));
 
+  // Add return registers to the CalleeSaveDisableRegs list.
+  MachineRegisterInfo &MRI = DAG.getMachineFunction().getRegInfo();
+  for (unsigned i = 0; i != RVLocs.size(); ++i) {
+    MRI.disableCalleeSavedRegister(RVLocs[i].getLocReg());
+  }
+
   // Copy the result values into the output registers.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
     CCValAssign &VA = RVLocs[i];
@@ -653,11 +659,20 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
                                   RegsToPass[i].second.getValueType()));
 
   // Add the caller saved registers as a register mask operand to the call
+  MachineFunction &MF = DAG.getMachineFunction();
   const TargetRegisterInfo *TRI = Subtarget.getRegisterInfo();
   const uint32_t *Mask =
       TRI->getCallPreservedMask(DAG.getMachineFunction(), CallConv);
   assert(Mask && "No call preserved mask for the calling convention");
-  Ops.push_back(DAG.getRegisterMask(Mask));
+
+  // Define a new dynamic register mask based on the exiting static mask.
+  uint32_t *RegMask = MF.allocateRegisterMask(TRI->getNumRegs());
+  unsigned RegMaskSize = (TRI->getNumRegs() + 31) / 32;
+  memcpy(RegMask, Mask, sizeof(uint32_t) * RegMaskSize);
+
+  // Create the RegMask Operand according to our dynamic mask, the dynamic
+  // mask will be updated in LowerCallResult
+  Ops.push_back(DAG.getRegisterMask(RegMask));
 
   if (InFlag.getNode())
     Ops.push_back(InFlag);
@@ -674,7 +689,7 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   // Handle result values, copying them out of physregs into vregs that we
   // return.
   return LowerCallResult(Chain, InFlag, CallConv, isVarArg, Ins, DL, DAG,
-                         InVals);
+                         InVals, RegMask);
 }
 
 /// LowerCallResult - Lower the result values of a call into the
@@ -683,8 +698,8 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
 SDValue AAPTargetLowering::LowerCallResult(
     SDValue Chain, SDValue InFlag, CallingConv::ID CallConv, bool isVarArg,
     const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &DL,
-    SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
-
+    SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals,
+    uint32_t *RegMask) const {
   // Assign locations to each value returned by this call.
   SmallVector<CCValAssign, 16> RVLocs;
   CCState CCInfo(CallConv, isVarArg, DAG.getMachineFunction(), RVLocs,
@@ -699,6 +714,13 @@ SDValue AAPTargetLowering::LowerCallResult(
                 .getValue(1);
     InFlag = Chain.getValue(2);
     InVals.push_back(Chain.getValue(0));
+  }
+
+  // For the calling convention we need to remove the used registers from
+  // the register mask
+  for (unsigned i = 0; i != RVLocs.size(); ++i) {
+    unsigned Reg = RVLocs[i].getLocReg();
+    RegMask[Reg / 32] &= ~(1u << (Reg & 32));
   }
 
   return Chain;
