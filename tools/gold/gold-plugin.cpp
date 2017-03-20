@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/CodeGen/CommandFlags.h"
@@ -105,8 +106,6 @@ static std::list<claimed_file> Modules;
 static DenseMap<int, void *> FDToLeaderHandle;
 static StringMap<ResolutionInfo> ResInfo;
 static std::vector<std::string> Cleanup;
-static llvm::TargetOptions TargetOpts;
-static size_t MaxTasks;
 
 namespace options {
   enum OutputType {
@@ -637,7 +636,7 @@ static void recordFile(std::string Filename, bool TempOutFile) {
 /// indicating whether a temp file should be generated, and an optional task id.
 /// The new filename generated is returned in \p NewFilename.
 static void getOutputFileName(SmallString<128> InFilename, bool TempOutFile,
-                              SmallString<128> &NewFilename, int TaskID = -1) {
+                              SmallString<128> &NewFilename, int TaskID) {
   if (TempOutFile) {
     std::error_code EC =
         sys::fs::createTemporaryFile("lto-llvm", "o", NewFilename);
@@ -646,7 +645,7 @@ static void getOutputFileName(SmallString<128> InFilename, bool TempOutFile,
               EC.message().c_str());
   } else {
     NewFilename = InFilename;
-    if (TaskID >= 0)
+    if (TaskID > 0)
       NewFilename += utostr(TaskID);
   }
 }
@@ -813,7 +812,7 @@ static ld_plugin_status allSymbolsReadHook() {
     Filename = output_name + ".o";
   bool SaveTemps = !Filename.empty();
 
-  MaxTasks = Lto->getMaxTasks();
+  size_t MaxTasks = Lto->getMaxTasks();
   std::vector<uintptr_t> IsTemporary(MaxTasks);
   std::vector<SmallString<128>> Filenames(MaxTasks);
 
@@ -821,21 +820,26 @@ static ld_plugin_status allSymbolsReadHook() {
       [&](size_t Task) -> std::unique_ptr<lto::NativeObjectStream> {
     IsTemporary[Task] = !SaveTemps;
     getOutputFileName(Filename, /*TempOutFile=*/!SaveTemps, Filenames[Task],
-                      MaxTasks > 1 ? Task : -1);
+                      Task);
     int FD;
     std::error_code EC =
         sys::fs::openFileForWrite(Filenames[Task], FD, sys::fs::F_None);
     if (EC)
-      message(LDPL_FATAL, "Could not open file: %s", EC.message().c_str());
+      message(LDPL_FATAL, "Could not open file %s: %s", Filenames[Task].c_str(),
+              EC.message().c_str());
     return llvm::make_unique<lto::NativeObjectStream>(
         llvm::make_unique<llvm::raw_fd_ostream>(FD, true));
   };
 
-  auto AddFile = [&](size_t Task, StringRef Path) { Filenames[Task] = Path; };
+  auto AddBuffer = [&](size_t Task, std::unique_ptr<MemoryBuffer> MB) {
+    // Note that this requires that the memory buffers provided to AddBuffer are
+    // backed by a file.
+    Filenames[Task] = MB->getBufferIdentifier();
+  };
 
   NativeObjectCache Cache;
   if (!options::cache_dir.empty())
-    Cache = localCache(options::cache_dir, AddFile);
+    Cache = check(localCache(options::cache_dir, AddBuffer));
 
   check(Lto->run(AddStream, Cache));
 
@@ -844,6 +848,8 @@ static ld_plugin_status allSymbolsReadHook() {
     return LDPS_OK;
 
   if (options::thinlto_index_only) {
+    if (llvm::AreStatisticsEnabled())
+      llvm::PrintStatistics();
     cleanup_hook();
     exit(0);
   }

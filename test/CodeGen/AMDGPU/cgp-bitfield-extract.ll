@@ -1,7 +1,7 @@
 ; RUN: opt -S -mtriple=amdgcn-- -codegenprepare < %s | FileCheck -check-prefix=OPT %s
-; RUN: opt -S -mtriple=amdgcn-- -mcpu=tonga -codegenprepare < %s | FileCheck -check-prefix=OPT %s
+; RUN: opt -S -mtriple=amdgcn-- -mcpu=tonga -mattr=-flat-for-global -codegenprepare < %s | FileCheck -check-prefix=OPT %s
 ; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=SI %s
-; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
+; RUN: llc -march=amdgcn -mcpu=tonga -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
 
 ; This particular case will actually be worse in terms of code size
 ; from sinking into both.
@@ -120,15 +120,16 @@ ret:
 
 ; GCN-LABEL: {{^}}sink_ubfe_i16:
 ; GCN-NOT: lshr
-; VI: s_bfe_u32 s0, s0, 0xc0004
+; VI: s_load_dword [[ARG:s[0-9]+]], s[0:1], 0x2c
+; VI: s_bfe_u32 [[BFE:s[0-9]+]], [[ARG]], 0xc0004
 ; GCN: s_cbranch_scc1
 
 ; SI: s_bfe_u32 s{{[0-9]+}}, s{{[0-9]+}}, 0x80004
-; VI: s_and_b32 s0, s0, 0xff
+; VI: s_and_b32 s{{[0-9]+}}, [[BFE]], 0xff
 
 ; GCN: BB2_2:
 ; SI: s_bfe_u32 s{{[0-9]+}}, s{{[0-9]+}}, 0x70004
-; VI: s_and_b32 s0, s0, 0x7f
+; VI: s_and_b32 s{{[0-9]+}}, [[BFE]], 0x7f
 
 ; GCN: BB2_3:
 ; GCN: buffer_store_short

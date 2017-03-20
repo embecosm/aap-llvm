@@ -12,7 +12,6 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "ARMAttributeParser.h"
 #include "ARMEHABIPrinter.h"
 #include "Error.h"
 #include "ObjDumper.h"
@@ -22,6 +21,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Support/ARMAttributeParser.h"
 #include "llvm/Support/ARMBuildAttributes.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Format.h"
@@ -1004,6 +1004,7 @@ static const char *getElfSectionType(unsigned Arch, unsigned Type) {
     LLVM_READOBJ_ENUM_CASE(ELF, SHT_MIPS_REGINFO);
     LLVM_READOBJ_ENUM_CASE(ELF, SHT_MIPS_OPTIONS);
     LLVM_READOBJ_ENUM_CASE(ELF, SHT_MIPS_ABIFLAGS);
+    LLVM_READOBJ_ENUM_CASE(ELF, SHT_MIPS_DWARF);
     }
   }
 
@@ -1893,7 +1894,7 @@ template <> void ELFDumper<ELFType<support::little, false>>::printAttributes() {
     if (Contents.size() == 1)
       continue;
 
-    ARMAttributeParser(W).Parse(Contents);
+    ARMAttributeParser(&W).Parse(Contents, true);
   }
 }
 }
@@ -2365,7 +2366,7 @@ template <class ELFT> void ELFDumper<ELFT>::printAMDGPURuntimeMD() {
   }
   ArrayRef<uint8_t> Sec = unwrapOrError(Obj->getSectionContents(Shdr));
 
-  const uint32_t RuntimeMDNoteType = 7;
+  const uint32_t RuntimeMDNoteType = 8;
   for (auto I = reinterpret_cast<const Elf_Word *>(&Sec[0]),
        E = I + Sec.size()/4; I != E;) {
     uint32_t NameSZ = I[0];
@@ -2628,6 +2629,8 @@ std::string getSectionTypeString(unsigned Arch, unsigned Type) {
       return "MIPS_OPTIONS";
     case SHT_MIPS_ABIFLAGS:
       return "MIPS_ABIFLAGS";
+    case SHT_MIPS_DWARF:
+      return "SHT_MIPS_DWARF";
     }
   }
   switch (Type) {
@@ -3338,6 +3341,34 @@ static std::string getGNUNoteTypeName(const uint32_t NT) {
   return string;
 }
 
+static std::string getFreeBSDNoteTypeName(const uint32_t NT) {
+  static const struct {
+    uint32_t ID;
+    const char *Name;
+  } Notes[] = {
+      {ELF::NT_FREEBSD_THRMISC, "NT_THRMISC (thrmisc structure)"},
+      {ELF::NT_FREEBSD_PROCSTAT_PROC, "NT_PROCSTAT_PROC (proc data)"},
+      {ELF::NT_FREEBSD_PROCSTAT_FILES, "NT_PROCSTAT_FILES (files data)"},
+      {ELF::NT_FREEBSD_PROCSTAT_VMMAP, "NT_PROCSTAT_VMMAP (vmmap data)"},
+      {ELF::NT_FREEBSD_PROCSTAT_GROUPS, "NT_PROCSTAT_GROUPS (groups data)"},
+      {ELF::NT_FREEBSD_PROCSTAT_UMASK, "NT_PROCSTAT_UMASK (umask data)"},
+      {ELF::NT_FREEBSD_PROCSTAT_RLIMIT, "NT_PROCSTAT_RLIMIT (rlimit data)"},
+      {ELF::NT_FREEBSD_PROCSTAT_OSREL, "NT_PROCSTAT_OSREL (osreldate data)"},
+      {ELF::NT_FREEBSD_PROCSTAT_PSSTRINGS,
+       "NT_PROCSTAT_PSSTRINGS (ps_strings data)"},
+      {ELF::NT_FREEBSD_PROCSTAT_AUXV, "NT_PROCSTAT_AUXV (auxv data)"},
+  };
+
+  for (const auto &Note : Notes)
+    if (Note.ID == NT)
+      return std::string(Note.Name);
+
+  std::string string;
+  raw_string_ostream OS(string);
+  OS << format("Unknown note type (0x%08x)", NT);
+  return string;
+}
+
 template <typename ELFT>
 static void printGNUNote(raw_ostream &OS, uint32_t NoteType,
                          ArrayRef<typename ELFFile<ELFT>::Elf_Word> Words) {
@@ -3417,10 +3448,14 @@ void GNUStyle<ELFT>::printNotes(const ELFFile<ELFT> *Obj) {
       if (Name == "GNU") {
         OS << getGNUNoteTypeName(Type) << '\n';
         printGNUNote<ELFT>(OS, Type, Descriptor);
+      } else if (Name == "FreeBSD") {
+        OS << getFreeBSDNoteTypeName(Type) << '\n';
+      } else {
+        OS << "Unknown note type: (" << format_hex(Type, 10) << ')';
       }
       OS << '\n';
 
-      P = P + 3 * sizeof(Elf_Word) * alignTo<4>(NameSize) +
+      P = P + 3 * sizeof(Elf_Word) + alignTo<4>(NameSize) +
           alignTo<4>(DescriptorSize);
     }
   };

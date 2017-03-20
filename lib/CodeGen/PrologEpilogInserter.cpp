@@ -336,7 +336,7 @@ static void assignCalleeSavedSpillSlots(MachineFunction &F,
     return;
 
   const TargetRegisterInfo *RegInfo = F.getSubtarget().getRegisterInfo();
-  const MCPhysReg *CSRegs = RegInfo->getCalleeSavedRegs(&F);
+  const MCPhysReg *CSRegs = F.getRegInfo().getCalleeSavedRegs();
 
   std::vector<CalleeSavedInfo> CSI;
   for (unsigned i = 0; CSRegs[i]; ++i) {
@@ -1237,4 +1237,6 @@ doScavengeFrameVirtualRegs(MachineFunction &MF, RegScavenger *RS) {
         ++I;
     }
   }
+
+  MF.getProperties().set(MachineFunctionProperties::Property::NoVRegs);
 }

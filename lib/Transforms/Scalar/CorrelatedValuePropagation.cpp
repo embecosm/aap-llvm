@@ -41,6 +41,8 @@ STATISTIC(NumSDivs,     "Number of sdiv converted to udiv");
 STATISTIC(NumAShrs,     "Number of ashr converted to lshr");
 STATISTIC(NumSRems,     "Number of srem converted to urem");
 
+static cl::opt<bool> DontProcessAdds("cvp-dont-process-adds", cl::init(true));
+
 namespace {
   class CorrelatedValuePropagation : public FunctionPass {
   public:
@@ -405,6 +407,9 @@ static bool processAShr(BinaryOperator *SDI, LazyValueInfo *LVI) {
 static bool processAdd(BinaryOperator *AddOp, LazyValueInfo *LVI) {
   typedef OverflowingBinaryOperator OBO;
 
+  if (DontProcessAdds)
+    return false;
+
   if (AddOp->getType()->isVectorTy() || hasLocalDefs(AddOp))
     return false;
 
@@ -564,10 +569,6 @@ CorrelatedValuePropagationPass::run(Function &F, FunctionAnalysisManager &AM) {
 
   LazyValueInfo *LVI = &AM.getResult<LazyValueAnalysis>(F);
   bool Changed = runImpl(F, LVI);
-
-  // FIXME: We need to invalidate LVI to avoid PR28400. Is there a better
-  // solution?
-  AM.invalidate<LazyValueAnalysis>(F);
 
   if (!Changed)
     return PreservedAnalyses::all();

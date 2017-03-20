@@ -116,6 +116,8 @@ private:
     case MVT::f32:
     case MVT::f64:
       return VT;
+    case MVT::f16:
+      return MVT::f32;
     case MVT::v16i8:
     case MVT::v8i16:
     case MVT::v4i32:
@@ -662,6 +664,9 @@ bool WebAssemblyFastISel::fastLowerArguments() {
   auto *MFI = MF->getInfo<WebAssemblyFunctionInfo>();
   for (auto const &Arg : F->args())
     MFI->addParam(getLegalType(getSimpleType(Arg.getType())));
+
+  if (!F->getReturnType()->isVoidTy())
+    MFI->addResult(getLegalType(getSimpleType(F->getReturnType())));
 
   return true;
 }

@@ -12,22 +12,33 @@
 /// Generates AMDGPU runtime metadata for YAML mapping.
 //
 //===----------------------------------------------------------------------===//
-//
 
 #include "AMDGPU.h"
 #include "AMDGPURuntimeMetadata.h"
+#include "MCTargetDesc/AMDGPURuntimeMD.h"
+#include "Utils/AMDGPUBaseInfo.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/YAMLTraits.h"
+#include <cassert>
+#include <cstdint>
+#include <limits>
 #include <vector>
-#include "AMDGPURuntimeMD.h"
 
 using namespace llvm;
+using namespace llvm::AMDGPU::IsaInfo;
 using namespace ::AMDGPU::RuntimeMD;
 
 static cl::opt<bool>
@@ -78,7 +89,27 @@ template <> struct MappingTraits<Kernel::Metadata> {
         INVALID_KERNEL_INDEX);
     YamlIO.mapOptional(KeyName::NoPartialWorkGroups, K.NoPartialWorkGroups,
         uint8_t(0));
-    YamlIO.mapRequired(KeyName::Args, K.Args);
+    YamlIO.mapOptional(KeyName::Args, K.Args);
+  }
+  static const bool flow = true;
+};
+
+template <> struct MappingTraits<IsaInfo::Metadata> {
+  static void mapping(IO &YamlIO, IsaInfo::Metadata &I) {
+    YamlIO.mapRequired(KeyName::IsaInfoWavefrontSize, I.WavefrontSize);
+    YamlIO.mapRequired(KeyName::IsaInfoLocalMemorySize, I.LocalMemorySize);
+    YamlIO.mapRequired(KeyName::IsaInfoEUsPerCU, I.EUsPerCU);
+    YamlIO.mapRequired(KeyName::IsaInfoMaxWavesPerEU, I.MaxWavesPerEU);
+    YamlIO.mapRequired(KeyName::IsaInfoMaxFlatWorkGroupSize,
+        I.MaxFlatWorkGroupSize);
+    YamlIO.mapRequired(KeyName::IsaInfoSGPRAllocGranule, I.SGPRAllocGranule);
+    YamlIO.mapRequired(KeyName::IsaInfoTotalNumSGPRs, I.TotalNumSGPRs);
+    YamlIO.mapRequired(KeyName::IsaInfoAddressableNumSGPRs,
+        I.AddressableNumSGPRs);
+    YamlIO.mapRequired(KeyName::IsaInfoVGPRAllocGranule, I.VGPRAllocGranule);
+    YamlIO.mapRequired(KeyName::IsaInfoTotalNumVGPRs, I.TotalNumVGPRs);
+    YamlIO.mapRequired(KeyName::IsaInfoAddressableNumVGPRs,
+        I.AddressableNumVGPRs);
   }
   static const bool flow = true;
 };
@@ -86,6 +117,7 @@ template <> struct MappingTraits<Kernel::Metadata> {
 template <> struct MappingTraits<Program::Metadata> {
   static void mapping(IO &YamlIO, Program::Metadata &Prog) {
     YamlIO.mapRequired(KeyName::MDVersion, Prog.MDVersionSeq);
+    YamlIO.mapOptional(KeyName::IsaInfo, Prog.IsaInfo);
     YamlIO.mapOptional(KeyName::PrintfInfo, Prog.PrintfInfo);
     YamlIO.mapOptional(KeyName::Kernels, Prog.Kernels);
   }
@@ -198,7 +230,6 @@ static KernelArg::Metadata getRuntimeMDForKernelArg(const DataLayout &DL,
     Type *T, KernelArg::Kind Kind, StringRef BaseTypeName = "",
     StringRef TypeName = "", StringRef ArgName = "", StringRef TypeQual = "",
     StringRef AccQual = "") {
-
   KernelArg::Metadata Arg;
 
   // Set ArgSize and ArgAlign.
@@ -345,15 +376,30 @@ static Kernel::Metadata getRuntimeMDForKernel(const Function &F) {
   return Kernel;
 }
 
+static void getIsaInfo(const FeatureBitset &Features, IsaInfo::Metadata &IIM) {
+  IIM.WavefrontSize = getWavefrontSize(Features);
+  IIM.LocalMemorySize = getLocalMemorySize(Features);
+  IIM.EUsPerCU = getEUsPerCU(Features);
+  IIM.MaxWavesPerEU = getMaxWavesPerEU(Features);
+  IIM.MaxFlatWorkGroupSize = getMaxFlatWorkGroupSize(Features);
+  IIM.SGPRAllocGranule = getSGPRAllocGranule(Features);
+  IIM.TotalNumSGPRs = getTotalNumSGPRs(Features);
+  IIM.AddressableNumSGPRs = getAddressableNumSGPRs(Features);
+  IIM.VGPRAllocGranule = getVGPRAllocGranule(Features);
+  IIM.TotalNumVGPRs = getTotalNumVGPRs(Features);
+  IIM.AddressableNumVGPRs = getAddressableNumVGPRs(Features);
+}
+
 Program::Metadata::Metadata(const std::string &YAML) {
   yaml::Input Input(YAML);
   Input >> *this;
 }
 
-std::string Program::Metadata::toYAML(void) {
+std::string Program::Metadata::toYAML() {
   std::string Text;
   raw_string_ostream Stream(Text);
-  yaml::Output Output(Stream, nullptr, INT_MAX /* do not wrap line */);
+  yaml::Output Output(Stream, nullptr,
+                      std::numeric_limits<int>::max() /* do not wrap line */);
   Output << *this;
   return Stream.str();
 }
@@ -366,18 +412,21 @@ Program::Metadata Program::Metadata::fromYAML(const std::string &S) {
 static void checkRuntimeMDYAMLString(const std::string &YAML) {
   auto P = Program::Metadata::fromYAML(YAML);
   auto S = P.toYAML();
-  llvm::errs() << "AMDGPU runtime metadata parser test "
-               << (YAML == S ? "passes" : "fails") << ".\n";
+  errs() << "AMDGPU runtime metadata parser test "
+         << (YAML == S ? "passes" : "fails") << ".\n";
   if (YAML != S) {
-    llvm::errs() << "First output: " << YAML << '\n'
-                 << "Second output: " << S << '\n';
+    errs() << "First output: " << YAML << '\n'
+           << "Second output: " << S << '\n';
   }
 }
 
-std::string llvm::getRuntimeMDYAMLString(Module &M) {
+std::string llvm::getRuntimeMDYAMLString(const FeatureBitset &Features,
+                                         const Module &M) {
   Program::Metadata Prog;
   Prog.MDVersionSeq.push_back(MDVersion);
   Prog.MDVersionSeq.push_back(MDRevision);
+
+  getIsaInfo(Features, Prog.IsaInfo);
 
   // Set PrintfInfo.
   if (auto MD = M.getNamedMetadata("llvm.printf.fmts")) {
@@ -399,10 +448,23 @@ std::string llvm::getRuntimeMDYAMLString(Module &M) {
   auto YAML = Prog.toYAML();
 
   if (DumpRuntimeMD)
-    llvm::errs() << "AMDGPU runtime metadata:\n" << YAML << '\n';
+    errs() << "AMDGPU runtime metadata:\n" << YAML << '\n';
 
   if (CheckRuntimeMDParser)
     checkRuntimeMDYAMLString(YAML);
 
   return YAML;
+}
+
+ErrorOr<std::string> llvm::getRuntimeMDYAMLString(const FeatureBitset &Features,
+                                                  StringRef YAML) {
+  Program::Metadata Prog;
+  yaml::Input Input(YAML);
+  Input >> Prog;
+
+  getIsaInfo(Features, Prog.IsaInfo);
+
+  if (Input.error())
+    return Input.error();
+  return Prog.toYAML();
 }

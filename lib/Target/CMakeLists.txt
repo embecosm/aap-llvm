@@ -20,3 +20,9 @@ endforeach()
 
 # Special case for AAP Simulator, which lives in Target but isn't one
 add_subdirectory(AAPSimulator)
+
+# Currently we do not allow libraries from lib to reference targets directly.
+# This property is used to enforce that convention. It is important because the
+# logic in llvm_map_components_to_libnames is order dependent on the target
+# libraries being created.
+set_property(GLOBAL PROPERTY LLVM_TARGETS_CONFIGURED On)

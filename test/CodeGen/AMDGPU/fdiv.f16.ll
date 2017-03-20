@@ -1,6 +1,6 @@
 ; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=SI %s
-; RUN: llc -march=amdgcn -mcpu=fiji -mattr=+fp16-denormals -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
-; RUN: llc -march=amdgcn -mcpu=fiji -mattr=-fp16-denormals -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
+; RUN: llc -march=amdgcn -mcpu=fiji -mattr=-flat-for-global -mattr=+fp16-denormals -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
+; RUN: llc -march=amdgcn -mcpu=fiji -mattr=-flat-for-global -mattr=-fp16-denormals -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
 
 ; Make sure fdiv is promoted to f32.
 
@@ -201,6 +201,42 @@ entry:
   %b.val = load volatile half, half addrspace(1)* %gep.b
   %r.val = fdiv half %a.val, %b.val
   store half %r.val, half addrspace(1)* %gep.r
+  ret void
+}
+
+; FUNC-LABEL: {{^}}div_arcp_2_x_pat_f16:
+; SI: v_mul_f32_e32 v{{[0-9]+}}, 0.5, v{{[0-9]+}}
+
+; VI: v_mul_f16_e32 [[MUL:v[0-9]+]], 0.5, v{{[0-9]+}}
+; VI: buffer_store_short [[MUL]]
+define void @div_arcp_2_x_pat_f16(half addrspace(1)* %out) #0 {
+  %x = load half, half addrspace(1)* undef
+  %rcp = fdiv arcp half %x, 2.0
+  store half %rcp, half addrspace(1)* %out, align 4
+  ret void
+}
+
+; FUNC-LABEL: {{^}}div_arcp_k_x_pat_f16:
+; SI: v_mul_f32_e32 v{{[0-9]+}}, 0x3dcccccd, v{{[0-9]+}}
+
+; VI: v_mul_f16_e32 [[MUL:v[0-9]+]], 0x2e66, v{{[0-9]+}}
+; VI: buffer_store_short [[MUL]]
+define void @div_arcp_k_x_pat_f16(half addrspace(1)* %out) #0 {
+  %x = load half, half addrspace(1)* undef
+  %rcp = fdiv arcp half %x, 10.0
+  store half %rcp, half addrspace(1)* %out, align 4
+  ret void
+}
+
+; FUNC-LABEL: {{^}}div_arcp_neg_k_x_pat_f16:
+; SI: v_mul_f32_e32 v{{[0-9]+}}, 0xbdcccccd, v{{[0-9]+}}
+
+; VI: v_mul_f16_e32 [[MUL:v[0-9]+]], 0xae66, v{{[0-9]+}}
+; VI: buffer_store_short [[MUL]]
+define void @div_arcp_neg_k_x_pat_f16(half addrspace(1)* %out) #0 {
+  %x = load half, half addrspace(1)* undef
+  %rcp = fdiv arcp half %x, -10.0
+  store half %rcp, half addrspace(1)* %out, align 4
   ret void
 }
 

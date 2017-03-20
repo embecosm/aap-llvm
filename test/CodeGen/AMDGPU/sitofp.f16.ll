@@ -1,5 +1,5 @@
 ; RUN: llc -march=amdgcn -verify-machineinstrs -enable-unsafe-fp-math < %s | FileCheck -check-prefix=GCN -check-prefix=SI %s
-; RUN: llc -march=amdgcn -mcpu=fiji -verify-machineinstrs -enable-unsafe-fp-math < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
+; RUN: llc -march=amdgcn -mcpu=fiji -mattr=-flat-for-global -verify-machineinstrs -enable-unsafe-fp-math < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
 
 ; GCN-LABEL: {{^}}sitofp_i16_to_f16
 ; GCN: buffer_load_{{sshort|ushort}} v[[A_I16:[0-9]+]]
@@ -61,7 +61,6 @@ entry:
 ; GCN:     v_cvt_f32_i32_e32
 ; GCN:     v_cvt_f16_f32_e32
 ; GCN:     v_cvt_f16_f32_e32
-; GCN-DAG: v_and_b32_e32
 ; GCN-DAG: v_lshlrev_b32_e32
 ; GCN-DAG: v_or_b32_e32
 ; GCN:     buffer_store_dword

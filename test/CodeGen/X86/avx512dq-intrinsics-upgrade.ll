@@ -18,8 +18,7 @@ define <2 x double>@test_int_x86_avx512_mask_vextractf64x2_512(<8 x double> %x0,
 ; CHECK-NEXT:    vmovq %rax, %xmm3
 ; CHECK-NEXT:    vpunpcklqdq {{.*#+}} xmm2 = xmm3[0],xmm2[0]
 ; CHECK-NEXT:    vpsllq $63, %xmm2, %xmm2
-; CHECK-NEXT:    vpsrad $31, %xmm2, %xmm2
-; CHECK-NEXT:    vpshufd {{.*#+}} xmm2 = xmm2[1,1,3,3]
+; CHECK-NEXT:    vpsraq $63, %zmm2, %zmm2
 ; CHECK-NEXT:    vblendvpd %xmm2, %xmm0, %xmm1, %xmm1
 ; CHECK-NEXT:    vandpd %xmm0, %xmm2, %xmm2
 ; CHECK-NEXT:    vaddpd %xmm0, %xmm1, %xmm0
@@ -78,7 +77,6 @@ declare <8 x double> @llvm.x86.avx512.mask.insertf64x2.512(<8 x double>, <2 x do
 define <8 x double>@test_int_x86_avx512_mask_insertf64x2_512(<8 x double> %x0, <2 x double> %x1,<8 x double> %x3, i8 %x4) {
 ; CHECK-LABEL: test_int_x86_avx512_mask_insertf64x2_512:
 ; CHECK:       ## BB#0:
-; CHECK-NEXT:    ## kill: %XMM1<def> %XMM1<kill> %ZMM1<def>
 ; CHECK-NEXT:    vinsertf64x2 $1, %xmm1, %zmm0, %zmm3
 ; CHECK-NEXT:    kmovb %edi, %k1
 ; CHECK-NEXT:    vinsertf64x2 $1, %xmm1, %zmm0, %zmm2 {%k1}
@@ -119,7 +117,6 @@ declare <8 x i64> @llvm.x86.avx512.mask.inserti64x2.512(<8 x i64>, <2 x i64>, i3
 define <8 x i64>@test_int_x86_avx512_mask_inserti64x2_512(<8 x i64> %x0, <2 x i64> %x1, <8 x i64> %x3, i8 %x4) {
 ; CHECK-LABEL: test_int_x86_avx512_mask_inserti64x2_512:
 ; CHECK:       ## BB#0:
-; CHECK-NEXT:    ## kill: %XMM1<def> %XMM1<kill> %ZMM1<def>
 ; CHECK-NEXT:    vinserti64x2 $1, %xmm1, %zmm0, %zmm3
 ; CHECK-NEXT:    kmovb %edi, %k1
 ; CHECK-NEXT:    vinserti64x2 $1, %xmm1, %zmm0, %zmm2 {%k1}

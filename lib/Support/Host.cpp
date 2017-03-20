@@ -111,6 +111,7 @@ enum ProcessorTypes {
   AMDATHLON,
   AMDFAM14H,
   AMDFAM16H,
+  AMDFAM17H,
   CPU_TYPE_MAX
 };
 
@@ -149,6 +150,7 @@ enum ProcessorSubtypes {
   AMD_BTVER2,
   AMDFAM15H_BDVER3,
   AMDFAM15H_BDVER4,
+  AMDFAM17H_ZNVER1,
   CPU_SUBTYPE_MAX
 };
 
@@ -742,6 +744,14 @@ static void getAMDProcessorTypeAndSubtype(unsigned int Family,
     }
     *Subtype = AMD_BTVER2;
     break; // "btver2"
+  case 23:
+    *Type = AMDFAM17H;
+    if (Features & (1 << FEATURE_ADX)) {
+      *Subtype = AMDFAM17H_ZNVER1;
+      break; // "znver1"
+    }
+    *Subtype =  AMD_BTVER1;
+    break;
   default:
     break; // "generic"
   }
@@ -949,6 +959,15 @@ StringRef sys::getHostCPUName() {
         return "btver2";
       default:
         return "amdfam16";
+      }
+    case AMDFAM17H:
+      switch (Subtype) {
+      case AMD_BTVER1:
+        return "btver1";
+      case AMDFAM17H_ZNVER1:
+        return "znver1";
+      default:
+        return "amdfam17";
       }
     default:
       return "generic";
@@ -1334,6 +1353,10 @@ bool sys::getHostCPUFeatures(StringMap<bool> &Features) {
   Features["tbm"] = HasExtLeaf1 && ((ECX >> 21) & 1);
   Features["mwaitx"] = HasExtLeaf1 && ((ECX >> 29) & 1);
 
+  bool HasExtLeaf8 = MaxExtLevel >= 0x80000008 &&
+                     !getX86CpuIDAndInfoEx(0x80000008,0x0, &EAX, &EBX, &ECX, &EDX);
+  Features["clzero"] = HasExtLeaf8 && ((EBX >> 0) & 1);
+
   bool HasLeaf7 =
       MaxLevel >= 7 && !getX86CpuIDAndInfoEx(0x7, 0x0, &EAX, &EBX, &ECX, &EDX);
 
@@ -1343,14 +1366,10 @@ bool sys::getHostCPUFeatures(StringMap<bool> &Features) {
   Features["fsgsbase"] = HasLeaf7 && ((EBX >> 0) & 1);
   Features["sgx"] = HasLeaf7 && ((EBX >> 2) & 1);
   Features["bmi"] = HasLeaf7 && ((EBX >> 3) & 1);
-  Features["hle"] = HasLeaf7 && ((EBX >> 4) & 1);
   Features["bmi2"] = HasLeaf7 && ((EBX >> 8) & 1);
-  Features["invpcid"] = HasLeaf7 && ((EBX >> 10) & 1);
   Features["rtm"] = HasLeaf7 && ((EBX >> 11) & 1);
   Features["rdseed"] = HasLeaf7 && ((EBX >> 18) & 1);
   Features["adx"] = HasLeaf7 && ((EBX >> 19) & 1);
-  Features["smap"] = HasLeaf7 && ((EBX >> 20) & 1);
-  Features["pcommit"] = HasLeaf7 && ((EBX >> 22) & 1);
   Features["clflushopt"] = HasLeaf7 && ((EBX >> 23) & 1);
   Features["clwb"] = HasLeaf7 && ((EBX >> 24) & 1);
   Features["sha"] = HasLeaf7 && ((EBX >> 29) & 1);

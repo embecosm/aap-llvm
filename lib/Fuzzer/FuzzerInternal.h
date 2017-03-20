@@ -32,26 +32,6 @@ using namespace std::chrono;
 class Fuzzer {
 public:
 
-  // Aggregates all available coverage measurements.
-  struct Coverage {
-    Coverage() { Reset(); }
-
-    void Reset() {
-      BlockCoverage = 0;
-      CallerCalleeCoverage = 0;
-      CounterBitmapBits = 0;
-      CounterBitmap.clear();
-      VPMap.Reset();
-    }
-
-    size_t BlockCoverage;
-    size_t CallerCalleeCoverage;
-    // Precalculated number of bits in CounterBitmap.
-    size_t CounterBitmapBits;
-    std::vector<uint8_t> CounterBitmap;
-    ValueBitMap VPMap;
-  };
-
   Fuzzer(UserCallback CB, InputCorpus &Corpus, MutationDispatcher &MD,
          FuzzingOptions Options);
   ~Fuzzer();
@@ -82,6 +62,7 @@ public:
   static void StaticAlarmCallback();
   static void StaticCrashSignalCallback();
   static void StaticInterruptCallback();
+  static void StaticFileSizeExceedCallback();
 
   void ExecuteCallback(const uint8_t *Data, size_t Size);
   size_t RunOne(const uint8_t *Data, size_t Size);
@@ -91,16 +72,11 @@ public:
   void CrashResistantMerge(const std::vector<std::string> &Args,
                            const std::vector<std::string> &Corpora);
   void CrashResistantMergeInternalStep(const std::string &ControlFilePath);
-  // Returns a subset of 'Extra' that adds coverage to 'Initial'.
-  UnitVector FindExtraUnits(const UnitVector &Initial, const UnitVector &Extra);
   MutationDispatcher &GetMD() { return MD; }
   void PrintFinalStats();
   void SetMaxInputLen(size_t MaxInputLen);
   void SetMaxMutationLen(size_t MaxMutationLen);
   void RssLimitCallback();
-
-  // Public for tests.
-  void ResetCoverage();
 
   bool InFuzzingThread() const { return IsMyThread; }
   size_t GetCurrentUnitInFuzzingThead(const uint8_t **Data) const;
@@ -108,6 +84,7 @@ public:
                                bool DuringInitialCorpusExecution);
 
   void HandleMalloc(size_t Size);
+  void AnnounceOutput(const uint8_t *Data, size_t Size);
 
 private:
   void AlarmCallback();
@@ -133,15 +110,9 @@ private:
   // Stop tracing.
   void StopTraceRecording();
 
-  void SetDeathCallback();
   static void StaticDeathCallback();
   void DumpCurrentUnit(const char *Prefix);
   void DeathCallback();
-
-  void ResetEdgeCoverage();
-  void ResetCounters();
-  void PrepareCounters(Fuzzer::Coverage *C);
-  bool RecordMaxCoverage(Fuzzer::Coverage *C);
 
   void AllocateCurrentUnitData();
   uint8_t *CurrentUnitData = nullptr;
@@ -165,16 +136,11 @@ private:
   long TimeOfLongestUnitInSeconds = 0;
   long EpochOfLastReadOfOutputCorpus = 0;
 
-  // Maximum recorded coverage.
-  Coverage MaxCoverage;
-
   size_t MaxInputLen = 0;
   size_t MaxMutationLen = 0;
 
   // Need to know our own thread.
   static thread_local bool IsMyThread;
-
-  bool InMergeMode = false;
 };
 
 }; // namespace fuzzer

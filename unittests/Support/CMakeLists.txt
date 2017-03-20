@@ -5,9 +5,12 @@ set(LLVM_LINK_COMPONENTS
 add_llvm_unittest(SupportTests
   AlignOfTest.cpp
   AllocatorTest.cpp
+  ARMAttributeParser.cpp
   ArrayRecyclerTest.cpp
+  BinaryStreamTest.cpp
   BlockFrequencyTest.cpp
   BranchProbabilityTest.cpp
+  CachePruningTest.cpp
   Casting.cpp
   Chrono.cpp
   CommandLineTest.cpp
@@ -43,10 +46,11 @@ add_llvm_unittest(SupportTests
   SpecialCaseListTest.cpp
   StringPool.cpp
   SwapByteOrderTest.cpp
+  TarWriterTest.cpp
   TargetParserTest.cpp
-  Threading.cpp
   ThreadLocalTest.cpp
   ThreadPool.cpp
+  Threading.cpp
   TimerTest.cpp
   TypeNameTest.cpp
   TrailingObjectsTest.cpp
@@ -62,4 +66,4 @@ add_llvm_unittest(SupportTests
   )
 
 # ManagedStatic.cpp uses <pthread>.
-target_link_libraries(SupportTests ${PTHREAD_LIB})
+target_link_libraries(SupportTests ${LLVM_PTHREAD_LIB})

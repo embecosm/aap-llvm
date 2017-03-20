@@ -180,10 +180,11 @@ bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
           DebugLoc DL = MBB.findDebugLoc(CondBrIter);
 
           MachineInstr *OldCondBr = &*CondBrIter;
+          MachineInstrBuilder MIB;
           CondBrIter = BuildMI(&MBB, DL, get(InvertedOpcode))
               .addMBB(Target)
-              .addOperand(CondBrIter->getOperand(1))
-              .addOperand(CondBrIter->getOperand(2));
+              .addReg(CondBrIter->getOperand(1).getReg())
+              .addReg(CondBrIter->getOperand(2).getReg());
 
           // Replace the conditional branch with the inverted branch
           UnCondBrIter->eraseFromParent();
@@ -242,8 +243,8 @@ unsigned AAPInstrInfo::insertBranch(MachineBasicBlock &MBB,
   AAPCC::CondCode CC = (AAPCC::CondCode)Cond[0].getImm();
   BuildMI(&MBB, DL, get(getBranchOpcodeFromCond(CC)))
       .addMBB(TBB)
-      .addOperand(Cond[1])
-      .addOperand(Cond[2]);
+      .addReg(Cond[1].getReg())
+      .addReg(Cond[2].getReg());
   ++Count;
 
   if (FBB) {
