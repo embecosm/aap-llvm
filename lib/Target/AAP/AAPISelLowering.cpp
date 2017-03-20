@@ -508,12 +508,6 @@ AAPTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
   RetOps.push_back(
       DAG.getRegister(AAPRegisterInfo::getLinkRegister(), MVT::i16));
 
-  // Mark return registers as live-out in MachineRegisterInfo
-  MachineRegisterInfo &MRI = DAG.getMachineFunction().getRegInfo();
-  for (unsigned i = 0; i != RVLocs.size(); ++i) {
-    MRI.addLiveOut(RVLocs[i].getLocReg());
-  }
-
   // Copy the result values into the output registers.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
     CCValAssign &VA = RVLocs[i];
