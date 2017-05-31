@@ -182,6 +182,10 @@ HANDLE_TARGET_OPCODE(PATCHABLE_FUNCTION_EXIT)
 /// PATCHABLE_RET which specifically only works for return instructions.
 HANDLE_TARGET_OPCODE(PATCHABLE_TAIL_CALL)
 
+/// Wraps a logging call and its arguments with nop sleds. At runtime, this can be
+/// patched to insert instrumentation instructions.
+HANDLE_TARGET_OPCODE(PATCHABLE_EVENT_CALL)
+
 /// The following generic opcodes are not supposed to appear after ISel.
 /// This is something we might want to relax, but for now, this is convenient
 /// to produce diagnostics.
@@ -401,12 +405,15 @@ HANDLE_TARGET_OPCODE(G_INSERT_VECTOR_ELT)
 /// Generic extractelement.
 HANDLE_TARGET_OPCODE(G_EXTRACT_VECTOR_ELT)
 
+/// Generic shufflevector.
+HANDLE_TARGET_OPCODE(G_SHUFFLE_VECTOR)
+
 // TODO: Add more generic opcodes as we move along.
 
 /// Marker for the end of the generic opcode.
 /// This is used to check if an opcode is in the range of the
 /// generic opcodes.
-HANDLE_TARGET_OPCODE_MARKER(PRE_ISEL_GENERIC_OPCODE_END, G_EXTRACT_VECTOR_ELT)
+HANDLE_TARGET_OPCODE_MARKER(PRE_ISEL_GENERIC_OPCODE_END, G_SHUFFLE_VECTOR)
 
 /// BUILTIN_OP_END - This must be the last enum value in this list.
 /// The target-specific post-isel opcode values start here.

@@ -39,6 +39,7 @@
 #include "llvm/Analysis/LoopAccessAnalysis.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/MemoryDependenceAnalysis.h"
+#include "llvm/Analysis/MemorySSA.h"
 #include "llvm/Analysis/ModuleSummaryAnalysis.h"
 #include "llvm/Analysis/OptimizationDiagnosticInfo.h"
 #include "llvm/Analysis/PostDominators.h"
@@ -124,6 +125,7 @@
 #include "llvm/Transforms/Scalar/Reassociate.h"
 #include "llvm/Transforms/Scalar/SCCP.h"
 #include "llvm/Transforms/Scalar/SROA.h"
+#include "llvm/Transforms/Scalar/SimpleLoopUnswitch.h"
 #include "llvm/Transforms/Scalar/SimplifyCFG.h"
 #include "llvm/Transforms/Scalar/Sink.h"
 #include "llvm/Transforms/Scalar/SpeculativeExecution.h"
@@ -135,7 +137,6 @@
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LowerInvoke.h"
 #include "llvm/Transforms/Utils/Mem2Reg.h"
-#include "llvm/Transforms/Utils/MemorySSA.h"
 #include "llvm/Transforms/Utils/NameAnonGlobals.h"
 #include "llvm/Transforms/Utils/PredicateInfo.h"
 #include "llvm/Transforms/Utils/SimplifyInstructions.h"
@@ -149,6 +150,19 @@ using namespace llvm;
 
 static cl::opt<unsigned> MaxDevirtIterations("pm-max-devirt-iterations",
                                              cl::ReallyHidden, cl::init(4));
+static cl::opt<bool>
+    RunPartialInlining("enable-npm-partial-inlining", cl::init(false),
+                       cl::Hidden, cl::ZeroOrMore,
+                       cl::desc("Run Partial inlinining pass"));
+
+static cl::opt<bool>
+    RunNewGVN("enable-npm-newgvn", cl::init(false),
+              cl::Hidden, cl::ZeroOrMore,
+              cl::desc("Run NewGVN instead of GVN"));
+
+static cl::opt<bool> EnableGVNHoist(
+    "enable-npm-gvn-hoist", cl::init(false), cl::Hidden,
+    cl::desc("Enable the GVN hoisting pass for the new PM (default = off)"));
 
 static Regex DefaultAliasRegex("^(default|lto-pre-link|lto)<(O[0123sz])>$");
 
@@ -327,10 +341,7 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
   // Rotate Loop - disable header duplication at -Oz
   LPM1.addPass(LoopRotatePass(Level != Oz));
   LPM1.addPass(LICMPass());
-#if 0
-  // The LoopUnswitch pass isn't yet ported to the new pass manager.
-  LPM1.addPass(LoopUnswitchPass(/* OptimizeForSize */ Level != O3));
-#endif
+  LPM1.addPass(SimpleLoopUnswitchPass());
   LPM2.addPass(IndVarSimplifyPass());
   LPM2.addPass(LoopIdiomRecognizePass());
   LPM2.addPass(LoopDeletionPass());
@@ -348,7 +359,10 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
   if (Level != O1) {
     // These passes add substantial compile time so skip them at O1.
     FPM.addPass(MergedLoadStoreMotionPass());
-    FPM.addPass(GVN());
+    if (RunNewGVN)
+      FPM.addPass(NewGVNPass());
+    else
+      FPM.addPass(GVN());
   }
 
   // Specially optimize memory movement as it doesn't look like dataflow in SSA.
@@ -420,6 +434,11 @@ static void addPGOInstrPasses(ModulePassManager &MPM, bool DebugLogging,
     MPM.addPass(createModuleToPostOrderCGSCCPassAdaptor(std::move(CGPipeline)));
   }
 
+  // Delete anything that is now dead to make sure that we don't instrument
+  // dead code. Instrumentation can end up keeping dead code around and
+  // dramatically increase code size.
+  MPM.addPass(GlobalDCEPass());
+
   if (RunProfileGen) {
     MPM.addPass(PGOInstrumentationGen());
 
@@ -454,7 +473,8 @@ PassBuilder::buildPerModuleDefaultPipeline(OptimizationLevel Level,
   EarlyFPM.addPass(SROA());
   EarlyFPM.addPass(EarlyCSEPass());
   EarlyFPM.addPass(LowerExpectIntrinsicPass());
-  EarlyFPM.addPass(GVNHoistPass());
+  if (EnableGVNHoist)
+    EarlyFPM.addPass(GVNHoistPass());
   MPM.addPass(createModuleToFunctionPassAdaptor(std::move(EarlyFPM)));
 
   // Interprocedural constant propagation now that basic cleanup has occured
@@ -499,6 +519,10 @@ PassBuilder::buildPerModuleDefaultPipeline(OptimizationLevel Level,
   // the CGSCC pipeline.
   MPM.addPass(RequireAnalysisPass<GlobalsAA, Module>());
 
+  // Require the ProfileSummaryAnalysis for the module so we can query it within
+  // the inliner pass.
+  MPM.addPass(RequireAnalysisPass<ProfileSummaryAnalysis, Module>());
+
   // Now begin the main postorder CGSCC pipeline.
   // FIXME: The current CGSCC pipeline has its origins in the legacy pass
   // manager and trying to emulate its precise behavior. Much of this doesn't
@@ -541,6 +565,11 @@ PassBuilder::buildPerModuleDefaultPipeline(OptimizationLevel Level,
   // This ends the canonicalization and simplification phase of the pipeline.
   // At this point, we expect to have canonical and simple IR which we begin
   // *optimizing* for efficient execution going forward.
+
+  // Run partial inlining pass to partially inline functions that have
+  // large bodies.
+  if (RunPartialInlining)
+    MPM.addPass(PartialInlinerPass());
 
   // Eliminate externally available functions now that inlining is over -- we
   // won't emit these anyways.
@@ -623,6 +652,10 @@ PassBuilder::buildPerModuleDefaultPipeline(OptimizationLevel Level,
 
   // And finally clean up LCSSA form before generating code.
   OptimizePM.addPass(InstSimplifierPass());
+
+  // LoopSink (and other loop passes since the last simplifyCFG) might have
+  // resulted in single-entry-single-exit or empty blocks. Clean up the CFG.
+  OptimizePM.addPass(SimplifyCFGPass());
 
   // Add the core optimizing pipeline.
   MPM.addPass(createModuleToFunctionPassAdaptor(std::move(OptimizePM)));
@@ -751,7 +784,10 @@ ModulePassManager PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   // FIXME: once we fix LoopPass Manager, add LICM here.
   // FIXME: once we provide support for enabling MLSM, add it here.
   // FIXME: once we provide support for enabling NewGVN, add it here.
-  MainFPM.addPass(GVN());
+  if (RunNewGVN)
+    MainFPM.addPass(NewGVNPass());
+  else
+    MainFPM.addPass(GVN());
 
   // Remove dead memcpy()'s.
   MainFPM.addPass(MemCpyOptPass());

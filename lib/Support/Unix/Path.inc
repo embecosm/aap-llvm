@@ -230,6 +230,10 @@ UniqueID file_status::getUniqueID() const {
   return UniqueID(fs_st_dev, fs_st_ino);
 }
 
+uint32_t file_status::getLinkCount() const {
+  return fs_st_nlinks;
+}
+
 ErrorOr<space_info> disk_space(const Twine &Path) {
   struct STATVFS Vfs;
   if (::STATVFS(Path.str().c_str(), &Vfs))
@@ -417,14 +421,15 @@ std::error_code resize_file(int FD, uint64_t Size) {
 #if defined(HAVE_POSIX_FALLOCATE)
   // If we have posix_fallocate use it. Unlike ftruncate it always allocates
   // space, so we get an error if the disk is full.
-  if (int Err = ::posix_fallocate(FD, 0, Size))
-    return std::error_code(Err, std::generic_category());
-#else
+  if (int Err = ::posix_fallocate(FD, 0, Size)) {
+    if (Err != EOPNOTSUPP)
+      return std::error_code(Err, std::generic_category());
+  }
+#endif
   // Use ftruncate as a fallback. It may or may not allocate space. At least on
   // OS X with HFS+ it does.
   if (::ftruncate(FD, Size) == -1)
     return std::error_code(errno, std::generic_category());
-#endif
 
   return std::error_code();
 }
@@ -549,10 +554,9 @@ static std::error_code fillStatus(int StatRet, const struct stat &Status,
     Type = file_type::symlink_file;
 
   perms Perms = static_cast<perms>(Status.st_mode) & all_perms;
-  Result =
-      file_status(Type, Perms, Status.st_dev, Status.st_ino, Status.st_atime,
-                  Status.st_mtime, Status.st_uid, Status.st_gid,
-                  Status.st_size);
+  Result = file_status(Type, Perms, Status.st_dev, Status.st_nlink,
+                       Status.st_ino, Status.st_atime, Status.st_mtime,
+                       Status.st_uid, Status.st_gid, Status.st_size);
 
   return std::error_code();
 }
@@ -917,12 +921,18 @@ std::error_code real_path(const Twine &path, SmallVectorImpl<char> &dest,
 namespace path {
 
 bool home_directory(SmallVectorImpl<char> &result) {
-  if (char *RequestedDir = getenv("HOME")) {
-    result.clear();
-    result.append(RequestedDir, RequestedDir + strlen(RequestedDir));
-    return true;
+  char *RequestedDir = getenv("HOME");
+  if (!RequestedDir) {
+    struct passwd *pw = getpwuid(getuid());
+    if (pw && pw->pw_dir)
+      RequestedDir = pw->pw_dir;
   }
-  return false;
+  if (!RequestedDir)
+    return false;
+
+  result.clear();
+  result.append(RequestedDir, RequestedDir + strlen(RequestedDir));
+  return true;
 }
 
 static bool getDarwinConfDir(bool TempDir, SmallVectorImpl<char> &Result) {

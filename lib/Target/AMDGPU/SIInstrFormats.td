@@ -138,19 +138,19 @@ class InstSI <dag outs, dag ins, string asm = "",
   let AsmVariantName = AMDGPUAsmVariants.Default;
 }
 
-class PseudoInstSI<dag outs, dag ins, list<dag> pattern = []>
-  : InstSI<outs, ins, "", pattern> {
+class PseudoInstSI<dag outs, dag ins, list<dag> pattern = [], string asm = "">
+  : InstSI<outs, ins, asm, pattern> {
   let isPseudo = 1;
   let isCodeGenOnly = 1;
 }
 
-class SPseudoInstSI<dag outs, dag ins, list<dag> pattern = []>
-  : PseudoInstSI<outs, ins, pattern> {
+class SPseudoInstSI<dag outs, dag ins, list<dag> pattern = [], string asm = "">
+  : PseudoInstSI<outs, ins, pattern, asm> {
   let SALU = 1;
 }
 
-class VPseudoInstSI<dag outs, dag ins, list<dag> pattern = []>
-  : PseudoInstSI<outs, ins, pattern> {
+class VPseudoInstSI<dag outs, dag ins, list<dag> pattern = [], string asm = "">
+  : PseudoInstSI<outs, ins, pattern, asm> {
   let VALU = 1;
   let Uses = [EXEC];
 }
@@ -228,10 +228,10 @@ class EXPe : Enc64 {
   bits<1> compr;
   bits<1> done;
   bits<1> vm;
-  bits<8> vsrc0;
-  bits<8> vsrc1;
-  bits<8> vsrc2;
-  bits<8> vsrc3;
+  bits<8> src0;
+  bits<8> src1;
+  bits<8> src2;
+  bits<8> src3;
 
   let Inst{3-0} = en;
   let Inst{9-4} = tgt;
@@ -239,10 +239,10 @@ class EXPe : Enc64 {
   let Inst{11} = done;
   let Inst{12} = vm;
   let Inst{31-26} = 0x3e;
-  let Inst{39-32} = vsrc0;
-  let Inst{47-40} = vsrc1;
-  let Inst{55-48} = vsrc2;
-  let Inst{63-56} = vsrc3;
+  let Inst{39-32} = src0;
+  let Inst{47-40} = src1;
+  let Inst{55-48} = src2;
+  let Inst{63-56} = src3;
 }
 
 let Uses = [EXEC] in {

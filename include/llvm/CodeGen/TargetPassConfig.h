@@ -22,7 +22,7 @@ namespace llvm {
 
 class PassConfigImpl;
 class ScheduleDAGInstrs;
-class TargetMachine;
+class LLVMTargetMachine;
 struct MachineSchedContext;
 
 // The old pass manager infrastructure is hidden in a legacy namespace now.
@@ -103,7 +103,7 @@ private:
   bool AddingMachinePasses;
 
 protected:
-  TargetMachine *TM;
+  LLVMTargetMachine *TM;
   PassConfigImpl *Impl; // Internal data structures
   bool Initialized;     // Flagged after all passes are configured.
 
@@ -115,8 +115,12 @@ protected:
   /// Default setting for -enable-tail-merge on this target.
   bool EnableTailMerge;
 
+  /// Require processing of functions such that callees are generated before
+  /// callers.
+  bool RequireCodeGenSCCOrder;
+
 public:
-  TargetPassConfig(TargetMachine *tm, PassManagerBase &pm);
+  TargetPassConfig(LLVMTargetMachine &TM, PassManagerBase &pm);
   // Dummy constructor.
   TargetPassConfig();
 
@@ -161,6 +165,11 @@ public:
 
   bool getEnableTailMerge() const { return EnableTailMerge; }
   void setEnableTailMerge(bool Enable) { setOpt(EnableTailMerge, Enable); }
+
+  bool requiresCodeGenSCCOrder() const { return RequireCodeGenSCCOrder; }
+  void setRequiresCodeGenSCCOrder(bool Enable = true) {
+    setOpt(RequireCodeGenSCCOrder, Enable);
+  }
 
   /// Allow the target to override a specific pass without overriding the pass
   /// pipeline. When passes are added to the standard pipeline at the

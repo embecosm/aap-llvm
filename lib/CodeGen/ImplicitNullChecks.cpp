@@ -22,7 +22,7 @@
 // With the help of a runtime that understands the .fault_maps section,
 // faulting_load_op branches to throw_npe if executing movl (%r10), %esi incurs
 // a page fault.
-// Store is also supported.
+// Store and LoadStore are also supported.
 //
 //===----------------------------------------------------------------------===//
 
@@ -674,8 +674,8 @@ void ImplicitNullChecks::rewriteNullChecks(
 
 char ImplicitNullChecks::ID = 0;
 char &llvm::ImplicitNullChecksID = ImplicitNullChecks::ID;
-INITIALIZE_PASS_BEGIN(ImplicitNullChecks, "implicit-null-checks",
+INITIALIZE_PASS_BEGIN(ImplicitNullChecks, DEBUG_TYPE,
                       "Implicit null checks", false, false)
 INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
-INITIALIZE_PASS_END(ImplicitNullChecks, "implicit-null-checks",
+INITIALIZE_PASS_END(ImplicitNullChecks, DEBUG_TYPE,
                     "Implicit null checks", false, false)

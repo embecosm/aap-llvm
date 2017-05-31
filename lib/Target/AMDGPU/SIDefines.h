@@ -118,6 +118,10 @@ namespace AMDGPU {
     // Operand for source modifiers for VOP instructions
     OPERAND_INPUT_MODS,
 
+    // Operand for GFX9 SDWA instructions
+    OPERAND_SDWA9_SRC,
+    OPERAND_SDWA9_VOPC_DST,
+
     /// Operand with 32-bit immediate that uses the constant bus.
     OPERAND_KIMM32,
     OPERAND_KIMM16
@@ -160,7 +164,8 @@ namespace AMDGPUAsmVariants {
     DEFAULT = 0,
     VOP3 = 1,
     SDWA = 2,
-    DPP = 3
+    SDWA9 = 3,
+    DPP = 4
   };
 }
 
@@ -248,6 +253,7 @@ enum Id { // HwRegCode, (6) [5:0]
   ID_LDS_ALLOC = 6,
   ID_IB_STS = 7,
   ID_SYMBOLIC_LAST_ = 8,
+  ID_MEM_BASES = 15,
   ID_SHIFT_ = 0,
   ID_WIDTH_ = 6,
   ID_MASK_ = (((1 << ID_WIDTH_) - 1) << ID_SHIFT_)
@@ -257,14 +263,20 @@ enum Offset { // Offset, (5) [10:6]
   OFFSET_DEFAULT_ = 0,
   OFFSET_SHIFT_ = 6,
   OFFSET_WIDTH_ = 5,
-  OFFSET_MASK_ = (((1 << OFFSET_WIDTH_) - 1) << OFFSET_SHIFT_)
+  OFFSET_MASK_ = (((1 << OFFSET_WIDTH_) - 1) << OFFSET_SHIFT_),
+
+  OFFSET_SRC_SHARED_BASE = 16,
+  OFFSET_SRC_PRIVATE_BASE = 0
 };
 
 enum WidthMinusOne { // WidthMinusOne, (5) [15:11]
   WIDTH_M1_DEFAULT_ = 31,
   WIDTH_M1_SHIFT_ = 11,
   WIDTH_M1_WIDTH_ = 5,
-  WIDTH_M1_MASK_ = (((1 << WIDTH_M1_WIDTH_) - 1) << WIDTH_M1_SHIFT_)
+  WIDTH_M1_MASK_ = (((1 << WIDTH_M1_WIDTH_) - 1) << WIDTH_M1_SHIFT_),
+
+  WIDTH_M1_SRC_SHARED_BASE = 15,
+  WIDTH_M1_SRC_PRIVATE_BASE = 15
 };
 
 } // namespace Hwreg
@@ -287,6 +299,18 @@ enum DstUnused {
   UNUSED_PRESERVE = 2,
 };
 
+enum SDWA9EncValues{
+  SRC_SGPR_MASK = 0x100,
+  SRC_VGPR_MASK = 0xFF,
+  VOPC_DST_VCC_MASK = 0x80,
+  VOPC_DST_SGPR_MASK = 0x7F,
+
+  SRC_VGPR_MIN = 0,
+  SRC_VGPR_MAX = 255,
+  SRC_SGPR_MIN = 256,
+  SRC_SGPR_MAX = 357,
+};
+
 } // namespace SDWA
 } // namespace AMDGPU
 
@@ -295,6 +319,7 @@ enum DstUnused {
 #define   S_00B02C_EXTRA_LDS_SIZE(x)                                  (((x) & 0xFF) << 8)
 #define R_00B128_SPI_SHADER_PGM_RSRC1_VS                                0x00B128
 #define R_00B228_SPI_SHADER_PGM_RSRC1_GS                                0x00B228
+#define R_00B428_SPI_SHADER_PGM_RSRC1_HS                                0x00B428
 #define R_00B848_COMPUTE_PGM_RSRC1                                      0x00B848
 #define   S_00B028_VGPRS(x)                                           (((x) & 0x3F) << 0)
 #define   S_00B028_SGPRS(x)                                           (((x) & 0x0F) << 6)

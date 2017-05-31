@@ -255,6 +255,9 @@ class ProcWriteResources<list<ProcResourceKind> resources> {
   // Allow a processor to mark some scheduling classes as unsupported
   // for stronger verification.
   bit Unsupported = 0;
+  // Allow a processor to mark some scheduling classes as single-issue.
+  // SingleIssue is an alias for Begin/End Group.
+  bit SingleIssue = 0;
   SchedMachineModel SchedModel = ?;
 }
 
@@ -331,7 +334,7 @@ class ReadAdvance<SchedRead read, int cycles, list<SchedWrite> writes = []>
 }
 
 // Directly associate a new SchedRead type with a delay and optional
-// pipeline bypess. For use with InstRW or ItinRW.
+// pipeline bypass. For use with InstRW or ItinRW.
 class SchedReadAdvance<int cycles, list<SchedWrite> writes = []> : SchedRead,
   ProcReadAdvance<cycles, writes>;
 

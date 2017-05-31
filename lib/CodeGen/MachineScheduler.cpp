@@ -69,7 +69,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "misched"
+#define DEBUG_TYPE "machine-scheduler"
 
 namespace llvm {
 
@@ -191,12 +191,13 @@ char MachineScheduler::ID = 0;
 
 char &llvm::MachineSchedulerID = MachineScheduler::ID;
 
-INITIALIZE_PASS_BEGIN(MachineScheduler, "machine-scheduler",
+INITIALIZE_PASS_BEGIN(MachineScheduler, DEBUG_TYPE,
                       "Machine Instruction Scheduler", false, false)
 INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(MachineLoopInfo)
 INITIALIZE_PASS_DEPENDENCY(SlotIndexes)
 INITIALIZE_PASS_DEPENDENCY(LiveIntervals)
-INITIALIZE_PASS_END(MachineScheduler, "machine-scheduler",
+INITIALIZE_PASS_END(MachineScheduler, DEBUG_TYPE,
                     "Machine Instruction Scheduler", false, false)
 
 MachineScheduler::MachineScheduler()
@@ -531,7 +532,7 @@ void MachineSchedulerBase::scheduleRegions(ScheduleDAGInstrs &Scheduler,
     // thumb2 size reduction is currently an exception, so the PostMIScheduler
     // needs to do this.
     if (FixKillFlags)
-        Scheduler.fixupKills(&*MBB);
+      Scheduler.fixupKills(*MBB);
   }
   Scheduler.finalizeSchedule();
 }
@@ -1172,6 +1173,12 @@ void ScheduleDAGMILive::schedule() {
         dbgs() << "  Pressure Diff      : ";
         getPressureDiff(&SU).dump(*TRI);
       }
+      dbgs() << "  Single Issue       : ";
+      if (SchedModel.mustBeginGroup(SU.getInstr()) &&
+         SchedModel.mustEndGroup(SU.getInstr()))
+        dbgs() << "true;";
+      else
+        dbgs() << "false;";
       dbgs() << '\n';
     }
     if (ExitSU.getInstr() != nullptr)
@@ -1909,12 +1916,22 @@ bool SchedBoundary::checkHazard(SUnit *SU) {
       && HazardRec->getHazardType(SU) != ScheduleHazardRecognizer::NoHazard) {
     return true;
   }
+
   unsigned uops = SchedModel->getNumMicroOps(SU->getInstr());
   if ((CurrMOps > 0) && (CurrMOps + uops > SchedModel->getIssueWidth())) {
     DEBUG(dbgs() << "  SU(" << SU->NodeNum << ") uops="
           << SchedModel->getNumMicroOps(SU->getInstr()) << '\n');
     return true;
   }
+
+  if (CurrMOps > 0 &&
+      ((isTop() && SchedModel->mustBeginGroup(SU->getInstr())) ||
+       (!isTop() && SchedModel->mustEndGroup(SU->getInstr())))) {
+    DEBUG(dbgs() << "  hazard: SU(" << SU->NodeNum << ") must "
+                 << (isTop()? "begin" : "end") << " group\n");
+    return true;
+  }
+
   if (SchedModel->hasInstrSchedModel() && SU->hasReservedResource) {
     const MCSchedClassDesc *SC = DAG->getSchedClass(SU);
     for (TargetSchedModel::ProcResIter
@@ -2210,6 +2227,18 @@ void SchedBoundary::bumpNode(SUnit *SU) {
   // one cycle.  Since we commonly reach the max MOps here, opportunistically
   // bump the cycle to avoid uselessly checking everything in the readyQ.
   CurrMOps += IncMOps;
+
+  // Bump the cycle count for issue group constraints.
+  // This must be done after NextCycle has been adjust for all other stalls.
+  // Calling bumpCycle(X) will reduce CurrMOps by one issue group and set
+  // currCycle to X.
+  if ((isTop() &&  SchedModel->mustEndGroup(SU->getInstr())) ||
+      (!isTop() && SchedModel->mustBeginGroup(SU->getInstr()))) {
+    DEBUG(dbgs() << "  Bump cycle to "
+                 << (isTop() ? "end" : "begin") << " group\n");
+    bumpCycle(++NextCycle);
+  }
+
   while (CurrMOps >= SchedModel->getIssueWidth()) {
     DEBUG(dbgs() << "  *** Max MOps " << CurrMOps
           << " at cycle " << CurrCycle << '\n');
@@ -2700,7 +2729,7 @@ void GenericScheduler::registerRoots() {
     errs() << "Critical Path(GS-RR ): " << Rem.CriticalPath << " \n";
   }
 
-  if (EnableCyclicPath) {
+  if (EnableCyclicPath && SchedModel->getMicroOpBufferSize() > 0) {
     Rem.CyclicCritPath = DAG->computeCyclicCriticalPath();
     checkAcyclicLatency();
   }
@@ -3202,6 +3231,12 @@ void PostGenericScheduler::tryCandidate(SchedCandidate &Cand,
   // Prioritize instructions that read unbuffered resources by stall cycles.
   if (tryLess(Top.getLatencyStallCycles(TryCand.SU),
               Top.getLatencyStallCycles(Cand.SU), TryCand, Cand, Stall))
+    return;
+
+  // Keep clustered nodes together.
+  if (tryGreater(TryCand.SU == DAG->getNextClusterSucc(),
+                 Cand.SU == DAG->getNextClusterSucc(),
+                 TryCand, Cand, Cluster))
     return;
 
   // Avoid critical resource consumption and balance the schedule.

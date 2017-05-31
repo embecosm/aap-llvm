@@ -78,7 +78,7 @@ private:
   /// this function.
   DenseMap<const AllocaInst *, int> FrameIndices;
 
-  /// Methods for translating form LLVM IR to MachineInstr.
+  /// \name Methods for translating form LLVM IR to MachineInstr.
   /// \see ::translate for general information on the translate methods.
   /// @{
 
@@ -299,6 +299,8 @@ private:
 
   bool translateExtractElement(const User &U, MachineIRBuilder &MIRBuilder);
 
+  bool translateShuffleVector(const User &U, MachineIRBuilder &MIRBuilder);
+
   // Stubs to keep the compiler happy while we implement the rest of the
   // translation.
   bool translateResume(const User &U, MachineIRBuilder &MIRBuilder) {
@@ -335,9 +337,6 @@ private:
     return false;
   }
   bool translateUserOp2(const User &U, MachineIRBuilder &MIRBuilder) {
-    return false;
-  }
-  bool translateShuffleVector(const User &U, MachineIRBuilder &MIRBuilder) {
     return false;
   }
 

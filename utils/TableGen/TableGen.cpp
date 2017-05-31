@@ -46,6 +46,7 @@ enum ActionType {
   GenAttributes,
   GenSearchableTables,
   GenGlobalISel,
+  GenX86FoldTables,
   GenX86EVEX2VEXTables,
   GenRegisterBank,
 };
@@ -97,14 +98,17 @@ namespace {
                                "Generate generic binary-searchable table"),
                     clEnumValN(GenGlobalISel, "gen-global-isel",
                                "Generate GlobalISel selector"),
+                    clEnumValN(GenX86FoldTables, "gen-x86-fold-tables",
+                               "Generate X86 fold tables"),
                     clEnumValN(GenX86EVEX2VEXTables, "gen-x86-EVEX2VEX-tables",
                                "Generate X86 EVEX to VEX compress tables"),
                     clEnumValN(GenRegisterBank, "gen-register-bank",
                                "Generate registers bank descriptions")));
 
+  cl::OptionCategory PrintEnumsCat("Options for -print-enums");
   cl::opt<std::string>
   Class("class", cl::desc("Print Enum list for this class"),
-          cl::value_desc("class name"));
+        cl::value_desc("class name"), cl::cat(PrintEnumsCat));
 
 bool LLVMTableGenMain(raw_ostream &OS, RecordKeeper &Records) {
   switch (Action) {
@@ -188,6 +192,9 @@ bool LLVMTableGenMain(raw_ostream &OS, RecordKeeper &Records) {
     break;
   case GenGlobalISel:
     EmitGlobalISel(Records, OS);
+    break;
+  case GenX86FoldTables:
+    EmitX86FoldTables(Records, OS);
     break;
   case GenRegisterBank:
     EmitRegisterBank(Records, OS);

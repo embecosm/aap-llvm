@@ -202,7 +202,7 @@ DictionaryEntry MutationDispatcher::MakeDictionaryEntryFromCMP(
     const void *Arg1Mutation, const void *Arg2Mutation,
     size_t ArgSize, const uint8_t *Data,
     size_t Size) {
-  ScopedDoingMyOwnMemmem scoped_doing_my_own_memmem;
+  ScopedDoingMyOwnMemOrStr scoped_doing_my_own_mem_os_str;
   bool HandleFirst = Rand.RandBool();
   const void *ExistingBytes, *DesiredBytes;
   Word W;
@@ -217,11 +217,12 @@ DictionaryEntry MutationDispatcher::MakeDictionaryEntryFromCMP(
     size_t NumPositions = 0;
     for (const uint8_t *Cur = Data;
          Cur < End && NumPositions < kMaxNumPositions; Cur++) {
-      Cur = (uint8_t *)SearchMemory(Cur, End - Cur, ExistingBytes, ArgSize);
+      Cur =
+          (const uint8_t *)SearchMemory(Cur, End - Cur, ExistingBytes, ArgSize);
       if (!Cur) break;
       Positions[NumPositions++] = Cur - Data;
     }
-    if (!NumPositions) break;
+    if (!NumPositions) continue;
     return DictionaryEntry(W, Positions[Rand(NumPositions)]);
   }
   DictionaryEntry DE(W);

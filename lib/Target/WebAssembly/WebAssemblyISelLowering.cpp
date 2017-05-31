@@ -84,8 +84,8 @@ WebAssemblyTargetLowering::WebAssemblyTargetLowering(
                     ISD::SETULT, ISD::SETULE, ISD::SETUGT, ISD::SETUGE})
       setCondCodeAction(CC, T, Expand);
     // Expand floating-point library function operators.
-    for (auto Op : {ISD::FSIN, ISD::FCOS, ISD::FSINCOS, ISD::FPOWI, ISD::FPOW,
-                    ISD::FREM, ISD::FMA})
+    for (auto Op : {ISD::FSIN, ISD::FCOS, ISD::FSINCOS, ISD::FPOW, ISD::FREM,
+                    ISD::FMA})
       setOperationAction(Op, T, Expand);
     // Note supported floating-point library function operators that otherwise
     // default to expand.
@@ -258,7 +258,8 @@ bool WebAssemblyTargetLowering::allowsMisalignedMemoryAccesses(
   return true;
 }
 
-bool WebAssemblyTargetLowering::isIntDivCheap(EVT VT, AttributeSet Attr) const {
+bool WebAssemblyTargetLowering::isIntDivCheap(EVT VT,
+                                              AttributeList Attr) const {
   // The current thinking is that wasm engines will perform this optimization,
   // so we can save on code size.
   return true;

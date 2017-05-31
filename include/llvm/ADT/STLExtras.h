@@ -140,9 +140,8 @@ public:
           iterator_category;
   typedef typename std::iterator_traits<RootIt>::difference_type
           difference_type;
-  typedef typename std::result_of<
-            UnaryFunc(decltype(*std::declval<RootIt>()))>
-          ::type value_type;
+  typedef decltype(std::declval<UnaryFunc>()(*std::declval<RootIt>()))
+          value_type;
 
   typedef void pointer;
   //typedef typename UnaryFunc::result_type *pointer;
@@ -707,6 +706,18 @@ struct is_one_of<T, U, Ts...> {
       std::is_same<T, U>::value || is_one_of<T, Ts...>::value;
 };
 
+/// \brief traits class for checking whether type T is a base class for all
+///  the given types in the variadic list.
+template <typename T, typename... Ts> struct are_base_of {
+  static const bool value = true;
+};
+
+template <typename T, typename U, typename... Ts>
+struct are_base_of<T, U, Ts...> {
+  static const bool value =
+      std::is_base_of<T, U>::value && are_base_of<T, Ts...>::value;
+};
+
 //===----------------------------------------------------------------------===//
 //     Extra additions for arrays
 //===----------------------------------------------------------------------===//
@@ -893,7 +904,8 @@ auto partition(R &&Range, UnaryPredicate P) -> decltype(std::begin(Range)) {
 /// SmallVector with elements of the vector.  This is useful, for example,
 /// when you want to iterate a range and then sort the results.
 template <unsigned Size, typename R>
-SmallVector<detail::ValueOfRange<R>, Size> to_vector(R &&Range) {
+SmallVector<typename std::remove_const<detail::ValueOfRange<R>>::type, Size>
+to_vector(R &&Range) {
   return {std::begin(Range), std::end(Range)};
 }
 
@@ -1079,7 +1091,7 @@ private:
 ///
 /// std::vector<char> Items = {'A', 'B', 'C', 'D'};
 /// for (auto X : enumerate(Items)) {
-///   printf("Item %d - %c\n", X.Index, X.Value);
+///   printf("Item %d - %c\n", X.index(), X.value());
 /// }
 ///
 /// Output:

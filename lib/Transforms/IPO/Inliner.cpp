@@ -289,7 +289,7 @@ shouldBeDeferred(Function *Caller, CallSite CS, InlineCost IC,
   // treating them as truly abstract units etc.
   TotalSecondaryCost = 0;
   // The candidate cost to be imposed upon the current function.
-  int CandidateCost = IC.getCost() - (InlineConstants::CallPenalty + 1);
+  int CandidateCost = IC.getCost() - 1;
   // This bool tracks what happens if we do NOT inline C into B.
   bool callerWillBeRemoved = Caller->hasLocalLinkage();
   // This bool tracks what happens if we DO inline C into B.
@@ -502,7 +502,7 @@ inlineCallsImpl(CallGraphSCC &SCC, CallGraph &CG,
         std::swap(CallSites[i--], CallSites[--FirstCallInSCC]);
 
   InlinedArrayAllocasTy InlinedArrayAllocas;
-  InlineFunctionInfo InlineInfo(&CG, &GetAssumptionCache);
+  InlineFunctionInfo InlineInfo(&CG, &GetAssumptionCache, PSI);
 
   // Now that we have all of the call sites, loop over them and inline them if
   // it looks profitable to do so.
@@ -872,7 +872,7 @@ PreservedAnalyses InlinerPass::run(LazyCallGraph::SCC &InitialC,
       // Setup the data structure used to plumb customization into the
       // `InlineFunction` routine.
       InlineFunctionInfo IFI(
-          /*cg=*/nullptr, &GetAssumptionCache,
+          /*cg=*/nullptr, &GetAssumptionCache, PSI,
           &FAM.getResult<BlockFrequencyAnalysis>(*(CS.getCaller())),
           &FAM.getResult<BlockFrequencyAnalysis>(Callee));
 
