@@ -121,7 +121,7 @@ define i8 @ldb_global_short_neg_imm_3() {
 entry:
 ;CHECK: ldb_global_short_neg_imm_3:
 ;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array-5  {{.*MOVI_i16}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB$}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -5
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
@@ -133,7 +133,7 @@ define i8 @ldb_global_neg_imm_1() {
 entry:
 ;CHECK: ldb_global_neg_imm_1:
 ;CHECK-DAG: movi $[[REG1:r[0-9]+]], i8_array-26 {{.*MOVI_i16}}
-;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB$}}
+;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -26
   %1 = load i8, i8* %0
   ret i8 %1 ;CHECK: jmp   {{.*JMP}}
