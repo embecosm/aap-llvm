@@ -1,4 +1,4 @@
-//===- AAPInstrFormats.td - AAP Instruction Formats ----*- tablegen -*-===//
+//===- AAPInstrFormats.td - AAP Instruction Formats --------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //

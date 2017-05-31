@@ -1,4 +1,4 @@
-//===- AAPRegisterInfo.td - AAP Register defs ------------*- tablegen -*-===//
+//===- AAPRegisterInfo.td - AAP Register defs --------------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //

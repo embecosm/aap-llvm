@@ -29,7 +29,7 @@ enum CondCode {
   COND_LEU = 5,
   COND_INVALID = -1
 };
-} // end namespace AAP
+} // end namespace AAPCC
 
 namespace llvm {
 
