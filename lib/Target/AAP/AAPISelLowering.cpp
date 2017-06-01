@@ -556,8 +556,7 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   // Get a count of how many bytes are to be pushed on the stack.
   unsigned NumBytes = CCInfo.getNextStackOffset();
 
-  Chain = DAG.getCALLSEQ_START(
-      Chain, DAG.getConstant(NumBytes, DL, getPointerTy(TD), true), DL);
+  Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, DL);
 
   SmallVector<std::pair<unsigned, SDValue>, 4> RegsToPass;
   SmallVector<SDValue, 12> MemOpChains;

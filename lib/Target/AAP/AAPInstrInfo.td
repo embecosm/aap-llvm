@@ -19,7 +19,7 @@ def callflag : SDNode<"AAPISD::CALL", sdt_call,
 def retflag : SDNode<"AAPISD::RET_FLAG", sdt_ret,
                      [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
 
-def sdt_callseqstart : SDCallSeqStart<[SDTCisVT<0, i16>]>;
+def sdt_callseqstart : SDCallSeqStart<[SDTCisVT<0, i16>, SDTCisVT<1, i16>]>;
 def sdt_callseqend   : SDCallSeqEnd<[SDTCisVT<0, i16>, SDTCisVT<1, i16>]>;
 def callseq_start : SDNode<"ISD::CALLSEQ_START", sdt_callseqstart,
                            [SDNPHasChain, SDNPOutGlue]>;
@@ -613,8 +613,8 @@ def : Pat<(retflag GR64:$rD), (JMP GR64:$rD)>;
 // Stack adjustment
 let Defs = [R1], Uses = [R1] in {
   def ADJCALLSTACKDOWN : Pseudo
-    <(outs), (ins i16imm:$amt), "#ADJCALLSTACKDOWN",
-      [(callseq_start timm:$amt)]>;
+    <(outs), (ins i16imm:$amt, i16imm:$amt2), "#ADJCALLSTACKDOWN",
+      [(callseq_start timm:$amt, timm:$amt2)]>;
 
   def ADJCALLSTACKUP : Pseudo
     <(outs), (ins i16imm:$amt1, i16imm:$amt2), "#ADJCALLSTACKUP",

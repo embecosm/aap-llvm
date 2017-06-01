@@ -202,7 +202,7 @@ const DataLayout &AsmPrinter::getDataLayout() const {
 // By default, use the pointer size defined by the target machine
 unsigned AsmPrinter::getPointerSize() const {
   if (MAI)
-    return MAI->getPointerSize();
+    return MAI->getCodePointerSize();
   return TM.getPointerSize();
 }
 

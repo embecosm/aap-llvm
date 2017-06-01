@@ -62,7 +62,7 @@ public:
 //===-------------------------- Fixup processing --------------------------===//
 
   void applyFixup(MCFixup const &Fixup, char *Data, unsigned DataSize,
-                  uint64_t Value, bool IsPCRel) const override {
+                  uint64_t Value, bool IsPCRel, MCContext &Ctx) const override {
     // No target specific fixups are applied in the backend as they are all
     // handled as relocations in the linker.
     // Generic relocations are handled, as they may be literal values which

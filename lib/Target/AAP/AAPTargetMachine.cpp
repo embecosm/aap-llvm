@@ -49,7 +49,7 @@ namespace {
 /// AAP Code Generator Pass Configuration Options.
 class AAPPassConfig : public TargetPassConfig {
 public:
-  AAPPassConfig(AAPTargetMachine *TM, PassManagerBase &PM)
+  AAPPassConfig(AAPTargetMachine &TM, PassManagerBase &PM)
       : TargetPassConfig(TM, PM) {}
 
   AAPTargetMachine &getAAPTargetMachine() const {
@@ -62,7 +62,7 @@ public:
 } // namespace
 
 TargetPassConfig *AAPTargetMachine::createPassConfig(PassManagerBase &PM) {
-  return new AAPPassConfig(this, PM);
+  return new AAPPassConfig(*this, PM);
 }
 
 bool AAPPassConfig::addInstSelector() {

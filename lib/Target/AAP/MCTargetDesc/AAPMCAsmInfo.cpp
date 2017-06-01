@@ -20,7 +20,7 @@ void AAPMCAsmInfo::anchor() {}
 
 AAPMCAsmInfo::AAPMCAsmInfo(const llvm::Triple &TT) {
   CalleeSaveStackSlotSize = 2;
-  PointerSize = 4;
+  CodePointerSize = 4;
   CommentString = ";";
   SupportsDebugInformation = true;
   UsesELFSectionDirectiveForBSS = true;
