@@ -118,6 +118,7 @@ set(Tests
   SingleStrncmpTest
   SpamyTest
   ShrinkControlFlowTest
+  ShrinkControlFlowSimpleTest
   ShrinkValueProfileTest
   StrcmpTest
   StrncmpOOBTest
@@ -206,6 +207,9 @@ include_directories(..)
 add_subdirectory(no-coverage)
 add_subdirectory(trace-pc)
 add_subdirectory(ubsan)
+if (NOT MSVC)
+  add_subdirectory(inline-8bit-counters)
+endif()
 
 add_library(LLVMFuzzer-DSO1 SHARED DSO1.cpp)
 add_library(LLVMFuzzer-DSO2 SHARED DSO2.cpp)
@@ -268,5 +272,5 @@ add_lit_testsuite(check-fuzzer "Running Fuzzer tests"
 # Don't add dependencies on Windows. The linker step would fail on Windows,
 # since cmake will use link.exe for linking and won't include compiler-rt libs.
 if(NOT MSVC)
-  add_dependencies(check-fuzzer FileCheck sancov not)
+  add_dependencies(check-fuzzer FileCheck sancov not llvm-symbolizer)
 endif()

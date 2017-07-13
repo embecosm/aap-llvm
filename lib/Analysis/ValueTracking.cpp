@@ -17,9 +17,9 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/InstructionSimplify.h"
-#include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/Loads.h"
 #include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/OptimizationDiagnosticInfo.h"
 #include "llvm/Analysis/VectorUtils.h"
 #include "llvm/IR/CallSite.h"
@@ -171,6 +171,18 @@ bool llvm::haveNoCommonBitsSet(const Value *LHS, const Value *RHS,
   return (LHSKnown.Zero | RHSKnown.Zero).isAllOnesValue();
 }
 
+
+bool llvm::isOnlyUsedInZeroEqualityComparison(const Instruction *CxtI) {
+  for (const User *U : CxtI->users()) {
+    if (const ICmpInst *IC = dyn_cast<ICmpInst>(U))
+      if (IC->isEquality())
+        if (Constant *C = dyn_cast<Constant>(IC->getOperand(1)))
+          if (C->isNullValue())
+            continue;
+    return false;
+  }
+  return true;
+}
 
 static bool isKnownToBeAPowerOfTwo(const Value *V, bool OrZero, unsigned Depth,
                                    const Query &Q);
@@ -674,8 +686,7 @@ static void computeKnownBitsFromAssume(const Value *V, KnownBits &Known,
       Known.One  |= RHSKnown.Zero;
     // assume(v >> c = a)
     } else if (match(Arg,
-                     m_c_ICmp(Pred, m_CombineOr(m_LShr(m_V, m_ConstantInt(C)),
-                                                m_AShr(m_V, m_ConstantInt(C))),
+                     m_c_ICmp(Pred, m_Shr(m_V, m_ConstantInt(C)),
                               m_Value(A))) &&
                Pred == ICmpInst::ICMP_EQ &&
                isValidAssumeForContext(I, Q.CxtI, Q.DT)) {
@@ -686,9 +697,7 @@ static void computeKnownBitsFromAssume(const Value *V, KnownBits &Known,
       Known.Zero |= RHSKnown.Zero << C->getZExtValue();
       Known.One  |= RHSKnown.One  << C->getZExtValue();
     // assume(~(v >> c) = a)
-    } else if (match(Arg, m_c_ICmp(Pred, m_Not(m_CombineOr(
-                                             m_LShr(m_V, m_ConstantInt(C)),
-                                             m_AShr(m_V, m_ConstantInt(C)))),
+    } else if (match(Arg, m_c_ICmp(Pred, m_Not(m_Shr(m_V, m_ConstantInt(C))),
                                    m_Value(A))) &&
                Pred == ICmpInst::ICMP_EQ &&
                isValidAssumeForContext(I, Q.CxtI, Q.DT)) {
@@ -840,7 +849,8 @@ static void computeKnownBitsFromShiftOperator(
   Optional<bool> ShifterOperandIsNonZero;
 
   // Early exit if we can't constrain any well-defined shift amount.
-  if (!(ShiftAmtKZ & (BitWidth - 1)) && !(ShiftAmtKO & (BitWidth - 1))) {
+  if (!(ShiftAmtKZ & (PowerOf2Ceil(BitWidth) - 1)) &&
+      !(ShiftAmtKO & (PowerOf2Ceil(BitWidth) - 1))) {
     ShifterOperandIsNonZero =
         isKnownNonZero(I->getOperand(1), Depth + 1, Q);
     if (!*ShifterOperandIsNonZero)
@@ -1490,12 +1500,10 @@ void computeKnownBits(const Value *V, KnownBits &Known, unsigned Depth,
   assert(Depth <= MaxDepth && "Limit Search Depth");
   unsigned BitWidth = Known.getBitWidth();
 
-  assert((V->getType()->isIntOrIntVectorTy() ||
-          V->getType()->getScalarType()->isPointerTy()) &&
+  assert((V->getType()->isIntOrIntVectorTy(BitWidth) ||
+          V->getType()->isPtrOrPtrVectorTy()) &&
          "Not integer or pointer type!");
-  assert((Q.DL.getTypeSizeInBits(V->getType()->getScalarType()) == BitWidth) &&
-         (!V->getType()->isIntOrIntVectorTy() ||
-          V->getType()->getScalarSizeInBits() == BitWidth) &&
+  assert(Q.DL.getTypeSizeInBits(V->getType()->getScalarType()) == BitWidth &&
          "V and Known should have same BitWidth");
   (void)BitWidth;
 
@@ -1942,7 +1950,7 @@ bool isKnownNonZero(const Value *V, unsigned Depth, const Query &Q) {
     }
     // Check if all incoming values are non-zero constant.
     bool AllNonZeroConstants = all_of(PN->operands(), [](Value *V) {
-      return isa<ConstantInt>(V) && !cast<ConstantInt>(V)->isZeroValue();
+      return isa<ConstantInt>(V) && !cast<ConstantInt>(V)->isZero();
     });
     if (AllNonZeroConstants)
       return true;
@@ -1970,7 +1978,7 @@ static bool isAddOfNonZero(const Value *V1, const Value *V2, const Query &Q) {
 
 /// Return true if it is known that V1 != V2.
 static bool isKnownNonEqual(const Value *V1, const Value *V2, const Query &Q) {
-  if (V1->getType()->isVectorTy() || V1 == V2)
+  if (V1 == V2)
     return false;
   if (V1->getType() != V2->getType())
     // We can't look through casts yet.
@@ -1978,18 +1986,14 @@ static bool isKnownNonEqual(const Value *V1, const Value *V2, const Query &Q) {
   if (isAddOfNonZero(V1, V2, Q) || isAddOfNonZero(V2, V1, Q))
     return true;
 
-  if (IntegerType *Ty = dyn_cast<IntegerType>(V1->getType())) {
+  if (V1->getType()->isIntOrIntVectorTy()) {
     // Are any known bits in V1 contradictory to known bits in V2? If V1
     // has a known zero where V2 has a known one, they must not be equal.
-    auto BitWidth = Ty->getBitWidth();
-    KnownBits Known1(BitWidth);
-    computeKnownBits(V1, Known1, 0, Q);
-    KnownBits Known2(BitWidth);
-    computeKnownBits(V2, Known2, 0, Q);
+    KnownBits Known1 = computeKnownBits(V1, 0, Q);
+    KnownBits Known2 = computeKnownBits(V2, 0, Q);
 
-    APInt OppositeBits = (Known1.Zero & Known2.One) |
-                         (Known2.Zero & Known1.One);
-    if (OppositeBits.getBoolValue())
+    if (Known1.Zero.intersects(Known2.One) ||
+        Known2.Zero.intersects(Known1.One))
       return true;
   }
   return false;
@@ -2327,6 +2331,7 @@ bool llvm::ComputeMultiple(Value *V, unsigned Base, Value *&Multiple,
   case Instruction::SExt:
     if (!LookThroughSExt) return false;
     // otherwise fall through to ZExt
+    LLVM_FALLTHROUGH;
   case Instruction::ZExt:
     return ComputeMultiple(I->getOperand(0), Base, Multiple,
                            LookThroughSExt, Depth+1);
@@ -3017,7 +3022,7 @@ bool llvm::getConstantDataArrayInfo(const Value *V,
   if (GV->getInitializer()->isNullValue()) {
     Type *GVTy = GV->getValueType();
     if ( (ArrayTy = dyn_cast<ArrayType>(GVTy)) ) {
-      // A zeroinitializer for the array; There is no ConstantDataArray.
+      // A zeroinitializer for the array; there is no ConstantDataArray.
       Array = nullptr;
     } else {
       const DataLayout &DL = GV->getParent()->getDataLayout();
@@ -3069,7 +3074,7 @@ bool llvm::getConstantStringInfo(const Value *V, StringRef &Str,
       Str = StringRef("", 1);
       return true;
     }
-    // We cannot instantiate a StringRef as we do not have an apropriate string
+    // We cannot instantiate a StringRef as we do not have an appropriate string
     // of 0s at hand.
     return false;
   }
@@ -4386,7 +4391,7 @@ isImpliedCondMatchingImmOperands(CmpInst::Predicate APred, const Value *ALHS,
 }
 
 Optional<bool> llvm::isImpliedCondition(const Value *LHS, const Value *RHS,
-                                        const DataLayout &DL, bool InvertAPred,
+                                        const DataLayout &DL, bool LHSIsFalse,
                                         unsigned Depth, AssumptionCache *AC,
                                         const Instruction *CxtI,
                                         const DominatorTree *DT) {
@@ -4395,26 +4400,51 @@ Optional<bool> llvm::isImpliedCondition(const Value *LHS, const Value *RHS,
     return None;
 
   Type *OpTy = LHS->getType();
-  assert(OpTy->getScalarType()->isIntegerTy(1));
+  assert(OpTy->isIntOrIntVectorTy(1));
 
   // LHS ==> RHS by definition
-  if (!InvertAPred && LHS == RHS)
-    return true;
+  if (LHS == RHS)
+    return !LHSIsFalse;
 
   if (OpTy->isVectorTy())
     // TODO: extending the code below to handle vectors
     return None;
   assert(OpTy->isIntegerTy(1) && "implied by above");
 
-  ICmpInst::Predicate APred, BPred;
-  Value *ALHS, *ARHS;
   Value *BLHS, *BRHS;
-
-  if (!match(LHS, m_ICmp(APred, m_Value(ALHS), m_Value(ARHS))) ||
-      !match(RHS, m_ICmp(BPred, m_Value(BLHS), m_Value(BRHS))))
+  ICmpInst::Predicate BPred;
+  // We expect the RHS to be an icmp.
+  if (!match(RHS, m_ICmp(BPred, m_Value(BLHS), m_Value(BRHS))))
     return None;
 
-  if (InvertAPred)
+  Value *ALHS, *ARHS;
+  ICmpInst::Predicate APred;
+  // The LHS can be an 'or', 'and', or 'icmp'.
+  if (!match(LHS, m_ICmp(APred, m_Value(ALHS), m_Value(ARHS)))) {
+    // The remaining tests are all recursive, so bail out if we hit the limit.
+    if (Depth == MaxDepth)
+      return None;
+    // If the result of an 'or' is false, then we know both legs of the 'or' are
+    // false.  Similarly, if the result of an 'and' is true, then we know both
+    // legs of the 'and' are true.
+    if ((LHSIsFalse && match(LHS, m_Or(m_Value(ALHS), m_Value(ARHS)))) ||
+        (!LHSIsFalse && match(LHS, m_And(m_Value(ALHS), m_Value(ARHS))))) {
+      if (Optional<bool> Implication = isImpliedCondition(
+              ALHS, RHS, DL, LHSIsFalse, Depth + 1, AC, CxtI, DT))
+        return Implication;
+      if (Optional<bool> Implication = isImpliedCondition(
+              ARHS, RHS, DL, LHSIsFalse, Depth + 1, AC, CxtI, DT))
+        return Implication;
+      return None;
+    }
+    return None;
+  }
+  // All of the below logic assumes both LHS and RHS are icmps.
+  assert(isa<ICmpInst>(LHS) && isa<ICmpInst>(RHS) && "Expected icmps.");
+
+  // The rest of the logic assumes the LHS condition is true.  If that's not the
+  // case, invert the predicate to make it so.
+  if (LHSIsFalse)
     APred = CmpInst::getInversePredicate(APred);
 
   // Can we infer anything when the two compares have matching operands?

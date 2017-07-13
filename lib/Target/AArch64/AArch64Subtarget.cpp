@@ -81,6 +81,7 @@ void AArch64Subtarget::initializeProperties() {
     break;
   case CortexA57:
     MaxInterleaveFactor = 4;
+    PrefFunctionAlignment = 4;
     break;
   case ExynosM1:
     MaxInterleaveFactor = 4;
@@ -92,6 +93,10 @@ void AArch64Subtarget::initializeProperties() {
     MaxInterleaveFactor = 4;
     // FIXME: remove this to enable 64-bit SLP if performance looks good.
     MinVectorRegisterBitWidth = 128;
+    CacheLineSize = 128;
+    PrefetchDistance = 820;
+    MinPrefetchStride = 2048;
+    MaxPrefetchIterationsAhead = 8;
     break;
   case Kryo:
     MaxInterleaveFactor = 4;
@@ -126,7 +131,9 @@ void AArch64Subtarget::initializeProperties() {
     break;
   case CortexA35: break;
   case CortexA53: break;
-  case CortexA72: break;
+  case CortexA72:
+    PrefFunctionAlignment = 4;
+    break;
   case CortexA73: break;
   case Others: break;
   }

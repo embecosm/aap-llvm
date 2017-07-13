@@ -45,6 +45,8 @@ public:
 
   FixedStreamArray<support::ulittle32_t> name_ids() const;
 
+  const codeview::DebugStringTableSubsectionRef &getStringTable() const;
+
 private:
   Error readHeader(BinaryStreamReader &Reader);
   Error readStrings(BinaryStreamReader &Reader);
@@ -54,7 +56,6 @@ private:
   const PDBStringTableHeader *Header = nullptr;
   codeview::DebugStringTableSubsectionRef Strings;
   FixedStreamArray<support::ulittle32_t> IDs;
-  uint32_t ByteSize = 0;
   uint32_t NameCount = 0;
 };
 

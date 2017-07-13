@@ -121,7 +121,7 @@ Value *InstCombiner::SimplifyDemandedUseBits(Value *V, APInt DemandedMask,
   }
 
   Known.resetAll();
-  if (DemandedMask == 0)     // Not demanding any bits from V.
+  if (DemandedMask.isNullValue())     // Not demanding any bits from V.
     return UndefValue::get(VTy);
 
   if (Depth == 6)        // Limit search depth.
@@ -488,7 +488,7 @@ Value *InstCombiner::SimplifyDemandedUseBits(Value *V, APInt DemandedMask,
     // always convert this into a logical shr, even if the shift amount is
     // variable.  The low bit of the shift cannot be an input sign bit unless
     // the shift amount is >= the size of the datatype, which is undefined.
-    if (DemandedMask == 1) {
+    if (DemandedMask.isOneValue()) {
       // Perform the logical shift right.
       Instruction *NewVal = BinaryOperator::CreateLShr(
                         I->getOperand(0), I->getOperand(1), I->getName());
@@ -548,7 +548,7 @@ Value *InstCombiner::SimplifyDemandedUseBits(Value *V, APInt DemandedMask,
     if (ConstantInt *Rem = dyn_cast<ConstantInt>(I->getOperand(1))) {
       // X % -1 demands all the bits because we don't want to introduce
       // INT_MIN % -1 (== undef) by accident.
-      if (Rem->isAllOnesValue())
+      if (Rem->isMinusOne())
         break;
       APInt RA = Rem->getValue().abs();
       if (RA.isPowerOf2()) {
@@ -656,7 +656,7 @@ Value *InstCombiner::SimplifyDemandedUseBits(Value *V, APInt DemandedMask,
         // If we don't need any of low bits then return zero,
         // we know that DemandedMask is non-zero already.
         APInt DemandedElts = DemandedMask.zextOrTrunc(ArgWidth);
-        if (DemandedElts == 0)
+        if (DemandedElts.isNullValue())
           return ConstantInt::getNullValue(VTy);
 
         // We know that the upper bits are set to zero.
@@ -908,7 +908,7 @@ Value *InstCombiner::SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
     return nullptr;
   }
 
-  if (DemandedElts == 0) { // If nothing is demanded, provide undef.
+  if (DemandedElts.isNullValue()) { // If nothing is demanded, provide undef.
     UndefElts = EltMask;
     return UndefValue::get(V->getType());
   }
@@ -1627,10 +1627,10 @@ Value *InstCombiner::SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
       for (unsigned I = 0, E = II->getNumArgOperands(); I != E; ++I)
         Args.push_back(II->getArgOperand(I));
 
-      IRBuilderBase::InsertPointGuard Guard(*Builder);
-      Builder->SetInsertPoint(II);
+      IRBuilderBase::InsertPointGuard Guard(Builder);
+      Builder.SetInsertPoint(II);
 
-      CallInst *NewCall = Builder->CreateCall(NewIntrin, Args);
+      CallInst *NewCall = Builder.CreateCall(NewIntrin, Args);
       NewCall->takeName(II);
       NewCall->copyMetadata(*II);
 
@@ -1657,15 +1657,15 @@ Value *InstCombiner::SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
 
 
       if (NewNumElts == 1) {
-        return Builder->CreateInsertElement(UndefValue::get(V->getType()),
-                                            NewCall, static_cast<uint64_t>(0));
+        return Builder.CreateInsertElement(UndefValue::get(V->getType()),
+                                           NewCall, static_cast<uint64_t>(0));
       }
 
       SmallVector<uint32_t, 8> EltMask;
       for (unsigned I = 0; I < VWidth; ++I)
         EltMask.push_back(I);
 
-      Value *Shuffle = Builder->CreateShuffleVector(
+      Value *Shuffle = Builder.CreateShuffleVector(
         NewCall, UndefValue::get(NewTy), EltMask);
 
       MadeChange = true;

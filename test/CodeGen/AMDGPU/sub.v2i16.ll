@@ -5,8 +5,8 @@
 ; GCN-LABEL: {{^}}v_test_sub_v2i16:
 ; GFX9: v_pk_sub_i16 v{{[0-9]+}}, v{{[0-9]+}}, v{{[0-9]+}}
 
-; VI: v_subrev_u16_sdwa v{{[0-9]+}}, v{{[0-9]+}}, v{{[0-9]+}} dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
-; VI: v_subrev_u16_e32 v{{[0-9]+}}, v{{[0-9]+}}, v{{[0-9]+}}
+; VI: v_sub_u16_sdwa v{{[0-9]+}}, v{{[0-9]+}}, v{{[0-9]+}} dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+; VI: v_sub_u16_e32 v{{[0-9]+}}, v{{[0-9]+}}, v{{[0-9]+}}
 define amdgpu_kernel void @v_test_sub_v2i16(<2 x i16> addrspace(1)* %out, <2 x i16> addrspace(1)* %in0, <2 x i16> addrspace(1)* %in1) #1 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x()
   %gep.out = getelementptr inbounds <2 x i16>, <2 x i16> addrspace(1)* %out, i32 %tid
@@ -62,7 +62,7 @@ define amdgpu_kernel void @s_test_sub_v2i16_kernarg(<2 x i16> addrspace(1)* %out
 ; GFX9: v_pk_sub_i16 v{{[0-9]+}}, v{{[0-9]+}}, [[CONST]]
 
 ; VI-DAG: v_mov_b32_e32 [[K:v[0-9]+]], 0xfffffe38
-; VI-DAG: v_add_u16_sdwa v{{[0-9]+}}, [[K]], v{{[0-9]+}} dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+; VI-DAG: v_add_u16_sdwa v{{[0-9]+}}, v{{[0-9]+}}, [[K]] dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
 ; VI-DAG: v_add_u16_e32 v{{[0-9]+}}, 0xffffff85, v{{[0-9]+}}
 define amdgpu_kernel void @v_test_sub_v2i16_constant(<2 x i16> addrspace(1)* %out, <2 x i16> addrspace(1)* %in0) #1 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x()
@@ -80,7 +80,7 @@ define amdgpu_kernel void @v_test_sub_v2i16_constant(<2 x i16> addrspace(1)* %ou
 ; GFX9: v_pk_sub_i16 v{{[0-9]+}}, v{{[0-9]+}}, [[CONST]]
 
 ; VI-DAG: v_mov_b32_e32 [[K:v[0-9]+]], 0x3df
-; VI-DAG: v_add_u16_sdwa v{{[0-9]+}}, [[K]], v{{[0-9]+}}
+; VI-DAG: v_add_u16_sdwa v{{[0-9]+}}, v{{[0-9]+}}, [[K]]
 ; VI-DAG: v_add_u16_e32 v{{[0-9]+}}, 0x34d, v{{[0-9]+}}
 define amdgpu_kernel void @v_test_sub_v2i16_neg_constant(<2 x i16> addrspace(1)* %out, <2 x i16> addrspace(1)* %in0) #1 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x()
@@ -98,7 +98,7 @@ define amdgpu_kernel void @v_test_sub_v2i16_neg_constant(<2 x i16> addrspace(1)*
 ; VI: v_mov_b32_e32 [[ONE:v[0-9]+]], 1
 ; VI: flat_load_ushort [[LOAD0:v[0-9]+]]
 ; VI: flat_load_ushort [[LOAD1:v[0-9]+]]
-; VI-DAG: v_add_u16_sdwa v{{[0-9]+}}, [[ONE]], [[LOAD0]] dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+; VI-DAG: v_add_u16_sdwa v{{[0-9]+}}, [[LOAD0]], [[ONE]] dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
 ; VI-DAG: v_add_u16_e32 v{{[0-9]+}}, 1, [[LOAD1]]
 ; VI: v_or_b32_e32
 define amdgpu_kernel void @v_test_sub_v2i16_inline_neg1(<2 x i16> addrspace(1)* %out, <2 x i16> addrspace(1)* %in0) #1 {
@@ -137,7 +137,7 @@ define amdgpu_kernel void @v_test_sub_v2i16_inline_lo_zero_hi(<2 x i16> addrspac
 
 ; VI-NOT: v_subrev_i16
 ; VI: v_mov_b32_e32 [[K:v[0-9]+]], 0xffffc080
-; VI: v_add_u16_sdwa v{{[0-9]+}}, [[K]], v{{[0-9]+}} dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+; VI: v_add_u16_sdwa v{{[0-9]+}}, v{{[0-9]+}}, [[K]] dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
 ; VI-NOT: v_subrev_i16
 ; VI: v_or_b32_e32
 define amdgpu_kernel void @v_test_sub_v2i16_inline_fp_split(<2 x i16> addrspace(1)* %out, <2 x i16> addrspace(1)* %in0) #1 {
@@ -165,10 +165,10 @@ define amdgpu_kernel void @v_test_sub_v2i16_inline_fp_split(<2 x i16> addrspace(
 ; VI: flat_load_ushort v[[B_HI:[0-9]+]]
 ; VI: flat_load_ushort v[[B_LO:[0-9]+]]
 
-; VI: v_subrev_u16_e32 v[[ADD_HI:[0-9]+]], v[[B_HI]], v[[A_HI]]
+; VI: v_sub_u16_e32 v[[ADD_HI:[0-9]+]], v[[A_HI]], v[[B_HI]]
 ; VI-NOT: and
 ; VI-NOT: shl
-; VI: v_subrev_u16_e32 v[[ADD_LO:[0-9]+]], v[[B_LO]], v[[A_LO]]
+; VI: v_sub_u16_e32 v[[ADD_LO:[0-9]+]], v[[A_LO]], v[[B_LO]]
 ; VI-NOT: and
 ; VI-NOT: shl
 ; VI: buffer_store_dwordx2 v{{\[}}[[ADD_LO]]:[[ADD_HI]]{{\]}}
@@ -201,8 +201,8 @@ define amdgpu_kernel void @v_test_sub_v2i16_zext_to_v2i32(<2 x i32> addrspace(1)
 ; VI: flat_load_ushort v[[B_LO:[0-9]+]]
 ; VI: flat_load_ushort v[[B_HI:[0-9]+]]
 
-; VI-DAG: v_subrev_u16_e32
-; VI-DAG: v_subrev_u16_e32
+; VI: v_sub_u16_e32
+; VI: v_sub_u16_e32
 
 ; VI: buffer_store_dwordx4
 define amdgpu_kernel void @v_test_sub_v2i16_zext_to_v2i64(<2 x i64> addrspace(1)* %out, <2 x i16> addrspace(1)* %in0, <2 x i16> addrspace(1)* %in1) #1 {
@@ -228,8 +228,8 @@ define amdgpu_kernel void @v_test_sub_v2i16_zext_to_v2i64(<2 x i64> addrspace(1)
 ; GFX9-DAG: v_ashrrev_i32_e32 v[[ELT1:[0-9]+]], 16, [[ADD]]
 ; GFX9: buffer_store_dwordx2 v{{\[}}[[ELT0]]:[[ELT1]]{{\]}}
 
-; VI: v_subrev_u16_e32
-; VI: v_subrev_u16_e32
+; VI: v_sub_u16_e32
+; VI: v_sub_u16_e32
 ; VI: buffer_store_dwordx2
 define amdgpu_kernel void @v_test_sub_v2i16_sext_to_v2i32(<2 x i32> addrspace(1)* %out, <2 x i16> addrspace(1)* %in0, <2 x i16> addrspace(1)* %in1) #1 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x()
@@ -252,8 +252,8 @@ define amdgpu_kernel void @v_test_sub_v2i16_sext_to_v2i32(<2 x i32> addrspace(1)
 ; GFX9: v_pk_sub_i16
 ; GFX9: v_lshrrev_b32_e32 v{{[0-9]+}}, 16, v{{[0-9]+}}
 
-; VI: v_subrev_u16_sdwa v{{[0-9]+}}, v{{[0-9]+}}, v{{[0-9]+}} dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1 src1_sel:WORD_1
-; VI: v_subrev_u16_e32
+; VI: v_sub_u16_sdwa v{{[0-9]+}}, v{{[0-9]+}}, v{{[0-9]+}} dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_1 src1_sel:WORD_1
+; VI: v_sub_u16_e32
 
 ; GCN: v_bfe_i32 v{{[0-9]+}}, v{{[0-9]+}}, 0, 16
 ; GCN: v_bfe_i32 v{{[0-9]+}}, v{{[0-9]+}}, 0, 16

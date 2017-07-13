@@ -25,13 +25,13 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/Type.h"
@@ -380,7 +380,9 @@ bool AMDGPUCodeGenPrepare::visitFDiv(BinaryOperator &FDiv) {
   FastMathFlags FMF = FPOp->getFastMathFlags();
   bool UnsafeDiv = HasUnsafeFPMath || FMF.unsafeAlgebra() ||
                                       FMF.allowReciprocal();
-  if (ST->hasFP32Denormals() && !UnsafeDiv)
+
+  // With UnsafeDiv node will be optimized to just rcp and mul.
+  if (ST->hasFP32Denormals() || UnsafeDiv)
     return false;
 
   IRBuilder<> Builder(FDiv.getParent(), std::next(FDiv.getIterator()), FPMath);

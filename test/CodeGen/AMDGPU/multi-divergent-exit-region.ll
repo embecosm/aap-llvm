@@ -66,9 +66,9 @@
 
 ; FIXME: Why is this compare essentially repeated?
 ; GCN: v_cmp_eq_u32_e32 vcc, 1, [[REG:v[0-9]+]]
-; GCN-NEXT: v_cmp_ne_u32_e64 s{{\[[0-9]+:[0-9]+\]}}, 1, [[REG]]
 ; GCN: v_cndmask_b32_e64 v{{[0-9]+}}, 0, -1, vcc
-; GCN: v_cndmask_b32_e64 v{{[0-9]+}}, 0, -1
+; GCN: v_cmp_ne_u32_e32 vcc, 1, [[REG]]
+; GCN: v_cndmask_b32_e64 v{{[0-9]+}}, 0, -1, vcc
 
 ; GCN: ; %Flow1
 ; GCN-NEXT: s_or_b64 exec, exec
@@ -362,6 +362,7 @@ exit1:                                     ; preds = %LeafBlock, %LeafBlock1
 
 ; GCN: {{^BB[0-9]+_[0-9]+}}: ; %UnifiedReturnBlock
 ; GCN-NEXT: s_or_b64 exec, exec
+; GCN-NEXT: s_waitcnt vmcnt(0) lgkmcnt(0)
 ; GCN-NEXT: ; return
 
 define amdgpu_ps float @uniform_branch_to_multi_divergent_region_exit_ret_ret_return_value(i32 inreg %sgpr, i32 %vgpr) #0 {

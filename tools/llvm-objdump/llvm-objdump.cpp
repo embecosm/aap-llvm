@@ -41,6 +41,7 @@
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Object/Wasm.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -887,6 +888,18 @@ static void printRelocationTargetName(const MachOObjectFile *O,
   fmt << S;
 }
 
+static std::error_code getRelocationValueString(const WasmObjectFile *Obj,
+                                                const RelocationRef &RelRef,
+                                                SmallVectorImpl<char> &Result) {
+  const wasm::WasmRelocation& Rel = Obj->getWasmRelocation(RelRef);
+  std::string fmtbuf;
+  raw_string_ostream fmt(fmtbuf);
+  fmt << Rel.Index << (Rel.Addend < 0 ? "" : "+") << Rel.Addend;
+  fmt.flush();
+  Result.append(fmtbuf.begin(), fmtbuf.end());
+  return std::error_code();
+}
+
 static std::error_code getRelocationValueString(const MachOObjectFile *Obj,
                                                 const RelocationRef &RelRef,
                                                 SmallVectorImpl<char> &Result) {
@@ -1020,7 +1033,7 @@ static std::error_code getRelocationValueString(const MachOObjectFile *Obj,
       case MachO::ARM_RELOC_HALF_SECTDIFF: {
         // Half relocations steal a bit from the length field to encode
         // whether this is an upper16 or a lower16 relocation.
-        bool isUpper = Obj->getAnyRelocationLength(RE) >> 1;
+        bool isUpper = (Obj->getAnyRelocationLength(RE) & 0x1) == 1;
 
         if (isUpper)
           fmt << ":upper16:(";
@@ -1072,8 +1085,11 @@ static std::error_code getRelocationValueString(const RelocationRef &Rel,
     return getRelocationValueString(ELF, Rel, Result);
   if (auto *COFF = dyn_cast<COFFObjectFile>(Obj))
     return getRelocationValueString(COFF, Rel, Result);
-  auto *MachO = cast<MachOObjectFile>(Obj);
-  return getRelocationValueString(MachO, Rel, Result);
+  if (auto *Wasm = dyn_cast<WasmObjectFile>(Obj))
+    return getRelocationValueString(Wasm, Rel, Result);
+  if (auto *MachO = dyn_cast<MachOObjectFile>(Obj))
+    return getRelocationValueString(MachO, Rel, Result);
+  llvm_unreachable("unknown object file format");
 }
 
 /// @brief Indicates whether this relocation should hidden when listing
@@ -2065,7 +2081,10 @@ static void DumpObject(ObjectFile *o, const Archive *a = nullptr) {
   if (DwarfDumpType != DIDT_Null) {
     std::unique_ptr<DIContext> DICtx(new DWARFContextInMemory(*o));
     // Dump the complete DWARF structure.
-    DICtx->dump(outs(), DwarfDumpType, true /* DumpEH */);
+    DIDumpOptions DumpOpts;
+    DumpOpts.DumpType = DwarfDumpType;
+    DumpOpts.DumpEH = true;
+    DICtx->dump(outs(), DumpOpts);
   }
 }
 

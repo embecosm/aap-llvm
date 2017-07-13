@@ -1,4 +1,4 @@
-//===- CodeViewYAMLDebugSections.h - CodeView YAMLIO debug sections -------===//
+//=- CodeViewYAMLDebugSections.h - CodeView YAMLIO debug sections -*- C++ -*-=//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -15,15 +15,50 @@
 #ifndef LLVM_OBJECTYAML_CODEVIEWYAMLDEBUGSECTIONS_H
 #define LLVM_OBJECTYAML_CODEVIEWYAMLDEBUGSECTIONS_H
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/CodeView/CodeView.h"
 #include "llvm/DebugInfo/CodeView/DebugSubsection.h"
-#include "llvm/ObjectYAML/YAML.h"
+#include "llvm/DebugInfo/CodeView/DebugSubsectionRecord.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/YAMLTraits.h"
+#include <cstdint>
+#include <memory>
+#include <vector>
 
 namespace llvm {
+
+namespace codeview {
+
+class StringsAndChecksums;
+class StringsAndChecksumsRef;
+
+} // end namespace codeview
+
 namespace CodeViewYAML {
+
 namespace detail {
-struct C13FragmentBase;
-}
+
+struct YAMLSubsectionBase;
+
+} // end namespace detail
+
+struct YAMLFrameData {
+  uint32_t RvaStart;
+  uint32_t CodeSize;
+  uint32_t LocalSize;
+  uint32_t ParamsSize;
+  uint32_t MaxStackSize;
+  StringRef FrameFunc;
+  uint32_t PrologSize;
+  uint32_t SavedRegsSize;
+  uint32_t Flags;
+};
+
+struct YAMLCrossModuleImport {
+  StringRef ModuleName;
+  std::vector<uint32_t> ImportIds;
+};
 
 struct SourceLineEntry {
   uint32_t Offset;
@@ -58,7 +93,6 @@ struct SourceLineInfo {
   uint32_t RelocSegment;
   codeview::LineFlags Flags;
   uint32_t CodeSize;
-
   std::vector<SourceLineBlock> Blocks;
 };
 
@@ -74,18 +108,33 @@ struct InlineeInfo {
   std::vector<InlineeSite> Sites;
 };
 
-struct SourceFileInfo {
-  std::vector<SourceFileChecksumEntry> FileChecksums;
-  std::vector<SourceLineInfo> LineFragments;
-  std::vector<InlineeInfo> Inlinees;
+struct YAMLDebugSubsection {
+  static Expected<YAMLDebugSubsection>
+  fromCodeViewSubection(const codeview::StringsAndChecksumsRef &SC,
+                        const codeview::DebugSubsectionRecord &SS);
+
+  std::shared_ptr<detail::YAMLSubsectionBase> Subsection;
 };
 
-struct C13DebugSection {
-  std::vector<detail::C13FragmentBase> Fragments;
-};
-} // namespace CodeViewYAML
-} // namespace llvm
+struct DebugSubsectionState {};
 
-LLVM_YAML_DECLARE_MAPPING_TRAITS(CodeViewYAML::SourceFileInfo)
+Expected<std::vector<std::shared_ptr<codeview::DebugSubsection>>>
+toCodeViewSubsectionList(BumpPtrAllocator &Allocator,
+                         ArrayRef<YAMLDebugSubsection> Subsections,
+                         const codeview::StringsAndChecksums &SC);
 
-#endif
+std::vector<YAMLDebugSubsection>
+fromDebugS(ArrayRef<uint8_t> Data, const codeview::StringsAndChecksumsRef &SC);
+
+void initializeStringsAndChecksums(ArrayRef<YAMLDebugSubsection> Sections,
+                                   codeview::StringsAndChecksums &SC);
+
+} // end namespace CodeViewYAML
+
+} // end namespace llvm
+
+LLVM_YAML_DECLARE_MAPPING_TRAITS(CodeViewYAML::YAMLDebugSubsection)
+
+LLVM_YAML_IS_SEQUENCE_VECTOR(CodeViewYAML::YAMLDebugSubsection)
+
+#endif // LLVM_OBJECTYAML_CODEVIEWYAMLDEBUGSECTIONS_H
