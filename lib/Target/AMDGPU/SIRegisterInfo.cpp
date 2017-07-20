@@ -207,7 +207,11 @@ BitVector SIRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
     assert(!isSubRegister(ScratchRSrcReg, ScratchWaveOffsetReg));
   }
 
+  // We have to assume the SP is needed in case there are calls in the function,
+  // which is detected after the function is lowered. If we aren't really going
+  // to need SP, don't bother reserving it.
   unsigned StackPtrReg = MFI->getStackPtrOffsetReg();
+
   if (StackPtrReg != AMDGPU::NoRegister) {
     reserveRegisterTuples(Reserved, StackPtrReg);
     assert(!isSubRegister(ScratchRSrcReg, StackPtrReg));
@@ -1271,8 +1275,7 @@ const TargetRegisterClass *SIRegisterInfo::getSubRegClass(
     return RC;
 
   // We can assume that each lane corresponds to one 32-bit register.
-  LaneBitmask::Type Mask = getSubRegIndexLaneMask(SubIdx).getAsInteger();
-  unsigned Count = countPopulation(Mask);
+  unsigned Count = getSubRegIndexLaneMask(SubIdx).getNumLanes();
   if (isSGPRClass(RC)) {
     switch (Count) {
     case 1:

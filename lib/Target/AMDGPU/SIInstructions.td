@@ -1060,7 +1060,7 @@ def : Pat <
 
 class FPToI1Pat<Instruction Inst, int KOne, ValueType kone_type, ValueType vt, SDPatternOperator fp_to_int> : Pat <
   (i1 (fp_to_int (vt (VOP3Mods vt:$src0, i32:$src0_modifiers)))),
-  (i1 (Inst 0, (kone_type KOne), $src0_modifiers, $src0, DSTCLAMP.NONE, DSTOMOD.NONE))
+  (i1 (Inst 0, (kone_type KOne), $src0_modifiers, $src0, DSTCLAMP.NONE))
 >;
 
 def : FPToI1Pat<V_CMP_EQ_F32_e64, CONST.FP32_ONE, i32, f32, fp_to_uint>;
@@ -1300,8 +1300,43 @@ def : IntMed3Pat<V_MED3_U16, umax, umax_oneuse, umin_oneuse, i16>;
 // Assembler aliases
 //============================================================================//
 
+multiclass NoCarryAlias<string Inst,
+  Instruction Inst32NC, Instruction Inst64NC,
+  Instruction Inst32CO, Instruction Inst64CO> {
+  def : InstAlias<Inst#" $vdst, $src0, $src1",
+    (Inst32NC VGPR_32:$vdst, VSrc_b32:$src0, VGPR_32:$src1), 1000>,
+    Requires<[HasAddNoCarryInsts]>;
+
+  def : InstAlias<Inst#" $vdst, $src0, $src1",
+    (Inst64NC VGPR_32:$vdst, VCSrc_b32:$src0, VCSrc_b32:$src1), -10>,
+    Requires<[HasAddNoCarryInsts]>;
+
+  def : InstAlias<Inst#" $vdst, vcc, $src0, $src1",
+    (Inst32CO VGPR_32:$vdst, VSrc_b32:$src0, VGPR_32:$src1), 1000>,
+    Requires<[HasAddNoCarryInsts]>;
+
+  def : InstAlias<Inst#" $vdst, $sdst, $src0, $src1",
+    (Inst64CO VGPR_32:$vdst, SReg_64:$sdst, VSrc_b32:$src0, VGPR_32:$src1), -10>,
+    Requires<[HasAddNoCarryInsts]>;
+}
+
+// gfx9 made a mess of add instruction names. The existing add
+// instructions add _co added to the names, and their old names were
+// repurposed to a version without carry out.
+let Predicates = [HasAddNoCarryInsts] in {
+defm : NoCarryAlias<"v_add_u32", V_ADD_U32_e32_vi, V_ADD_U32_e64_vi,
+                                 V_ADD_I32_e32_vi, V_ADD_I32_e64_vi>;
+defm : NoCarryAlias<"v_sub_u32", V_SUB_U32_e32_vi, V_SUB_U32_e64_vi,
+                                 V_SUB_I32_e32_vi, V_SUB_I32_e64_vi>;
+defm : NoCarryAlias<"v_subrev_u32",
+  V_SUBREV_U32_e32_vi, V_SUBREV_U32_e64_vi,
+  V_SUBREV_I32_e32_vi, V_SUBREV_I32_e64_vi>;
+}
+
+let Predicates = [NotHasAddNoCarryInsts] in {
 def : MnemonicAlias<"v_add_u32", "v_add_i32">;
 def : MnemonicAlias<"v_sub_u32", "v_sub_i32">;
 def : MnemonicAlias<"v_subrev_u32", "v_subrev_i32">;
+}
 
 } // End isGCN predicate
