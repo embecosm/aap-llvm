@@ -37,24 +37,6 @@ class InstAAP<bits<4> opclass, bits<8> opcode, dag outs, dag ins, string asmstr,
   let Inst{28-25} = opcode{7-4};
 }
 
-class InstAAP_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
-                    string asmstr, list<dag> pattern> : Instruction {
-  let Namespace = "AAP";
-
-  dag OutOperandList = outs;
-  dag InOperandList = ins;
-  let AsmString = asmstr;
-  let Pattern = pattern;
-
-  let Size = 2;
-  field bits<16> Inst;
-  field bits<16> SoftFail = 0;
-
-  let Inst{15} = 0;
-  let Inst{14-13} = opclass;
-  let Inst{12-9} = opcode;
-}
-
 //===----------------------------------------------------------------------===//
 // Instruction Formats
 //===----------------------------------------------------------------------===//
@@ -73,27 +55,9 @@ class Inst_rrr<bits<4> opclass, bits<8> opcode, dag outs, dag ins,
   let Inst{18-16} = rB{5-3};
 }
 
-class Inst_rrr_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
-                     string asmstr, list<dag> pattern>
-    : InstAAP_short<opclass, opcode, outs, ins, asmstr, pattern> {
-  bits<3> rD;
-  bits<3> rA;
-  bits<3> rB;
-  let Inst{8-6} = rD;
-  let Inst{5-3} = rA;
-  let Inst{2-0} = rB;
-}
-
 class Inst_r<bits<4> opclass, bits<8> opcode, dag outs, dag ins, string asmstr,
              list<dag> pattern>
     : Inst_rrr<opclass, opcode, outs, ins, asmstr, pattern> {
-  let rA = 0;
-  let rB = 0;
-}
-
-class Inst_r_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
-                   string asmstr, list<dag> pattern>
-    : Inst_rrr_short<opclass, opcode, outs, ins, asmstr, pattern> {
   let rA = 0;
   let rB = 0;
 }
@@ -110,17 +74,6 @@ class Inst_rr_i6<bits<4> opclass, bits<8> opcode, dag outs, dag ins,
   let Inst{21-19} = rA{5-3};
   let Inst{2-0} = imm{2-0};
   let Inst{18-16} = imm{5-3};
-}
-
-class Inst_rr_i3_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
-                       string asmstr, list<dag> pattern>
-    : InstAAP_short<opclass, opcode, outs, ins, asmstr, pattern> {
-  bits<3> rD;
-  bits<3> rA;
-  bits<3> imm;
-  let Inst{8-6} = rD;
-  let Inst{5-3} = rA;
-  let Inst{2-0} = imm;
 }
 
 class Inst_rr_i9<bits<4> opclass, bits<5> opcode, dag outs, dag ins,
@@ -172,15 +125,6 @@ class Inst_r_i12<bits<4> opclass, bits<8> opcode, dag outs, dag ins,
   let Inst{21-16} = imm{11-6};
 }
 
-class Inst_r_i6_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
-                      string asmstr, list<dag> pattern>
-    : InstAAP_short<opclass, opcode, outs, ins, asmstr, pattern> {
-  bits<3> rD;
-  bits<6> imm;
-  let Inst{8-6} = rD;
-  let Inst{5-0} = imm;
-}
-
 class Inst_r_i16<bits<4> opclass, bits<4> opcode, dag outs, dag ins,
                  string asmstr, list<dag> pattern>
     : InstAAP_base<opclass, outs, ins, asmstr, pattern> {
@@ -204,13 +148,6 @@ class Inst_i22<bits<4> opclass, bits<8> opcode, dag outs, dag ins,
   let Inst{28-16} = imm{21-9};
 }
 
-class Inst_i9_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
-                    string asmstr, list<dag> pattern>
-    : InstAAP_short<opclass, opcode, outs, ins, asmstr, pattern> {
-  bits<9> imm;
-  let Inst{8-0} = imm;
-}
-
 class Inst_i16_r<bits<4> opclass, bits<4> opcode, dag outs, dag ins,
                  string asmstr, list<dag> pattern>
     : InstAAP_base<opclass, outs, ins, asmstr, pattern> {
@@ -224,15 +161,6 @@ class Inst_i16_r<bits<4> opclass, bits<4> opcode, dag outs, dag ins,
 
   let Inst{2-0} = rB{2-0};
   let Inst{18-16} = rB{5-3};
-}
-
-class Inst_i6_r_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
-                      string asmstr, list<dag> pattern>
-    : InstAAP_short<opclass, opcode, outs, ins, asmstr, pattern> {
-  bits<6> imm;
-  bits<3> rB;
-  let Inst{2-0} = rB{2-0};
-  let Inst{8-3} = imm{5-0};
 }
 
 class Inst_i10_rr<bits<4> opclass, bits<4> opcode, dag outs, dag ins,
@@ -250,17 +178,6 @@ class Inst_i10_rr<bits<4> opclass, bits<4> opcode, dag outs, dag ins,
   let Inst{21-19} = rA{5-3};
   let Inst{2-0} = rB{2-0};
   let Inst{18-16} = rB{5-3};
-}
-
-class Inst_i3_rr_short<bits<2> opclass, bits<4> opcode, dag outs, dag ins,
-                       string asmstr, list<dag> pattern>
-    : InstAAP_short<opclass, opcode, outs, ins, asmstr, pattern> {
-  bits<3> imm;
-  bits<3> rA;
-  bits<3> rB;
-  let Inst{8-6} = imm;
-  let Inst{5-3} = rA;
-  let Inst{2-0} = rB;
 }
 
 //===----------------------------------------------------------------------===//

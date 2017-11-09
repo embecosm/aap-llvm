@@ -181,8 +181,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     // 2: Exit with retcode in Rd
     // 3: Write char Rd to stdout
     // 4: Write char Rd to stderr
-    case AAP::NOP:
-    case AAP::NOP_short: {
+    case AAP::NOP: {
       int Reg = getLLVMReg(Inst.getOperand(0).getReg());
       uint16_t Command = Inst.getOperand(1).getImm();
       // Load register value and char for NOPs that require it
@@ -206,15 +205,13 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // Move Instructions
-    case AAP::MOV_r:
-    case AAP::MOV_r_short: {
+    case AAP::MOV_r: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrc = getLLVMReg(Inst.getOperand(1).getReg());
       EXCEPT(State.setReg(RegDst, State.getReg(RegSrc)));
       break;
     }
-    case AAP::MOVI_i16:
-    case AAP::MOVI_i6_short: {
+    case AAP::MOVI_i16: {
       int Reg = getLLVMReg(Inst.getOperand(0).getReg());
       uint16_t Val = Inst.getOperand(1).getImm() & 0xffff;
       EXCEPT(State.setReg(Reg, Val));
@@ -222,8 +219,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // ADD
-    case AAP::ADD_r:
-    case AAP::ADD_r_short: {
+    case AAP::ADD_r: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
@@ -253,8 +249,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // ADDI
-    case AAP::ADDI_i10:
-    case AAP::ADDI_i3_short: {
+    case AAP::ADDI_i10: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       EXCEPT(uint32_t ValA = signExtend16(State.getReg(RegSrcA)));
@@ -268,8 +263,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // SUB
-    case AAP::SUB_r:
-    case AAP::SUB_r_short: {
+    case AAP::SUB_r: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
@@ -299,8 +293,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // SUBI
-    case AAP::SUBI_i10:
-    case AAP::SUBI_i3_short: {
+    case AAP::SUBI_i10: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       EXCEPT(uint32_t ValA = signExtend16(State.getReg(RegSrcA)));
@@ -314,8 +307,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // AND
-    case AAP::AND_r:
-    case AAP::AND_r_short: {
+    case AAP::AND_r: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
@@ -338,8 +330,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // OR
-    case AAP::OR_r:
-    case AAP::OR_r_short: {
+    case AAP::OR_r: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
@@ -362,8 +353,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // XOR
-    case AAP::XOR_r:
-    case AAP::XOR_r_short: {
+    case AAP::XOR_r: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
@@ -386,8 +376,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // ASR
-    case AAP::ASR_r:
-    case AAP::ASR_r_short: {
+    case AAP::ASR_r: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
@@ -399,8 +388,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // ASRI
-    case AAP::ASRI_i6:
-    case AAP::ASRI_i3_short: {
+    case AAP::ASRI_i6: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       EXCEPT(int16_t ValA = static_cast<int16_t>(State.getReg(RegSrcA)));
@@ -411,8 +399,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // LSL
-    case AAP::LSL_r:
-    case AAP::LSL_r_short: {
+    case AAP::LSL_r: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
@@ -424,8 +411,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // LSLI
-    case AAP::LSLI_i6:
-    case AAP::LSLI_i3_short: {
+    case AAP::LSLI_i6: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
@@ -436,8 +422,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // LSR
-    case AAP::LSR_r:
-    case AAP::LSR_r_short: {
+    case AAP::LSR_r: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       int RegSrcB = getLLVMReg(Inst.getOperand(2).getReg());
@@ -449,8 +434,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // LSRI
-    case AAP::LSRI_i6:
-    case AAP::LSRI_i3_short: {
+    case AAP::LSRI_i6: {
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegSrcA = getLLVMReg(Inst.getOperand(1).getReg());
       EXCEPT(uint16_t ValA = State.getReg(RegSrcA));
@@ -462,31 +446,18 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
 
     // Load
     case AAP::LDB:
-    case AAP::LDB_short:
     case AAP::LDW:
-    case AAP::LDW_short:
     case AAP::LDB_postinc:
-    case AAP::LDB_postinc_short:
     case AAP::LDW_postinc:
-    case AAP::LDW_postinc_short:
     case AAP::LDB_predec:
-    case AAP::LDB_predec_short:
-    case AAP::LDW_predec:
-    case AAP::LDW_predec_short: {
+    case AAP::LDW_predec: {
       bool postinc = (Inst.getOpcode() == AAP::LDB_postinc ||
-                      Inst.getOpcode() == AAP::LDB_postinc_short ||
-                      Inst.getOpcode() == AAP::LDW_postinc ||
-                      Inst.getOpcode() == AAP::LDW_postinc_short) ? true : false;
+                      Inst.getOpcode() == AAP::LDW_postinc) ? true : false;
       bool predec  = (Inst.getOpcode() == AAP::LDB_predec ||
-                      Inst.getOpcode() == AAP::LDB_predec_short ||
-                      Inst.getOpcode() == AAP::LDW_predec ||
-                      Inst.getOpcode() == AAP::LDW_predec_short) ? true : false;
+                      Inst.getOpcode() == AAP::LDW_predec) ? true : false;
       bool word = (Inst.getOpcode() == AAP::LDW ||
-                   Inst.getOpcode() == AAP::LDW_short ||
                    Inst.getOpcode() == AAP::LDW_postinc ||
-                   Inst.getOpcode() == AAP::LDW_postinc_short ||
-                   Inst.getOpcode() == AAP::LDW_predec ||
-                   Inst.getOpcode() == AAP::LDW_predec_short) ? true : false;
+                   Inst.getOpcode() == AAP::LDW_predec) ? true : false;
       // Initial register values
       int RegDst = getLLVMReg(Inst.getOperand(0).getReg());
       int RegMem = getLLVMReg(Inst.getOperand(1).getReg());
@@ -517,31 +488,18 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
 
     // Store
     case AAP::STB:
-    case AAP::STB_short:
     case AAP::STW:
-    case AAP::STW_short:
     case AAP::STB_postinc:
-    case AAP::STB_postinc_short:
     case AAP::STW_postinc:
-    case AAP::STW_postinc_short:
     case AAP::STB_predec:
-    case AAP::STB_predec_short:
-    case AAP::STW_predec:
-    case AAP::STW_predec_short: {
+    case AAP::STW_predec: {
       bool postinc = (Inst.getOpcode() == AAP::STB_postinc ||
-                      Inst.getOpcode() == AAP::STB_postinc_short ||
-                      Inst.getOpcode() == AAP::STW_postinc ||
-                      Inst.getOpcode() == AAP::STW_postinc_short) ? true : false;
+                      Inst.getOpcode() == AAP::STW_postinc) ? true : false;
       bool predec  = (Inst.getOpcode() == AAP::STB_predec ||
-                      Inst.getOpcode() == AAP::STB_predec_short ||
-                      Inst.getOpcode() == AAP::STW_predec ||
-                      Inst.getOpcode() == AAP::STW_predec_short) ? true : false;
+                      Inst.getOpcode() == AAP::STW_predec) ? true : false;
       bool word = (Inst.getOpcode() == AAP::STW ||
-                   Inst.getOpcode() == AAP::STW_short ||
                    Inst.getOpcode() == AAP::STW_postinc ||
-                   Inst.getOpcode() == AAP::STW_postinc_short ||
-                   Inst.getOpcode() == AAP::STW_predec ||
-                   Inst.getOpcode() == AAP::STW_predec_short) ? true : false;
+                   Inst.getOpcode() == AAP::STW_predec) ? true : false;
       // Initial register values
       int RegMem = getLLVMReg(Inst.getOperand(0).getReg());
       int Offset = Inst.getOperand(1).getImm();
@@ -572,16 +530,14 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
 
     // Branch and Link, Jump and Link
     case AAP::BAL:
-    case AAP::BAL_short:
-    case AAP::JAL:
-    case AAP::JAL_short: {
+    case AAP::JAL: {
       int Reg = getLLVMReg(Inst.getOperand(1).getReg());
       EXCEPT(State.setReg(Reg, newpc_w));
       uint16_t Imm = Inst.getOperand(0).getImm();
       int16_t SImm =
           (Inst.getOpcode() == AAP::BAL) ? static_cast<int16_t>(Imm) :
                                            signExtendBranchAndLinkS(Imm);
-      if (Inst.getOpcode() == AAP::BAL || Inst.getOpcode() == AAP::BAL_short)
+      if (Inst.getOpcode() == AAP::BAL)
         newpc_w = pc_w + SImm;
       else
         newpc_w = Imm;
@@ -590,17 +546,11 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
 
     // Conditional branches
     case AAP::BEQ_:
-    case AAP::BEQ_short:
     case AAP::BNE_:
-    case AAP::BNE_short:
     case AAP::BLTS_:
-    case AAP::BLTS_short:
     case AAP::BLES_:
-    case AAP::BLES_short:
     case AAP::BLTU_:
-    case AAP::BLTU_short:
-    case AAP::BLEU_:
-    case AAP::BLEU_short: {
+    case AAP::BLEU_: {
       uint16_t Imm = Inst.getOperand(0).getImm();
       EXCEPT(uint16_t ValA = State.getReg(getLLVMReg(Inst.getOperand(1).getReg())));
       int16_t SValA = static_cast<int16_t>(ValA);
@@ -616,17 +566,17 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
                             : signExtendBranchCCS(Imm);
       bool branch = false;
       // Decide whether to branch based on instruction type
-      if (Inst.getOpcode() == AAP::BEQ_ || Inst.getOpcode() == AAP::BEQ_short)
+      if (Inst.getOpcode() == AAP::BEQ_)
         branch = (ValA == ValB) ? true : false;
-      if (Inst.getOpcode() == AAP::BNE_ || Inst.getOpcode() == AAP::BNE_short)
+      if (Inst.getOpcode() == AAP::BNE_)
         branch = (ValA != ValB) ? true : false;
-      if (Inst.getOpcode() == AAP::BLTS_ || Inst.getOpcode() == AAP::BLTS_short)
+      if (Inst.getOpcode() == AAP::BLTS_)
         branch = (SValA < SValB) ? true : false;
-      if (Inst.getOpcode() == AAP::BLES_ || Inst.getOpcode() == AAP::BLES_short)
+      if (Inst.getOpcode() == AAP::BLES_)
         branch = (SValA <= SValB) ? true : false;
-      if (Inst.getOpcode() == AAP::BLTU_ || Inst.getOpcode() == AAP::BLTU_short)
+      if (Inst.getOpcode() == AAP::BLTU_)
         branch = (ValA < ValB) ? true : false;
-      if (Inst.getOpcode() == AAP::BLEU_ || Inst.getOpcode() == AAP::BLEU_short)
+      if (Inst.getOpcode() == AAP::BLEU_)
         branch = (ValA <= ValB) ? true : false;
       // Branch if needed
       if (branch)
@@ -635,8 +585,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // Branch
-    case AAP::BRA:
-    case AAP::BRA_short: {
+    case AAP::BRA: {
       uint32_t Offset = Inst.getOperand(0).getImm();
       int32_t SOffset = 
           (Inst.getOpcode() == AAP::BRA) ? signExtendBranch(Offset)
@@ -646,8 +595,7 @@ SimStatus AAPSimulator::exec(MCInst &Inst, uint32_t pc_w, uint32_t &newpc_w) {
     }
 
     // Jump
-    case AAP::JMP:
-    case AAP::JMP_short: {
+    case AAP::JMP: {
       int Reg = getLLVMReg(Inst.getOperand(0).getReg());
       EXCEPT(newpc_w = State.getReg(Reg));
       break;

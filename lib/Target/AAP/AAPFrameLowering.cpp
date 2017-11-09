@@ -89,7 +89,7 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
   DebugLoc DL = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
 
   unsigned RetOpcode = MBBI->getOpcode();
-  assert(((RetOpcode == AAP::JMP) || (RetOpcode == AAP::JMP_short)) &&
+  assert((RetOpcode == AAP::JMP) &&
          "Epilogue can only be inserted in returning blocks");
 
   // Number of bytes to dealloc from FrameInfo

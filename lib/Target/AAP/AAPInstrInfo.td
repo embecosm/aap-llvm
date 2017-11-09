@@ -241,45 +241,27 @@ let EncoderMethod = "encodeMemSrcOperand",
 // MOV Operations
 //===----------------------------------------------------------------------===//
 
-// May be exapanded to MOV_r_short in peephole pass
 def MOV_r : Inst_rrr
   <0x0, 0x9, (outs GR64:$rD), (ins GR64:$rA), "mov\t$rD, $rA", []> {
   let rB = 0;
 }
-def MOV_r_short : Inst_rrr_short
-  <0x0, 0x9, (outs GR8:$rD), (ins GR8:$rA), "mov\t$rD, $rA", []> {
-  let rB = 0;
-}
-
-// May expand to MOVI_i6_short in peephole pass
 def MOVI_i16 : Inst_r_i16
   <0x0, 0xf, (outs GR64:$rD), (ins field16:$imm), "movi\t$rD, $imm",
     [(set GR64:$rD, (i16 field16:$imm))]>;
-def MOVI_i6_short : Inst_r_i6_short
-  <0x0, 0xf, (outs GR8:$rD), (ins const6:$imm), "movi\t$rD, $imm", []>;
-
 
 //===----------------------------------------------------------------------===//
 // ALU/Logical Operations
 //===----------------------------------------------------------------------===//
 
-// May expand to NOP_short in peephole
 def NOP : Inst_r_i12
   <0x0, 0x0, (outs), (ins GR64:$rD, imm12:$imm), "nop\t$rD, $imm", []>;
-def NOP_short : Inst_r_i6_short
-  <0x0, 0x0, (outs), (ins GR8:$rD, const6:$imm), "nop\t$rD, $imm", []>;
-
 
 // ALU ops with register operands
 multiclass ALU_r<bits<8> opcode, string opname, SDNode OpNode> {
-  // May expand to ALU_r_short in peephole
   def _r : Inst_rrr
     <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, GR64:$rB),
       !strconcat(opname, "\t$rD, $rA, $rB"),
       [(set GR64:$rD, (OpNode GR64:$rA, GR64:$rB))]>;
-  def _r_short : Inst_rrr_short
-    <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, GR8:$rB),
-      !strconcat(opname, "\t$rD, $rA, $rB"), []>;
 }
 
 let isCommutable = 1 in {
@@ -318,42 +300,30 @@ let Defs = [PSW] in {
   def LEA : Pseudo<(outs GR64:$rD), (ins GR64:$rA, i16imm:$imm), "#LEA", []>;
 
   // Select over MOVI_i16 + ADD_r
-  // May expand to ADDI_i3_short in peephole
   let AddedComplexity = 1 in {
     def ADDI_i10 : Inst_rr_i10
       <0x0, 0xa, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
         "addi\t$rD, $rA, $imm",
         [(set GR64:$rD, (add GR64:$rA, (i16 imm10:$imm)))]>;
   }
-  def ADDI_i3_short : Inst_rr_i3_short
-    <0x0, 0xa, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
-      "addi\t$rD, $rA, $imm", []>;
 
   // Select over MOVI_i16 + SUB_r
-  // May expand to SUBI_i3_short in peephole
   let AddedComplexity = 1 in {
     def SUBI_i10 : Inst_rr_i10
       <0x0, 0xb, (outs GR64:$rD), (ins GR64:$rA, imm10:$imm),
         "subi\t$rD, $rA, $imm",
         [(set GR64:$rD, (sub GR64:$rA, (i16 imm10:$imm)))]>;
   }
-  def SUBI_i3_short : Inst_rr_i3_short
-    <0x0, 0xb, (outs GR8:$rD), (ins GR8:$rA, const3:$imm),
-      "subi\t$rD, $rA, $imm", []>;
 }
 
 multiclass SHIFT_i<bits<8> opcode, string opname, SDNode OpNode> {
   // Select over MOVI_i16 + SHIFT_r
-  // May expand to SHIFT_i3_short in peephole
   let AddedComplexity = 1 in {
     def _i6 : Inst_rr_i6
       <0x0, opcode, (outs GR64:$rD), (ins GR64:$rA, shift_imm6:$imm),
         !strconcat(opname, "\t$rD, $rA, $imm"),
         [(set GR64:$rD, (OpNode GR64:$rA, (i16 shift_imm6:$imm)))]>;
   }
-  def _i3_short : Inst_rr_i3_short
-    <0x0, opcode{3-0}, (outs GR8:$rD), (ins GR8:$rA, shift_const3:$imm),
-      !strconcat(opname, "\t$rD, $rA, $imm"), []>;
 }
 defm ASRI : SHIFT_i<0xc, "asri", sra>;
 defm LSLI : SHIFT_i<0xd, "lsli", shl>;
@@ -396,17 +366,6 @@ class LOAD<bits<8> opcode, string opname, dag outs, dag ins>
   let Inst{28-25} = src{9-6}; // reuse second word opcode field for offset
 }
 
-class LOAD_short<bits<4> opcode, string opname, dag outs, dag ins>
-    : InstAAP_short<0x1, opcode, outs, ins, !strconcat(opname, "\t$rD, [$src]"),
-                    []> {
-  bits<3> rD;
-  bits<19> src; // 3-bit reg field, 16 bit imm field
-
-  let Inst{8-6} = rD;
-  let Inst{5-3} = src{18-16};
-  let Inst{2-0} = src{2-0};
-}
-
 class STORE<bits<8> opcode, string opname, dag outs, dag ins>
     : InstAAP<0x1, opcode, outs, ins, !strconcat(opname, "\t[$dst], $rA"), []> {
   bits<22> dst; // 6-bit reg field, 16 bit imm field
@@ -420,17 +379,6 @@ class STORE<bits<8> opcode, string opname, dag outs, dag ins>
 
   let Inst{5-3} = rA{2-0};
   let Inst{21-19} = rA{5-3};
-}
-
-class STORE_short<bits<4> opcode, string opname, dag outs, dag ins>
-    : InstAAP_short<0x1, opcode, outs, ins, !strconcat(opname, "\t[$dst], $rA"),
-                    []> {
-  bits<19> dst; // 3-bit reg field, 16 bit imm field
-  bits<3> rA;
-
-  let Inst{8-6} = dst{18-16};
-  let Inst{2-0} = dst{2-0};
-  let Inst{5-3} = rA;
 }
 
 // Short load/store instructions use the memsrc3 operand type, which uses a
@@ -451,21 +399,6 @@ let mayLoad = 1 in {
     <0x2,  "ldb", (outs GR64:$rD), (ins memsrc10_predec:$src)>;
   def LDW_predec : LOAD
     <0x6,  "ldw", (outs GR64:$rD), (ins memsrc10_predec:$src)>;
-}
-
-let mayLoad = 1 in {
-  def LDB_short : LOAD_short
-    <0x0, "ldb", (outs GR8:$rD), (ins memsrc3:$src)>;
-  def LDW_short : LOAD_short
-    <0x4, "ldw", (outs GR8:$rD), (ins memsrc3:$src)>;
-  def LDB_postinc_short : LOAD_short
-    <0x1, "ldb", (outs GR8:$rD), (ins memsrc3_postinc:$src)>;
-  def LDW_postinc_short : LOAD_short
-    <0x5, "ldw", (outs GR8:$rD), (ins memsrc3_postinc:$src)>;
-  def LDB_predec_short  : LOAD_short
-    <0x2, "ldb", (outs GR8:$rD), (ins memsrc3_predec:$src)>;
-  def LDW_predec_short  : LOAD_short
-    <0x6, "ldw", (outs GR8:$rD), (ins memsrc3_predec:$src)>;
 }
 
 // Load patterns
@@ -494,21 +427,6 @@ let mayStore = 1 in {
     <0xe,  "stw", (outs), (ins memsrc10_predec:$dst, GR64:$rA)>;
 }
 
-let mayStore = 1 in {
-  def STB_short : STORE_short
-    <0x8, "stb", (outs), (ins memsrc3:$dst, GR8:$rA)>;
-  def STW_short : STORE_short
-    <0xc, "stw", (outs), (ins memsrc3:$dst, GR8:$rA)>;
-  def STB_postinc_short : STORE_short
-    <0x9, "stb", (outs), (ins memsrc3_postinc:$dst, GR8:$rA)>;
-  def STW_postinc_short : STORE_short
-    <0xd, "stw", (outs), (ins memsrc3_postinc:$dst, GR8:$rA)>;
-  def STB_predec_short  : STORE_short
-    <0xa, "stb", (outs), (ins memsrc3_predec:$dst, GR8:$rA)>;
-  def STW_predec_short  : STORE_short
-    <0xe, "stw", (outs), (ins memsrc3_predec:$dst, GR8:$rA)>;
-} // end of mayStore
-
 // Store patterns
 def : Pat<(truncstorei8 GR64:$src, GR64:$dst), (STB GR64:$dst, (i16 0), GR64:$src)>;
 def : Pat<(truncstorei8 GR64:$src, addr_MO10:$dst), (STB addr_MO10:$dst, GR64:$src)>;
@@ -526,12 +444,6 @@ multiclass BRCC<bits<4> cc, string opname> {
   def _ : Inst_i10_rr
     <0x2, cc, (outs), (ins brtarget:$imm, GR64:$rA, GR64:$rB),
       !strconcat(opname, "\t$imm, $rA, $rB"), []>;
-  // Don't assemble short branch instructions
-  let isCodeGenOnly = 1 in {
-    def _short : Inst_i3_rr_short
-      <0x2, cc, (outs), (ins brtarget:$imm, GR8:$rA, GR8:$rB),
-        !strconcat(opname, "\t$imm, $rA, $rB"), []>;
-  }
 }
 
 let isBranch = 1, isTerminator = 1, isBarrier = 1 in {
@@ -545,11 +457,6 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1 in {
   // BRA may expand to short equivalent in the peephole
   def BRA : Inst_i22
     <0x2, 0x0, (outs), (ins brtarget:$imm), "bra\t$imm", [(br bb:$imm)]>;
-  // Don't assemble short branch instructions
-  let isCodeGenOnly = 1 in {
-    def BRA_short : Inst_i9_short
-      <0x2, 0x0, (outs), (ins brtarget:$imm), "bra\t$imm", []>;
-  }
 }
 
 // Implements the BR_CC DAG node. Expanded into one of the above branches.
@@ -574,22 +481,8 @@ let usesCustomInserter = 1 in {
 
 // Mark R0 as a def as it is the link register
 let isCall = 1, Uses = [R1], Defs = [R0] in {
-  // Never assemble short branches
-  let isCodeGenOnly = 1 in {
-    def BAL_short : Inst_i6_r_short
-      <0x2, 0x1, (outs), (ins i16imm:$imm, GR8:$rB), "bal\t$imm, $rB", []>;
-  }
-
-  // BAL may expand to BAL_short in peephole
   def BAL : Inst_i16_r
     <0x2, 0x1, (outs), (ins i16imm:$imm, GR64:$rB), "bal\t$imm, $rB", []>;
-
-  def JAL_short : Inst_rrr_short
-    <0x2, 0x9, (outs), (ins GR8:$rD, GR64:$rB), "jal\t$rD, $rB", []> {
-      let rA = 0;
-  }
-
-  // JAL may expand to JAL_short in peephole
   def JAL : Inst_rrr
     <0x2, 0x9, (outs), (ins GR64:$rD, GR64:$rB), "jal\t$rD, $rB", []> {
       let rA = 0;
@@ -597,11 +490,8 @@ let isCall = 1, Uses = [R1], Defs = [R0] in {
 }
 
 let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
-  // May expand to JMP_short in peephole
   def JMP :
     Inst_r<0x2, 0x8, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
-  def JMP_short :
-    Inst_r_short<0x2, 0x8, (outs), (ins GR8:$rD), "jmp\t$rD", []>;
 }
 
 // Indirect calls are a jump through a register

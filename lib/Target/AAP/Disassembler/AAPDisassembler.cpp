@@ -68,20 +68,6 @@ DecodeStatus AAPDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
   uint32_t Insn;
   DecodeStatus Result;
 
-  // First try a 16-bit instruction
-  if (Bytes.size() < 2) {
-    Size = 0;
-    return MCDisassembler::Fail;
-  }
-  Insn = (Bytes[1] << 8) | (Bytes[0] << 0);
-
-  // Next try generic 16-bit instructions
-  Result = decodeInstruction(DecoderTable16, MI, Insn, Address, this, STI);
-  if (Result != MCDisassembler::Fail) {
-    Size = 2;
-    return Result;
-  }
-
   // Finally try a 32-bit instruction
   if (Bytes.size() < 4) {
     Size = 0;

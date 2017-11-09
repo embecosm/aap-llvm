@@ -67,36 +67,6 @@ public:
   }
 
   unsigned checkTargetMatchPredicate(MCInst &Inst) override {
-    // Check instructions with memsrc operands here, as they cannot be
-    // checked through the instruction match classes.
-
-    // If this is a short load/store instruction, then we must check that
-    // its register operands are all in the GR8 reg class.
-    const MCRegisterClass &MRC = MRI->getRegClass(AAP::GR8RegClassID);
-
-    switch (Inst.getOpcode()) {
-    default:
-      return Match_Success;
-    case AAP::LDB_short:
-    case AAP::LDW_short:
-    case AAP::LDB_postinc_short:
-    case AAP::LDW_postinc_short:
-    case AAP::LDB_predec_short:
-    case AAP::LDW_predec_short:
-    case AAP::STB_short:
-    case AAP::STW_short:
-    case AAP::STB_postinc_short:
-    case AAP::STW_postinc_short:
-    case AAP::STB_predec_short:
-    case AAP::STW_predec_short:
-      break;
-    }
-
-    for (MCInst::iterator I = Inst.begin(); I != Inst.end(); ++I) {
-      if (I->isReg() && !MRC.contains(I->getReg())) {
-        return Match_InvalidOperand;
-      }
-    }
     return Match_Success;
   }
 };

@@ -77,10 +77,6 @@ unsigned AAPMCCodeEmitter::getMachineOpValue(MCInst const &MI,
   const unsigned Opcode = MI.getOpcode();
   if (Opcode == AAP::BAL) {
     FixupKind = AAP::fixup_AAP_BAL32;
-  } else {
-    assert(Opcode == AAP::BAL_short &&
-           "Unhandled MCInst for getMachineOpValue");
-    FixupKind = AAP::fixup_AAP_BAL16;
   }
 
   // Push the fixup, and encode 0 in the operand
@@ -98,10 +94,8 @@ MCCodeEmitter *llvm::createAAPMCCodeEmitter(MCInstrInfo const &MII,
 // TODO: Better way than using LUTs?
 static const unsigned BRCCOpcodes[] = {
     AAP::BEQ_,       AAP::BNE_,       AAP::BLTS_,
-    AAP::BLES_,      AAP::BLTU_,      AAP::BLEU_,
-
-    AAP::BEQ_short,  AAP::BNE_short,  AAP::BLTS_short,
-    AAP::BLES_short, AAP::BLTU_short, AAP::BLEU_short};
+    AAP::BLES_,      AAP::BLTU_,      AAP::BLEU_
+};
 
 static bool findOpcode(unsigned Op, ArrayRef<unsigned> Opcodes) {
   for (auto It = Opcodes.begin(); It != Opcodes.end(); It++) {
@@ -127,14 +121,8 @@ AAPMCCodeEmitter::encodePCRelImmOperand(const MCInst &MI, unsigned Op,
   case AAP::BRA:
     FixupKind = AAP::fixup_AAP_BR32;
     break;
-  case AAP::BRA_short:
-    FixupKind = AAP::fixup_AAP_BR16;
-    break;
   case AAP::BAL:
     FixupKind = AAP::fixup_AAP_BAL32;
-    break;
-  case AAP::BAL_short:
-    FixupKind = AAP::fixup_AAP_BAL16;
     break;
   default:
     FixupKind = AAP::fixup_AAP_NONE;

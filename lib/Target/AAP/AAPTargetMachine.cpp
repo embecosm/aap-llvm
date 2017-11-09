@@ -71,5 +71,5 @@ bool AAPPassConfig::addInstSelector() {
 }
 
 void AAPPassConfig::addPreEmitPass() {
-  //addPass(createAAPShortInstrPeepholePass(getAAPTargetMachine()), false);
+  return;
 }
