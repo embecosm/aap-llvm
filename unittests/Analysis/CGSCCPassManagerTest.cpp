@@ -9,6 +9,7 @@
 
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LazyCallGraph.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstIterator.h"
@@ -227,6 +228,7 @@ public:
             "entry:\n"
             "  ret void\n"
             "}\n")) {
+    MAM.registerPass([&] { return TargetLibraryAnalysis(); });
     MAM.registerPass([&] { return LazyCallGraphAnalysis(); });
     MAM.registerPass([&] { return FunctionAnalysisManagerModuleProxy(FAM); });
     MAM.registerPass([&] { return CGSCCAnalysisManagerModuleProxy(CGAM); });
@@ -1166,8 +1168,8 @@ TEST_F(CGSCCPassManagerTest, TestAnalysisInvalidationCGSCCUpdate) {
                                           "dummy", &*H2F.begin()->begin());
 
         // Now update the call graph.
-        auto &NewC = updateCGAndAnalysisManagerForFunctionPass(
-            CG, C, H2N, AM, UR, /*DebugLogging*/ true);
+        auto &NewC =
+            updateCGAndAnalysisManagerForFunctionPass(CG, C, H2N, AM, UR);
         assert(&NewC != &C && "Should get a new SCC due to update!");
         (void)&NewC;
 
@@ -1212,8 +1214,8 @@ TEST_F(CGSCCPassManagerTest, TestAnalysisInvalidationCGSCCUpdate) {
         (void)CallInst::Create(&H3F, {}, "", &*H2F.begin()->begin());
 
         // Now update the call graph.
-        auto &NewC = updateCGAndAnalysisManagerForFunctionPass(
-            CG, C, H2N, AM, UR, /*DebugLogging*/ true);
+        auto &NewC =
+            updateCGAndAnalysisManagerForFunctionPass(CG, C, H2N, AM, UR);
         assert(&NewC != &C && "Should get a new SCC due to update!");
         (void)&NewC;
 

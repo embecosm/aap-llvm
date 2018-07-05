@@ -36,8 +36,8 @@ entry:
   %1 = load <16 x i8>, <16 x i8>* @ucb, align 16
   %add.i = add <16 x i8> %1, %0
   tail call void (...) @sink(<16 x i8> %add.i)
-; CHECK: lxv 34, 0(3)
-; CHECK: lxv 35, 0(4)
+; CHECK: lxvx 34, 0, 3
+; CHECK: lxvx 35, 0, 4
 ; CHECK: vaddubm 2, 3, 2
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -45,8 +45,8 @@ entry:
   %3 = load <16 x i8>, <16 x i8>* @scb, align 16
   %add.i22 = add <16 x i8> %3, %2
   tail call void (...) @sink(<16 x i8> %add.i22)
-; CHECK: lxv 34, 0(3)
-; CHECK: lxv 35, 0(4)
+; CHECK: lxvx 34, 0, 3
+; CHECK: lxvx 35, 0, 4
 ; CHECK: vaddubm 2, 3, 2
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -54,8 +54,8 @@ entry:
   %5 = load <8 x i16>, <8 x i16>* @usb, align 16
   %add.i21 = add <8 x i16> %5, %4
   tail call void (...) @sink(<8 x i16> %add.i21)
-; CHECK: lxv 34, 0(3)
-; CHECK: lxv 35, 0(4)
+; CHECK: lxvx 34, 0, 3
+; CHECK: lxvx 35, 0, 4
 ; CHECK: vadduhm 2, 3, 2
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -63,8 +63,8 @@ entry:
   %7 = load <8 x i16>, <8 x i16>* @ssb, align 16
   %add.i20 = add <8 x i16> %7, %6
   tail call void (...) @sink(<8 x i16> %add.i20)
-; CHECK: lxv 34, 0(3)
-; CHECK: lxv 35, 0(4)
+; CHECK: lxvx 34, 0, 3
+; CHECK: lxvx 35, 0, 4
 ; CHECK: vadduhm 2, 3, 2
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -72,8 +72,8 @@ entry:
   %9 = load <4 x i32>, <4 x i32>* @uib, align 16
   %add.i19 = add <4 x i32> %9, %8
   tail call void (...) @sink(<4 x i32> %add.i19)
-; CHECK: lxv 34, 0(3)
-; CHECK: lxv 35, 0(4)
+; CHECK: lxvx 34, 0, 3
+; CHECK: lxvx 35, 0, 4
 ; CHECK: vadduwm 2, 3, 2
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -81,8 +81,8 @@ entry:
   %11 = load <4 x i32>, <4 x i32>* @sib, align 16
   %add.i18 = add <4 x i32> %11, %10
   tail call void (...) @sink(<4 x i32> %add.i18)
-; CHECK: lxv 34, 0(3)
-; CHECK: lxv 35, 0(4)
+; CHECK: lxvx 34, 0, 3
+; CHECK: lxvx 35, 0, 4
 ; CHECK: vadduwm 2, 3, 2
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -90,8 +90,8 @@ entry:
   %13 = load <2 x i64>, <2 x i64>* @ullb, align 16
   %add.i17 = add <2 x i64> %13, %12
   tail call void (...) @sink(<2 x i64> %add.i17)
-; CHECK: lxv 34, 0(3)
-; CHECK: lxv 35, 0(4)
+; CHECK: lxvx 34, 0, 3
+; CHECK: lxvx 35, 0, 4
 ; CHECK: vaddudm 2, 3, 2
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -99,8 +99,8 @@ entry:
   %15 = load <2 x i64>, <2 x i64>* @sllb, align 16
   %add.i16 = add <2 x i64> %15, %14
   tail call void (...) @sink(<2 x i64> %add.i16)
-; CHECK: lxv 34, 0(3)
-; CHECK: lxv 35, 0(4)
+; CHECK: lxvx 34, 0, 3
+; CHECK: lxvx 35, 0, 4
 ; CHECK: vaddudm 2, 3, 2
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -108,8 +108,8 @@ entry:
   %17 = load <1 x i128>, <1 x i128>* @uxb, align 16
   %add.i15 = add <1 x i128> %17, %16
   tail call void (...) @sink(<1 x i128> %add.i15)
-; CHECK: lxv 34, 0(3)
-; CHECK: lxv 35, 0(4)
+; CHECK: lxvx 34, 0, 3
+; CHECK: lxvx 35, 0, 4
 ; CHECK: vadduqm 2, 3, 2
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -117,8 +117,8 @@ entry:
   %19 = load <1 x i128>, <1 x i128>* @sxb, align 16
   %add.i14 = add <1 x i128> %19, %18
   tail call void (...) @sink(<1 x i128> %add.i14)
-; CHECK: lxv 34, 0(3)
-; CHECK: lxv 35, 0(4)
+; CHECK: lxvx 34, 0, 3
+; CHECK: lxvx 35, 0, 4
 ; CHECK: vadduqm 2, 3, 2
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -126,8 +126,8 @@ entry:
   %21 = load <4 x float>, <4 x float>* @vfb, align 16
   %add.i13 = fadd <4 x float> %20, %21
   tail call void (...) @sink(<4 x float> %add.i13)
-; CHECK: lxv 0, 0(3)
-; CHECK: lxv 1, 0(4)
+; CHECK: lxvx 0, 0, 3
+; CHECK: lxvx 1, 0, 4
 ; CHECK: xvaddsp 34, 0, 1
 ; CHECK: stxv 34,
 ; CHECK: bl sink
@@ -135,8 +135,8 @@ entry:
   %23 = load <2 x double>, <2 x double>* @vdb, align 16
   %add.i12 = fadd <2 x double> %22, %23
   tail call void (...) @sink(<2 x double> %add.i12)
-; CHECK: lxv 0, 0(3)
-; CHECK: lxv 1, 0(4)
+; CHECK: lxvx 0, 0, 3
+; CHECK: lxvx 1, 0, 4
 ; CHECK: xvadddp 0, 0, 1
 ; CHECK: stxv 0,
 ; CHECK: bl sink
@@ -411,3 +411,41 @@ entry:
 }
 
 declare void @sink(...)
+
+; stack object should be accessed using D-form load/store instead of X-form
+define signext i32 @func1() {
+; CHECK-LABEL: @func1
+; CHECK-NOT: stxvx
+; CHECK: stxv {{[0-9]+}}, {{[0-9]+}}(1)
+; CHECK-NOT: stxvx
+; CHECK: blr
+entry:
+  %a = alloca [4 x i32], align 4
+  %0 = bitcast [4 x i32]* %a to i8*
+  call void @llvm.memset.p0i8.i64(i8* nonnull align 4 %0, i8 0, i64 16, i1 false)
+  %arraydecay = getelementptr inbounds [4 x i32], [4 x i32]* %a, i64 0, i64 0
+  %call = call signext i32 @callee(i32* nonnull %arraydecay) #3
+  ret i32 %call
+}
+
+; stack object should be accessed using D-form load/store instead of X-form
+define signext i32 @func2() {
+; CHECK-LABEL: @func2
+; CHECK-NOT: stxvx
+; CHECK: stxv [[ZEROREG:[0-9]+]], {{[0-9]+}}(1)
+; CHECK: stxv [[ZEROREG]], {{[0-9]+}}(1)
+; CHECK: stxv [[ZEROREG]], {{[0-9]+}}(1)
+; CHECK: stxv [[ZEROREG]], {{[0-9]+}}(1)
+; CHECK-NOT: stxvx
+; CHECK: blr
+entry:
+  %a = alloca [16 x i32], align 4
+  %0 = bitcast [16 x i32]* %a to i8*
+  call void @llvm.memset.p0i8.i64(i8* nonnull align 4 %0, i8 0, i64 64, i1 false)
+  %arraydecay = getelementptr inbounds [16 x i32], [16 x i32]* %a, i64 0, i64 0
+  %call = call signext i32 @callee(i32* nonnull %arraydecay) #3
+  ret i32 %call
+}
+
+declare void @llvm.memset.p0i8.i64(i8* nocapture writeonly, i8, i64, i1) #1
+declare signext i32 @callee(i32*) local_unnamed_addr #2

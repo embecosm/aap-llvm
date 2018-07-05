@@ -1,7 +1,7 @@
 ; RUN: llc < %s -asm-verbose=false -disable-wasm-fallthrough-return-opt | FileCheck %s
 
 target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
-target triple = "wasm32-unknown-unknown-wasm"
+target triple = "wasm32-unknown-unknown"
 
 declare void @ext_func(i64* %ptr)
 declare void @ext_func_i32(i32* %ptr)
@@ -36,13 +36,13 @@ define void @alloca3264() {
  ; CHECK-NEXT: tee_local $push[[L5:.+]]=, [[SP:.+]], $pop[[L6]]
  %r1 = alloca i32
  %r2 = alloca double
- ; CHECK-NEXT: i32.const $push[[L0:.+]]=, 0
- ; CHECK-NEXT: i32.store 12($pop[[L5]]), $pop[[L0]]
  store i32 0, i32* %r1
- ; CHECK-NEXT: get_local $push[[L2:.+]]=, [[SP]]{{$}}
- ; CHECK-NEXT: i64.const $push[[L1:.+]]=, 0
- ; CHECK-NEXT: i64.store 0($pop[[L2]]), $pop[[L1]]
  store double 0.0, double* %r2
+ ; CHECK-NEXT: i64.const $push[[L1:.+]]=, 0
+ ; CHECK-NEXT: i64.store 0($pop[[L5]]), $pop[[L1]]
+ ; CHECK-NEXT: get_local $push[[L2:.+]]=, [[SP]]{{$}}
+ ; CHECK-NEXT: i32.const $push[[L0:.+]]=, 0
+ ; CHECK-NEXT: i32.store 12($pop[[L2]]), $pop[[L0]]
  ; CHECK-NEXT: return
  ret void
 }

@@ -80,6 +80,17 @@ OUTPUT OPTIONS
  Show more information on test failures, for example the entire test output
  instead of just the test result.
 
+.. option:: -vv, --echo-all-commands
+
+ Echo all commands to stdout, as they are being executed.
+ This can be valuable for debugging test failures, as the last echoed command
+ will be the one which has failed.
+ :program:`lit` normally inserts a no-op command (``:`` in the case of bash)
+ with argument ``'RUN: at line N'`` before each command pipeline, and this
+ option also causes those no-op commands to be echoed to stdout to help you
+ locate the source line of the failed command.
+ This option implies ``--verbose``.
+
 .. option:: -a, --show-all
 
  Show more information about all tests, for example the entire test

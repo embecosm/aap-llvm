@@ -20,8 +20,8 @@
 #include "SystemZRegisterInfo.h"
 #include "SystemZSelectionDAGInfo.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
 #include <string>
 
 #define GET_SUBTARGETINFO_HEADER
@@ -56,6 +56,13 @@ protected:
   bool HasLoadAndZeroRightmostByte;
   bool HasMessageSecurityAssist5;
   bool HasDFPPackedConversion;
+  bool HasMiscellaneousExtensions2;
+  bool HasGuardedStorage;
+  bool HasMessageSecurityAssist7;
+  bool HasMessageSecurityAssist8;
+  bool HasVectorEnhancements1;
+  bool HasVectorPackedDecimal;
+  bool HasInsertReferenceBitsMultiple;
 
 private:
   Triple TargetTriple;
@@ -83,6 +90,11 @@ public:
   const SelectionDAGTargetInfo *getSelectionDAGInfo() const override {
     return &TSInfo;
   }
+
+  // True if the subtarget should run MachineScheduler after aggressive
+  // coalescing. This currently replaces the SelectionDAG scheduler with the
+  // "source" order scheduler.
+  bool enableMachineScheduler() const override { return true; }
 
   // This is important for reducing register pressure in vector code.
   bool useAA() const override { return true; }
@@ -167,6 +179,33 @@ public:
 
   // Return true if the target has the vector facility.
   bool hasVector() const { return HasVector; }
+
+  // Return true if the target has the miscellaneous-extensions facility 2.
+  bool hasMiscellaneousExtensions2() const {
+    return HasMiscellaneousExtensions2;
+  }
+
+  // Return true if the target has the guarded-storage facility.
+  bool hasGuardedStorage() const { return HasGuardedStorage; }
+
+  // Return true if the target has the message-security-assist
+  // extension facility 7.
+  bool hasMessageSecurityAssist7() const { return HasMessageSecurityAssist7; }
+
+  // Return true if the target has the message-security-assist
+  // extension facility 8.
+  bool hasMessageSecurityAssist8() const { return HasMessageSecurityAssist8; }
+
+  // Return true if the target has the vector-enhancements facility 1.
+  bool hasVectorEnhancements1() const { return HasVectorEnhancements1; }
+
+  // Return true if the target has the vector-packed-decimal facility.
+  bool hasVectorPackedDecimal() const { return HasVectorPackedDecimal; }
+
+  // Return true if the target has the insert-reference-bits-multiple facility.
+  bool hasInsertReferenceBitsMultiple() const {
+    return HasInsertReferenceBitsMultiple;
+  }
 
   // Return true if GV can be accessed using LARL for reloc model RM
   // and code model CM.

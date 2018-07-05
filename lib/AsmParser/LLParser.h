@@ -20,6 +20,7 @@
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/ModuleSummaryIndex.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/ValueHandle.h"
@@ -90,7 +91,10 @@ namespace llvm {
   private:
     LLVMContext &Context;
     LLLexer Lex;
+    // Module being parsed, null if we are only parsing summary index.
     Module *M;
+    // Summary index being parsed, null if we are only parsing Module.
+    ModuleSummaryIndex *Index;
     SlotMapping *Slots;
 
     // Instruction metadata resolution.  Each instruction can have a list of
@@ -139,11 +143,40 @@ namespace llvm {
     std::map<Value*, std::vector<unsigned> > ForwardRefAttrGroups;
     std::map<unsigned, AttrBuilder> NumberedAttrBuilders;
 
+    // Summary global value reference information.
+    std::map<unsigned, std::vector<std::pair<ValueInfo *, LocTy>>>
+        ForwardRefValueInfos;
+    std::map<unsigned, std::vector<std::pair<AliasSummary *, LocTy>>>
+        ForwardRefAliasees;
+    std::vector<ValueInfo> NumberedValueInfos;
+
+    // Summary type id reference information.
+    std::map<unsigned, std::vector<std::pair<GlobalValue::GUID *, LocTy>>>
+        ForwardRefTypeIds;
+
+    // Map of module ID to path.
+    std::map<unsigned, StringRef> ModuleIdMap;
+
+    /// Only the llvm-as tool may set this to false to bypass
+    /// UpgradeDebuginfo so it can generate broken bitcode.
+    bool UpgradeDebugInfo;
+
+    /// DataLayout string to override that in LLVM assembly.
+    StringRef DataLayoutStr;
+
+    std::string SourceFileName;
+
   public:
     LLParser(StringRef F, SourceMgr &SM, SMDiagnostic &Err, Module *M,
-             SlotMapping *Slots = nullptr)
-        : Context(M->getContext()), Lex(F, SM, Err, M->getContext()), M(M),
-          Slots(Slots), BlockAddressPFS(nullptr) {}
+             ModuleSummaryIndex *Index, LLVMContext &Context,
+             SlotMapping *Slots = nullptr, bool UpgradeDebugInfo = true,
+             StringRef DataLayoutString = "")
+        : Context(Context), Lex(F, SM, Err, Context), M(M), Index(Index),
+          Slots(Slots), BlockAddressPFS(nullptr),
+          UpgradeDebugInfo(UpgradeDebugInfo), DataLayoutStr(DataLayoutString) {
+      if (!DataLayoutStr.empty())
+        M->setDataLayout(DataLayoutStr);
+    }
     bool Run();
 
     bool parseStandaloneConstantValue(Constant *&C, const SlotMapping *Slots);
@@ -188,7 +221,7 @@ namespace llvm {
       FastMathFlags FMF;
       while (true)
         switch (Lex.getKind()) {
-        case lltok::kw_fast: FMF.setUnsafeAlgebra();   Lex.Lex(); continue;
+        case lltok::kw_fast: FMF.setFast();            Lex.Lex(); continue;
         case lltok::kw_nnan: FMF.setNoNaNs();          Lex.Lex(); continue;
         case lltok::kw_ninf: FMF.setNoInfs();          Lex.Lex(); continue;
         case lltok::kw_nsz:  FMF.setNoSignedZeros();   Lex.Lex(); continue;
@@ -197,6 +230,8 @@ namespace llvm {
           FMF.setAllowContract(true);
           Lex.Lex();
           continue;
+        case lltok::kw_reassoc: FMF.setAllowReassoc(); Lex.Lex(); continue;
+        case lltok::kw_afn:     FMF.setApproxFunc();   Lex.Lex(); continue;
         default: return FMF;
         }
       return FMF;
@@ -225,6 +260,7 @@ namespace llvm {
       Loc = Lex.getLoc();
       return ParseUInt64(Val);
     }
+    bool ParseFlag(unsigned &Val);
 
     bool ParseStringAttribute(AttrBuilder &B);
 
@@ -235,7 +271,9 @@ namespace llvm {
     bool ParseOptionalParamAttrs(AttrBuilder &B);
     bool ParseOptionalReturnAttrs(AttrBuilder &B);
     bool ParseOptionalLinkage(unsigned &Linkage, bool &HasLinkage,
-                              unsigned &Visibility, unsigned &DLLStorageClass);
+                              unsigned &Visibility, unsigned &DLLStorageClass,
+                              bool &DSOLocal);
+    void ParseOptionalDSOLocal(bool &DSOLocal);
     void ParseOptionalVisibility(unsigned &Visibility);
     void ParseOptionalDLLStorageClass(unsigned &DLLStorageClass);
     bool ParseOptionalCallingConv(unsigned &CC);
@@ -265,6 +303,7 @@ namespace llvm {
     // Top-Level Entities
     bool ParseTopLevelEntities();
     bool ValidateEndOfModule();
+    bool ValidateEndOfIndex();
     bool ParseTargetDefinition();
     bool ParseModuleAsm();
     bool ParseSourceFileName();
@@ -279,12 +318,12 @@ namespace llvm {
     bool ParseNamedGlobal();
     bool ParseGlobal(const std::string &Name, LocTy Loc, unsigned Linkage,
                      bool HasLinkage, unsigned Visibility,
-                     unsigned DLLStorageClass,
+                     unsigned DLLStorageClass, bool DSOLocal,
                      GlobalVariable::ThreadLocalMode TLM,
                      GlobalVariable::UnnamedAddr UnnamedAddr);
     bool parseIndirectSymbol(const std::string &Name, LocTy Loc,
                              unsigned Linkage, unsigned Visibility,
-                             unsigned DLLStorageClass,
+                             unsigned DLLStorageClass, bool DSOLocal,
                              GlobalVariable::ThreadLocalMode TLM,
                              GlobalVariable::UnnamedAddr UnnamedAddr);
     bool parseComdat();
@@ -296,6 +335,48 @@ namespace llvm {
     bool ParseFnAttributeValuePairs(AttrBuilder &B,
                                     std::vector<unsigned> &FwdRefAttrGrps,
                                     bool inAttrGrp, LocTy &BuiltinLoc);
+
+    // Module Summary Index Parsing.
+    bool SkipModuleSummaryEntry();
+    bool ParseSummaryEntry();
+    bool ParseModuleEntry(unsigned ID);
+    bool ParseModuleReference(StringRef &ModulePath);
+    bool ParseGVReference(ValueInfo &VI, unsigned &GVId);
+    bool ParseGVEntry(unsigned ID);
+    bool ParseFunctionSummary(std::string Name, GlobalValue::GUID, unsigned ID);
+    bool ParseVariableSummary(std::string Name, GlobalValue::GUID, unsigned ID);
+    bool ParseAliasSummary(std::string Name, GlobalValue::GUID, unsigned ID);
+    bool ParseGVFlags(GlobalValueSummary::GVFlags &GVFlags);
+    bool ParseOptionalFFlags(FunctionSummary::FFlags &FFlags);
+    bool ParseOptionalCalls(std::vector<FunctionSummary::EdgeTy> &Calls);
+    bool ParseHotness(CalleeInfo::HotnessType &Hotness);
+    bool ParseOptionalTypeIdInfo(FunctionSummary::TypeIdInfo &TypeIdInfo);
+    bool ParseTypeTests(std::vector<GlobalValue::GUID> &TypeTests);
+    bool ParseVFuncIdList(lltok::Kind Kind,
+                          std::vector<FunctionSummary::VFuncId> &VFuncIdList);
+    bool ParseConstVCallList(
+        lltok::Kind Kind,
+        std::vector<FunctionSummary::ConstVCall> &ConstVCallList);
+    using IdToIndexMapType =
+        std::map<unsigned, std::vector<std::pair<unsigned, LocTy>>>;
+    bool ParseConstVCall(FunctionSummary::ConstVCall &ConstVCall,
+                         IdToIndexMapType &IdToIndexMap, unsigned Index);
+    bool ParseVFuncId(FunctionSummary::VFuncId &VFuncId,
+                      IdToIndexMapType &IdToIndexMap, unsigned Index);
+    bool ParseOptionalRefs(std::vector<ValueInfo> &Refs);
+    bool ParseTypeIdEntry(unsigned ID);
+    bool ParseTypeIdSummary(TypeIdSummary &TIS);
+    bool ParseTypeTestResolution(TypeTestResolution &TTRes);
+    bool ParseOptionalWpdResolutions(
+        std::map<uint64_t, WholeProgramDevirtResolution> &WPDResMap);
+    bool ParseWpdRes(WholeProgramDevirtResolution &WPDRes);
+    bool ParseOptionalResByArg(
+        std::map<std::vector<uint64_t>, WholeProgramDevirtResolution::ByArg>
+            &ResByArg);
+    bool ParseArgs(std::vector<uint64_t> &Args);
+    void AddGlobalValueToIndex(std::string Name, GlobalValue::GUID,
+                               GlobalValue::LinkageTypes Linkage, unsigned ID,
+                               std::unique_ptr<GlobalValueSummary> Summary);
 
     // Type Parsing.
     bool ParseType(Type *&Result, const Twine &Msg, bool AllowVoid = false);
@@ -342,8 +423,8 @@ namespace llvm {
       /// GetVal - Get a value with the specified name or ID, creating a
       /// forward reference record if needed.  This can return null if the value
       /// exists but does not have the right type.
-      Value *GetVal(const std::string &Name, Type *Ty, LocTy Loc);
-      Value *GetVal(unsigned ID, Type *Ty, LocTy Loc);
+      Value *GetVal(const std::string &Name, Type *Ty, LocTy Loc, bool IsCall);
+      Value *GetVal(unsigned ID, Type *Ty, LocTy Loc, bool IsCall);
 
       /// SetInstName - After an instruction is parsed and inserted into its
       /// basic block, this installs its name.
@@ -365,7 +446,7 @@ namespace llvm {
     };
 
     bool ConvertValIDToValue(Type *Ty, ValID &ID, Value *&V,
-                             PerFunctionState *PFS);
+                             PerFunctionState *PFS, bool IsCall);
 
     bool parseConstantValue(Type *Ty, Constant *&C);
     bool ParseValue(Type *Ty, Value *&V, PerFunctionState *PFS);

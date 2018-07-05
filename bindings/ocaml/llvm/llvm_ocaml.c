@@ -20,6 +20,7 @@
 #include <string.h>
 #include "llvm-c/Core.h"
 #include "llvm-c/Support.h"
+#include "llvm/Config/llvm-config.h"
 #include "caml/alloc.h"
 #include "caml/custom.h"
 #include "caml/memory.h"
@@ -336,7 +337,12 @@ CAMLprim LLVMContextRef llvm_type_context(LLVMTypeRef Ty) {
 
 /* lltype -> unit */
 CAMLprim value llvm_dump_type(LLVMTypeRef Val) {
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
   LLVMDumpType(Val);
+#else
+  caml_raise_with_arg(*caml_named_value("Llvm.FeatureDisabled"),
+      caml_copy_string("dump"));
+#endif
   return Val_unit;
 }
 

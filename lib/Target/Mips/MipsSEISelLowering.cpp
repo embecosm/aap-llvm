@@ -1,4 +1,4 @@
-//===-- MipsSEISelLowering.cpp - MipsSE DAG Lowering Interface --*- C++ -*-===//
+//===- MipsSEISelLowering.cpp - MipsSE DAG Lowering Interface -------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -10,19 +10,43 @@
 // Subclass of MipsTargetLowering specialized for mips32/64.
 //
 //===----------------------------------------------------------------------===//
+
 #include "MipsSEISelLowering.h"
 #include "MipsMachineFunction.h"
 #include "MipsRegisterInfo.h"
-#include "MipsTargetMachine.h"
+#include "MipsSubtarget.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Triple.h"
+#include "llvm/CodeGen/CallingConvLower.h"
+#include "llvm/CodeGen/ISDOpcodes.h"
+#include "llvm/CodeGen/MachineBasicBlock.h"
+#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/CodeGen/SelectionDAGNodes.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/MachineValueType.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetInstrInfo.h"
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <iterator>
+#include <utility>
 
 using namespace llvm;
 
@@ -80,6 +104,11 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
     setTargetDAGCombine(ISD::SRL);
     setTargetDAGCombine(ISD::SETCC);
     setTargetDAGCombine(ISD::VSELECT);
+
+    if (Subtarget.hasMips32r2()) {
+      setOperationAction(ISD::ADDC, MVT::i32, Legal);
+      setOperationAction(ISD::ADDE, MVT::i32, Legal);
+    }
   }
 
   if (Subtarget.hasDSPR2())
@@ -179,8 +208,6 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
   setOperationAction(ISD::LOAD,               MVT::i32, Custom);
   setOperationAction(ISD::STORE,              MVT::i32, Custom);
 
-  setTargetDAGCombine(ISD::ADDE);
-  setTargetDAGCombine(ISD::SUBE);
   setTargetDAGCombine(ISD::MUL);
 
   setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
@@ -222,7 +249,7 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
 
     assert(Subtarget.isFP64bit() && "FR=1 is required for MIPS32r6");
     setOperationAction(ISD::SETCC, MVT::f64, Legal);
-    setOperationAction(ISD::SELECT, MVT::f64, Legal);
+    setOperationAction(ISD::SELECT, MVT::f64, Custom);
     setOperationAction(ISD::SELECT_CC, MVT::f64, Expand);
 
     setOperationAction(ISD::BRCOND, MVT::Other, Legal);
@@ -309,8 +336,12 @@ addMSAIntType(MVT::SimpleValueType Ty, const TargetRegisterClass *RC) {
   setOperationAction(ISD::SRA, Ty, Legal);
   setOperationAction(ISD::SRL, Ty, Legal);
   setOperationAction(ISD::SUB, Ty, Legal);
+  setOperationAction(ISD::SMAX, Ty, Legal);
+  setOperationAction(ISD::SMIN, Ty, Legal);
   setOperationAction(ISD::UDIV, Ty, Legal);
   setOperationAction(ISD::UREM, Ty, Legal);
+  setOperationAction(ISD::UMAX, Ty, Legal);
+  setOperationAction(ISD::UMIN, Ty, Legal);
   setOperationAction(ISD::VECTOR_SHUFFLE, Ty, Custom);
   setOperationAction(ISD::VSELECT, Ty, Legal);
   setOperationAction(ISD::XOR, Ty, Legal);
@@ -369,6 +400,21 @@ addMSAFloatType(MVT::SimpleValueType Ty, const TargetRegisterClass *RC) {
   }
 }
 
+SDValue MipsSETargetLowering::lowerSELECT(SDValue Op, SelectionDAG &DAG) const {
+  if(!Subtarget.hasMips32r6())
+    return MipsTargetLowering::LowerOperation(Op, DAG);
+
+  EVT ResTy = Op->getValueType(0);
+  SDLoc DL(Op);
+
+  // Although MTC1_D64 takes an i32 and writes an f64, the upper 32 bits of the
+  // floating point register are undefined. Not really an issue as sel.d, which
+  // is produced from an FSELECT node, only looks at bit 0.
+  SDValue Tmp = DAG.getNode(MipsISD::MTC1_D64, DL, MVT::f64, Op->getOperand(0));
+  return DAG.getNode(MipsISD::FSELECT, DL, ResTy, Tmp, Op->getOperand(1),
+                     Op->getOperand(2));
+}
+
 bool
 MipsSETargetLowering::allowsMisalignedMemoryAccesses(EVT VT,
                                                      unsigned,
@@ -416,166 +462,10 @@ SDValue MipsSETargetLowering::LowerOperation(SDValue Op,
   case ISD::EXTRACT_VECTOR_ELT: return lowerEXTRACT_VECTOR_ELT(Op, DAG);
   case ISD::BUILD_VECTOR:       return lowerBUILD_VECTOR(Op, DAG);
   case ISD::VECTOR_SHUFFLE:     return lowerVECTOR_SHUFFLE(Op, DAG);
+  case ISD::SELECT:             return lowerSELECT(Op, DAG);
   }
 
   return MipsTargetLowering::LowerOperation(Op, DAG);
-}
-
-// selectMADD -
-// Transforms a subgraph in CurDAG if the following pattern is found:
-//  (addc multLo, Lo0), (adde multHi, Hi0),
-// where,
-//  multHi/Lo: product of multiplication
-//  Lo0: initial value of Lo register
-//  Hi0: initial value of Hi register
-// Return true if pattern matching was successful.
-static bool selectMADD(SDNode *ADDENode, SelectionDAG *CurDAG) {
-  // ADDENode's second operand must be a flag output of an ADDC node in order
-  // for the matching to be successful.
-  SDNode *ADDCNode = ADDENode->getOperand(2).getNode();
-
-  if (ADDCNode->getOpcode() != ISD::ADDC)
-    return false;
-
-  SDValue MultHi = ADDENode->getOperand(0);
-  SDValue MultLo = ADDCNode->getOperand(0);
-  SDNode *MultNode = MultHi.getNode();
-  unsigned MultOpc = MultHi.getOpcode();
-
-  // MultHi and MultLo must be generated by the same node,
-  if (MultLo.getNode() != MultNode)
-    return false;
-
-  // and it must be a multiplication.
-  if (MultOpc != ISD::SMUL_LOHI && MultOpc != ISD::UMUL_LOHI)
-    return false;
-
-  // MultLo amd MultHi must be the first and second output of MultNode
-  // respectively.
-  if (MultHi.getResNo() != 1 || MultLo.getResNo() != 0)
-    return false;
-
-  // Transform this to a MADD only if ADDENode and ADDCNode are the only users
-  // of the values of MultNode, in which case MultNode will be removed in later
-  // phases.
-  // If there exist users other than ADDENode or ADDCNode, this function returns
-  // here, which will result in MultNode being mapped to a single MULT
-  // instruction node rather than a pair of MULT and MADD instructions being
-  // produced.
-  if (!MultHi.hasOneUse() || !MultLo.hasOneUse())
-    return false;
-
-  SDLoc DL(ADDENode);
-
-  // Initialize accumulator.
-  SDValue ACCIn = CurDAG->getNode(MipsISD::MTLOHI, DL, MVT::Untyped,
-                                  ADDCNode->getOperand(1),
-                                  ADDENode->getOperand(1));
-
-  // create MipsMAdd(u) node
-  MultOpc = MultOpc == ISD::UMUL_LOHI ? MipsISD::MAddu : MipsISD::MAdd;
-
-  SDValue MAdd = CurDAG->getNode(MultOpc, DL, MVT::Untyped,
-                                 MultNode->getOperand(0),// Factor 0
-                                 MultNode->getOperand(1),// Factor 1
-                                 ACCIn);
-
-  // replace uses of adde and addc here
-  if (!SDValue(ADDCNode, 0).use_empty()) {
-    SDValue LoOut = CurDAG->getNode(MipsISD::MFLO, DL, MVT::i32, MAdd);
-    CurDAG->ReplaceAllUsesOfValueWith(SDValue(ADDCNode, 0), LoOut);
-  }
-  if (!SDValue(ADDENode, 0).use_empty()) {
-    SDValue HiOut = CurDAG->getNode(MipsISD::MFHI, DL, MVT::i32, MAdd);
-    CurDAG->ReplaceAllUsesOfValueWith(SDValue(ADDENode, 0), HiOut);
-  }
-
-  return true;
-}
-
-// selectMSUB -
-// Transforms a subgraph in CurDAG if the following pattern is found:
-//  (addc Lo0, multLo), (sube Hi0, multHi),
-// where,
-//  multHi/Lo: product of multiplication
-//  Lo0: initial value of Lo register
-//  Hi0: initial value of Hi register
-// Return true if pattern matching was successful.
-static bool selectMSUB(SDNode *SUBENode, SelectionDAG *CurDAG) {
-  // SUBENode's second operand must be a flag output of an SUBC node in order
-  // for the matching to be successful.
-  SDNode *SUBCNode = SUBENode->getOperand(2).getNode();
-
-  if (SUBCNode->getOpcode() != ISD::SUBC)
-    return false;
-
-  SDValue MultHi = SUBENode->getOperand(1);
-  SDValue MultLo = SUBCNode->getOperand(1);
-  SDNode *MultNode = MultHi.getNode();
-  unsigned MultOpc = MultHi.getOpcode();
-
-  // MultHi and MultLo must be generated by the same node,
-  if (MultLo.getNode() != MultNode)
-    return false;
-
-  // and it must be a multiplication.
-  if (MultOpc != ISD::SMUL_LOHI && MultOpc != ISD::UMUL_LOHI)
-    return false;
-
-  // MultLo amd MultHi must be the first and second output of MultNode
-  // respectively.
-  if (MultHi.getResNo() != 1 || MultLo.getResNo() != 0)
-    return false;
-
-  // Transform this to a MSUB only if SUBENode and SUBCNode are the only users
-  // of the values of MultNode, in which case MultNode will be removed in later
-  // phases.
-  // If there exist users other than SUBENode or SUBCNode, this function returns
-  // here, which will result in MultNode being mapped to a single MULT
-  // instruction node rather than a pair of MULT and MSUB instructions being
-  // produced.
-  if (!MultHi.hasOneUse() || !MultLo.hasOneUse())
-    return false;
-
-  SDLoc DL(SUBENode);
-
-  // Initialize accumulator.
-  SDValue ACCIn = CurDAG->getNode(MipsISD::MTLOHI, DL, MVT::Untyped,
-                                  SUBCNode->getOperand(0),
-                                  SUBENode->getOperand(0));
-
-  // create MipsSub(u) node
-  MultOpc = MultOpc == ISD::UMUL_LOHI ? MipsISD::MSubu : MipsISD::MSub;
-
-  SDValue MSub = CurDAG->getNode(MultOpc, DL, MVT::Glue,
-                                 MultNode->getOperand(0),// Factor 0
-                                 MultNode->getOperand(1),// Factor 1
-                                 ACCIn);
-
-  // replace uses of sube and subc here
-  if (!SDValue(SUBCNode, 0).use_empty()) {
-    SDValue LoOut = CurDAG->getNode(MipsISD::MFLO, DL, MVT::i32, MSub);
-    CurDAG->ReplaceAllUsesOfValueWith(SDValue(SUBCNode, 0), LoOut);
-  }
-  if (!SDValue(SUBENode, 0).use_empty()) {
-    SDValue HiOut = CurDAG->getNode(MipsISD::MFHI, DL, MVT::i32, MSub);
-    CurDAG->ReplaceAllUsesOfValueWith(SDValue(SUBENode, 0), HiOut);
-  }
-
-  return true;
-}
-
-static SDValue performADDECombine(SDNode *N, SelectionDAG &DAG,
-                                  TargetLowering::DAGCombinerInfo &DCI,
-                                  const MipsSubtarget &Subtarget) {
-  if (DCI.isBeforeLegalize())
-    return SDValue();
-
-  if (Subtarget.hasMips32() && !Subtarget.hasMips32r6() &&
-      N->getValueType(0) == MVT::i32 && selectMADD(N, &DAG))
-    return SDValue(N, 0);
-
-  return SDValue();
 }
 
 // Fold zero extensions into MipsISD::VEXTRACT_[SZ]EXT_ELT
@@ -820,24 +710,79 @@ static SDValue performORCombine(SDNode *N, SelectionDAG &DAG,
   return SDValue();
 }
 
-static SDValue performSUBECombine(SDNode *N, SelectionDAG &DAG,
-                                  TargetLowering::DAGCombinerInfo &DCI,
-                                  const MipsSubtarget &Subtarget) {
-  if (DCI.isBeforeLegalize())
-    return SDValue();
+static bool shouldTransformMulToShiftsAddsSubs(APInt C, EVT VT,
+                                               SelectionDAG &DAG,
+                                               const MipsSubtarget &Subtarget) {
+  // Estimate the number of operations the below transform will turn a
+  // constant multiply into. The number is approximately how many powers
+  // of two summed together that the constant can be broken down into.
 
-  if (Subtarget.hasMips32() && N->getValueType(0) == MVT::i32 &&
-      selectMSUB(N, &DAG))
-    return SDValue(N, 0);
+  SmallVector<APInt, 16> WorkStack(1, C);
+  unsigned Steps = 0;
+  unsigned BitWidth = C.getBitWidth();
 
-  return SDValue();
+  while (!WorkStack.empty()) {
+    APInt Val = WorkStack.pop_back_val();
+
+    if (Val == 0 || Val == 1)
+      continue;
+
+    if (Val.isPowerOf2()) {
+      ++Steps;
+      continue;
+    }
+
+    APInt Floor = APInt(BitWidth, 1) << Val.logBase2();
+    APInt Ceil = Val.isNegative() ? APInt(BitWidth, 0)
+                                  : APInt(BitWidth, 1) << C.ceilLogBase2();
+
+    if ((Val - Floor).ule(Ceil - Val)) {
+      WorkStack.push_back(Floor);
+      WorkStack.push_back(Val - Floor);
+      ++Steps;
+      continue;
+    }
+
+    WorkStack.push_back(Ceil);
+    WorkStack.push_back(Ceil - Val);
+    ++Steps;
+
+    // If we have taken more than 12[1] / 8[2] steps to attempt the
+    // optimization for a native sized value, it is more than likely that this
+    // optimization will make things worse.
+    //
+    // [1] MIPS64 requires 6 instructions at most to materialize any constant,
+    //     multiplication requires at least 4 cycles, but another cycle (or two)
+    //     to retrieve the result from the HI/LO registers.
+    //
+    // [2] For MIPS32, more than 8 steps is expensive as the constant could be
+    //     materialized in 2 instructions, multiplication requires at least 4
+    //     cycles, but another cycle (or two) to retrieve the result from the
+    //     HI/LO registers.
+
+    if (Steps > 12 && (Subtarget.isABI_N32() || Subtarget.isABI_N64()))
+      return false;
+
+    if (Steps > 8 && Subtarget.isABI_O32())
+      return false;
+  }
+
+  // If the value being multiplied is not supported natively, we have to pay
+  // an additional legalization cost, conservatively assume an increase in the
+  // cost of 3 instructions per step. This values for this heuristic were
+  // determined experimentally.
+  unsigned RegisterSize = DAG.getTargetLoweringInfo()
+                              .getRegisterType(*DAG.getContext(), VT)
+                              .getSizeInBits();
+  Steps *= (VT.getSizeInBits() != RegisterSize) * 3;
+  if (Steps > 27)
+    return false;
+
+  return true;
 }
 
-static SDValue genConstMult(SDValue X, uint64_t C, const SDLoc &DL, EVT VT,
+static SDValue genConstMult(SDValue X, APInt C, const SDLoc &DL, EVT VT,
                             EVT ShiftTy, SelectionDAG &DAG) {
-  // Clear the upper (64 - VT.sizeInBits) bits.
-  C &= ((uint64_t)-1) >> (64 - VT.getSizeInBits());
-
   // Return 0.
   if (C == 0)
     return DAG.getConstant(0, DL, VT);
@@ -847,18 +792,19 @@ static SDValue genConstMult(SDValue X, uint64_t C, const SDLoc &DL, EVT VT,
     return X;
 
   // If c is power of 2, return (shl x, log2(c)).
-  if (isPowerOf2_64(C))
+  if (C.isPowerOf2())
     return DAG.getNode(ISD::SHL, DL, VT, X,
-                       DAG.getConstant(Log2_64(C), DL, ShiftTy));
+                       DAG.getConstant(C.logBase2(), DL, ShiftTy));
 
-  unsigned Log2Ceil = Log2_64_Ceil(C);
-  uint64_t Floor = 1LL << Log2_64(C);
-  uint64_t Ceil = Log2Ceil == 64 ? 0LL : 1LL << Log2Ceil;
+  unsigned BitWidth = C.getBitWidth();
+  APInt Floor = APInt(BitWidth, 1) << C.logBase2();
+  APInt Ceil = C.isNegative() ? APInt(BitWidth, 0) :
+                                APInt(BitWidth, 1) << C.ceilLogBase2();
 
   // If |c - floor_c| <= |c - ceil_c|,
   // where floor_c = pow(2, floor(log2(c))) and ceil_c = pow(2, ceil(log2(c))),
   // return (add constMult(x, floor_c), constMult(x, c - floor_c)).
-  if (C - Floor <= Ceil - C) {
+  if ((C - Floor).ule(Ceil - C)) {
     SDValue Op0 = genConstMult(X, Floor, DL, VT, ShiftTy, DAG);
     SDValue Op1 = genConstMult(X, C - Floor, DL, VT, ShiftTy, DAG);
     return DAG.getNode(ISD::ADD, DL, VT, Op0, Op1);
@@ -873,12 +819,14 @@ static SDValue genConstMult(SDValue X, uint64_t C, const SDLoc &DL, EVT VT,
 
 static SDValue performMULCombine(SDNode *N, SelectionDAG &DAG,
                                  const TargetLowering::DAGCombinerInfo &DCI,
-                                 const MipsSETargetLowering *TL) {
+                                 const MipsSETargetLowering *TL,
+                                 const MipsSubtarget &Subtarget) {
   EVT VT = N->getValueType(0);
 
   if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(N->getOperand(1)))
-    if (!VT.isVector())
-      return genConstMult(N->getOperand(0), C->getZExtValue(), SDLoc(N), VT,
+    if (!VT.isVector() && shouldTransformMulToShiftsAddsSubs(
+                              C->getAPIntValue(), VT, DAG, Subtarget))
+      return genConstMult(N->getOperand(0), C->getAPIntValue(), SDLoc(N), VT,
                           TL->getScalarShiftAmountTy(DAG.getDataLayout(), VT),
                           DAG);
 
@@ -1024,46 +972,7 @@ static SDValue performSETCCCombine(SDNode *N, SelectionDAG &DAG) {
 static SDValue performVSELECTCombine(SDNode *N, SelectionDAG &DAG) {
   EVT Ty = N->getValueType(0);
 
-  if (Ty.is128BitVector() && Ty.isInteger()) {
-    // Try the following combines:
-    //   (vselect (setcc $a, $b, SETLT), $b, $a)) -> (vsmax $a, $b)
-    //   (vselect (setcc $a, $b, SETLE), $b, $a)) -> (vsmax $a, $b)
-    //   (vselect (setcc $a, $b, SETLT), $a, $b)) -> (vsmin $a, $b)
-    //   (vselect (setcc $a, $b, SETLE), $a, $b)) -> (vsmin $a, $b)
-    //   (vselect (setcc $a, $b, SETULT), $b, $a)) -> (vumax $a, $b)
-    //   (vselect (setcc $a, $b, SETULE), $b, $a)) -> (vumax $a, $b)
-    //   (vselect (setcc $a, $b, SETULT), $a, $b)) -> (vumin $a, $b)
-    //   (vselect (setcc $a, $b, SETULE), $a, $b)) -> (vumin $a, $b)
-    // SETGT/SETGE/SETUGT/SETUGE variants of these will show up initially but
-    // will be expanded to equivalent SETLT/SETLE/SETULT/SETULE versions by the
-    // legalizer.
-    SDValue Op0 = N->getOperand(0);
-
-    if (Op0->getOpcode() != ISD::SETCC)
-      return SDValue();
-
-    ISD::CondCode CondCode = cast<CondCodeSDNode>(Op0->getOperand(2))->get();
-    bool Signed;
-
-    if (CondCode == ISD::SETLT  || CondCode == ISD::SETLE)
-      Signed = true;
-    else if (CondCode == ISD::SETULT || CondCode == ISD::SETULE)
-      Signed = false;
-    else
-      return SDValue();
-
-    SDValue Op1 = N->getOperand(1);
-    SDValue Op2 = N->getOperand(2);
-    SDValue Op0Op0 = Op0->getOperand(0);
-    SDValue Op0Op1 = Op0->getOperand(1);
-
-    if (Op1 == Op0Op0 && Op2 == Op0Op1)
-      return DAG.getNode(Signed ? MipsISD::VSMIN : MipsISD::VUMIN, SDLoc(N),
-                         Ty, Op1, Op2);
-    else if (Op1 == Op0Op1 && Op2 == Op0Op0)
-      return DAG.getNode(Signed ? MipsISD::VSMAX : MipsISD::VUMAX, SDLoc(N),
-                         Ty, Op1, Op2);
-  } else if ((Ty == MVT::v2i16) || (Ty == MVT::v4i8)) {
+  if (Ty == MVT::v2i16 || Ty == MVT::v4i8) {
     SDValue SetCC = N->getOperand(0);
 
     if (SetCC.getOpcode() != MipsISD::SETCC_DSP)
@@ -1110,18 +1019,14 @@ MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
   SDValue Val;
 
   switch (N->getOpcode()) {
-  case ISD::ADDE:
-    return performADDECombine(N, DAG, DCI, Subtarget);
   case ISD::AND:
     Val = performANDCombine(N, DAG, DCI, Subtarget);
     break;
   case ISD::OR:
     Val = performORCombine(N, DAG, DCI, Subtarget);
     break;
-  case ISD::SUBE:
-    return performSUBECombine(N, DAG, DCI, Subtarget);
   case ISD::MUL:
-    return performMULCombine(N, DAG, DCI, this);
+    return performMULCombine(N, DAG, DCI, this, Subtarget);
   case ISD::SHL:
     Val = performSHLCombine(N, DAG, DCI, Subtarget);
     break;
@@ -1140,11 +1045,9 @@ MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
   }
 
   if (Val.getNode()) {
-    DEBUG(dbgs() << "\nMipsSE DAG Combine:\n";
-          N->printrWithDepth(dbgs(), &DAG);
-          dbgs() << "\n=> \n";
-          Val.getNode()->printrWithDepth(dbgs(), &DAG);
-          dbgs() << "\n");
+    LLVM_DEBUG(dbgs() << "\nMipsSE DAG Combine:\n";
+               N->printrWithDepth(dbgs(), &DAG); dbgs() << "\n=> \n";
+               Val.getNode()->printrWithDepth(dbgs(), &DAG); dbgs() << "\n");
     return Val;
   }
 
@@ -1249,7 +1152,7 @@ bool MipsSETargetLowering::isEligibleForTailCallOptimization(
 
 void MipsSETargetLowering::
 getOpndList(SmallVectorImpl<SDValue> &Ops,
-            std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
+            std::deque<std::pair<unsigned, SDValue>> &RegsToPass,
             bool IsPICCall, bool GlobalOrExternal, bool InternalLinkage,
             bool IsCallReloc, CallLoweringInfo &CLI, SDValue Callee,
             SDValue Chain) const {
@@ -1443,7 +1346,16 @@ static SDValue lowerMSASplatZExt(SDValue Op, unsigned OpNr, SelectionDAG &DAG) {
   SDValue LaneB;
 
   if (ResVecTy == MVT::v2i64) {
-    LaneB = DAG.getConstant(0, DL, MVT::i32);
+    // In case of the index being passed as an immediate value, set the upper
+    // lane to 0 so that the splati.d instruction can be matched.
+    if (isa<ConstantSDNode>(LaneA))
+      LaneB = DAG.getConstant(0, DL, MVT::i32);
+    // Having the index passed in a register, set the upper lane to the same
+    // value as the lower - this results in the BUILD_VECTOR node not being
+    // expanded through stack. This way we are able to pattern match the set of
+    // nodes created here to splat.d.
+    else
+      LaneB = LaneA;
     ViaVecTy = MVT::v4i32;
     if(BigEndian)
       std::swap(LaneA, LaneB);
@@ -1865,11 +1777,10 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
     return DAG.getNode(ISD::UDIV, DL, Op->getValueType(0), Op->getOperand(1),
                        Op->getOperand(2));
   case Intrinsic::mips_fadd_w:
-  case Intrinsic::mips_fadd_d: {
+  case Intrinsic::mips_fadd_d:
     // TODO: If intrinsics have fast-math-flags, propagate them.
     return DAG.getNode(ISD::FADD, DL, Op->getValueType(0), Op->getOperand(1),
                        Op->getOperand(2));
-  }
   // Don't lower mips_fcaf_[wd] since LLVM folds SETFALSE condcodes away
   case Intrinsic::mips_fceq_w:
   case Intrinsic::mips_fceq_d:
@@ -1912,11 +1823,10 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
     return DAG.getSetCC(DL, Op->getValueType(0), Op->getOperand(1),
                         Op->getOperand(2), ISD::SETUNE);
   case Intrinsic::mips_fdiv_w:
-  case Intrinsic::mips_fdiv_d: {
+  case Intrinsic::mips_fdiv_d:
     // TODO: If intrinsics have fast-math-flags, propagate them.
     return DAG.getNode(ISD::FDIV, DL, Op->getValueType(0), Op->getOperand(1),
                        Op->getOperand(2));
-  }
   case Intrinsic::mips_ffint_u_w:
   case Intrinsic::mips_ffint_u_d:
     return DAG.getNode(ISD::UINT_TO_FP, DL, Op->getValueType(0),
@@ -1953,18 +1863,15 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
     return DAG.getNode(ISD::FMA, SDLoc(Op), Op->getValueType(0),
                        Op->getOperand(1), Op->getOperand(2), Op->getOperand(3));
   case Intrinsic::mips_fmul_w:
-  case Intrinsic::mips_fmul_d: {
+  case Intrinsic::mips_fmul_d:
     // TODO: If intrinsics have fast-math-flags, propagate them.
     return DAG.getNode(ISD::FMUL, DL, Op->getValueType(0), Op->getOperand(1),
                        Op->getOperand(2));
-  }
   case Intrinsic::mips_fmsub_w:
   case Intrinsic::mips_fmsub_d: {
     // TODO: If intrinsics have fast-math-flags, propagate them.
-    EVT ResTy = Op->getValueType(0);
-    return DAG.getNode(ISD::FSUB, SDLoc(Op), ResTy, Op->getOperand(1),
-                       DAG.getNode(ISD::FMUL, SDLoc(Op), ResTy,
-                                   Op->getOperand(2), Op->getOperand(3)));
+    return DAG.getNode(MipsISD::FMS, SDLoc(Op), Op->getValueType(0),
+                       Op->getOperand(1), Op->getOperand(2), Op->getOperand(3));
   }
   case Intrinsic::mips_frint_w:
   case Intrinsic::mips_frint_d:
@@ -1973,11 +1880,10 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
   case Intrinsic::mips_fsqrt_d:
     return DAG.getNode(ISD::FSQRT, DL, Op->getValueType(0), Op->getOperand(1));
   case Intrinsic::mips_fsub_w:
-  case Intrinsic::mips_fsub_d: {
+  case Intrinsic::mips_fsub_d:
     // TODO: If intrinsics have fast-math-flags, propagate them.
     return DAG.getNode(ISD::FSUB, DL, Op->getValueType(0), Op->getOperand(1),
                        Op->getOperand(2));
-  }
   case Intrinsic::mips_ftrunc_u_w:
   case Intrinsic::mips_ftrunc_u_d:
     return DAG.getNode(ISD::FP_TO_UINT, DL, Op->getValueType(0),
@@ -2061,49 +1967,49 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
   case Intrinsic::mips_max_s_h:
   case Intrinsic::mips_max_s_w:
   case Intrinsic::mips_max_s_d:
-    return DAG.getNode(MipsISD::VSMAX, DL, Op->getValueType(0),
+    return DAG.getNode(ISD::SMAX, DL, Op->getValueType(0),
                        Op->getOperand(1), Op->getOperand(2));
   case Intrinsic::mips_max_u_b:
   case Intrinsic::mips_max_u_h:
   case Intrinsic::mips_max_u_w:
   case Intrinsic::mips_max_u_d:
-    return DAG.getNode(MipsISD::VUMAX, DL, Op->getValueType(0),
+    return DAG.getNode(ISD::UMAX, DL, Op->getValueType(0),
                        Op->getOperand(1), Op->getOperand(2));
   case Intrinsic::mips_maxi_s_b:
   case Intrinsic::mips_maxi_s_h:
   case Intrinsic::mips_maxi_s_w:
   case Intrinsic::mips_maxi_s_d:
-    return DAG.getNode(MipsISD::VSMAX, DL, Op->getValueType(0),
+    return DAG.getNode(ISD::SMAX, DL, Op->getValueType(0),
                        Op->getOperand(1), lowerMSASplatImm(Op, 2, DAG, true));
   case Intrinsic::mips_maxi_u_b:
   case Intrinsic::mips_maxi_u_h:
   case Intrinsic::mips_maxi_u_w:
   case Intrinsic::mips_maxi_u_d:
-    return DAG.getNode(MipsISD::VUMAX, DL, Op->getValueType(0),
+    return DAG.getNode(ISD::UMAX, DL, Op->getValueType(0),
                        Op->getOperand(1), lowerMSASplatImm(Op, 2, DAG));
   case Intrinsic::mips_min_s_b:
   case Intrinsic::mips_min_s_h:
   case Intrinsic::mips_min_s_w:
   case Intrinsic::mips_min_s_d:
-    return DAG.getNode(MipsISD::VSMIN, DL, Op->getValueType(0),
+    return DAG.getNode(ISD::SMIN, DL, Op->getValueType(0),
                        Op->getOperand(1), Op->getOperand(2));
   case Intrinsic::mips_min_u_b:
   case Intrinsic::mips_min_u_h:
   case Intrinsic::mips_min_u_w:
   case Intrinsic::mips_min_u_d:
-    return DAG.getNode(MipsISD::VUMIN, DL, Op->getValueType(0),
+    return DAG.getNode(ISD::UMIN, DL, Op->getValueType(0),
                        Op->getOperand(1), Op->getOperand(2));
   case Intrinsic::mips_mini_s_b:
   case Intrinsic::mips_mini_s_h:
   case Intrinsic::mips_mini_s_w:
   case Intrinsic::mips_mini_s_d:
-    return DAG.getNode(MipsISD::VSMIN, DL, Op->getValueType(0),
+    return DAG.getNode(ISD::SMIN, DL, Op->getValueType(0),
                        Op->getOperand(1), lowerMSASplatImm(Op, 2, DAG, true));
   case Intrinsic::mips_mini_u_b:
   case Intrinsic::mips_mini_u_h:
   case Intrinsic::mips_mini_u_w:
   case Intrinsic::mips_mini_u_d:
-    return DAG.getNode(MipsISD::VUMIN, DL, Op->getValueType(0),
+    return DAG.getNode(ISD::UMIN, DL, Op->getValueType(0),
                        Op->getOperand(1), lowerMSASplatImm(Op, 2, DAG));
   case Intrinsic::mips_mod_s_b:
   case Intrinsic::mips_mod_s_h:
@@ -2454,7 +2360,7 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_VOID(SDValue Op,
   }
 }
 
-/// \brief Check if the given BuildVectorSDNode is a splat.
+/// Check if the given BuildVectorSDNode is a splat.
 /// This method currently relies on DAG nodes being reused when equivalent,
 /// so it's possible for this to return false even when isConstantSplat returns
 /// true.
@@ -3596,9 +3502,17 @@ MipsSETargetLowering::emitST_F16_PSEUDO(MachineInstr &MI,
                                : (Subtarget.isABI_O32() ? &Mips::GPR32RegClass
                                                         : &Mips::GPR64RegClass);
   const bool UsingMips32 = RC == &Mips::GPR32RegClass;
-  unsigned Rs = RegInfo.createVirtualRegister(RC);
+  unsigned Rs = RegInfo.createVirtualRegister(&Mips::GPR32RegClass);
 
   BuildMI(*BB, MI, DL, TII->get(Mips::COPY_U_H), Rs).addReg(Ws).addImm(0);
+  if(!UsingMips32) {
+    unsigned Tmp = RegInfo.createVirtualRegister(&Mips::GPR64RegClass);
+    BuildMI(*BB, MI, DL, TII->get(Mips::SUBREG_TO_REG), Tmp)
+        .addImm(0)
+        .addReg(Rs)
+        .addImm(Mips::sub_32);
+    Rs = Tmp;
+  }
   BuildMI(*BB, MI, DL, TII->get(UsingMips32 ? Mips::SH : Mips::SH64))
       .addReg(Rs)
       .addReg(Rt)
@@ -3623,7 +3537,6 @@ MipsSETargetLowering::emitST_F16_PSEUDO(MachineInstr &MI,
 //     memory it's not supposed to.
 //  b) The load crosses an implementation specific boundary, requiring OS
 //     intervention.
-//
 MachineBasicBlock *
 MipsSETargetLowering::emitLD_F16_PSEUDO(MachineInstr &MI,
                                        MachineBasicBlock *BB) const {
@@ -3648,6 +3561,12 @@ MipsSETargetLowering::emitLD_F16_PSEUDO(MachineInstr &MI,
       BuildMI(*BB, MI, DL, TII->get(UsingMips32 ? Mips::LH : Mips::LH64), Rt);
   for (unsigned i = 1; i < MI.getNumOperands(); i++)
     MIB.add(MI.getOperand(i));
+
+  if(!UsingMips32) {
+    unsigned Tmp = RegInfo.createVirtualRegister(&Mips::GPR32RegClass);
+    BuildMI(*BB, MI, DL, TII->get(Mips::COPY), Tmp).addReg(Rt, 0, Mips::sub_32);
+    Rt = Tmp;
+  }
 
   BuildMI(*BB, MI, DL, TII->get(Mips::FILL_H), Wd).addReg(Rt);
 
@@ -3704,7 +3623,6 @@ MipsSETargetLowering::emitLD_F16_PSEUDO(MachineInstr &MI,
 //              insert.w for one element, we avoid that potiential case. If
 //              fexdo.[hw] causes an exception in, the exception is valid and it
 //              occurs for all elements.
-//
 MachineBasicBlock *
 MipsSETargetLowering::emitFPROUND_PSEUDO(MachineInstr &MI,
                                          MachineBasicBlock *BB,
@@ -3716,6 +3634,7 @@ MipsSETargetLowering::emitFPROUND_PSEUDO(MachineInstr &MI,
   assert(Subtarget.hasMSA() && Subtarget.hasMips32r2());
 
   bool IsFGR64onMips64 = Subtarget.hasMips64() && IsFGR64;
+  bool IsFGR64onMips32 = !Subtarget.hasMips64() && IsFGR64;
 
   const TargetInstrInfo *TII = Subtarget.getInstrInfo();
   DebugLoc DL = MI.getDebugLoc();
@@ -3726,7 +3645,9 @@ MipsSETargetLowering::emitFPROUND_PSEUDO(MachineInstr &MI,
   unsigned Wtemp = RegInfo.createVirtualRegister(&Mips::MSA128WRegClass);
   const TargetRegisterClass *GPRRC =
       IsFGR64onMips64 ? &Mips::GPR64RegClass : &Mips::GPR32RegClass;
-  unsigned MFC1Opc = IsFGR64onMips64 ? Mips::DMFC1 : Mips::MFC1;
+  unsigned MFC1Opc = IsFGR64onMips64
+                         ? Mips::DMFC1
+                         : (IsFGR64onMips32 ? Mips::MFC1_D64 : Mips::MFC1);
   unsigned FILLOpc = IsFGR64onMips64 ? Mips::FILL_D : Mips::FILL_W;
 
   // Perform the register class copy as mentioned above.
@@ -3735,7 +3656,7 @@ MipsSETargetLowering::emitFPROUND_PSEUDO(MachineInstr &MI,
   BuildMI(*BB, MI, DL, TII->get(FILLOpc), Wtemp).addReg(Rtemp);
   unsigned WPHI = Wtemp;
 
-  if (!Subtarget.hasMips64() && IsFGR64) {
+  if (IsFGR64onMips32) {
     unsigned Rtemp2 = RegInfo.createVirtualRegister(GPRRC);
     BuildMI(*BB, MI, DL, TII->get(Mips::MFHC1_D64), Rtemp2).addReg(Fs);
     unsigned Wtemp2 = RegInfo.createVirtualRegister(&Mips::MSA128WRegClass);
@@ -3807,7 +3728,6 @@ MipsSETargetLowering::emitFPROUND_PSEUDO(MachineInstr &MI,
 //  mtc1 $rtemp, $ftemp
 //  copy_s.w $rtemp2, $wtemp2[1]
 //  $fd = mthc1 $rtemp2, $ftemp
-//
 MachineBasicBlock *
 MipsSETargetLowering::emitFPEXTEND_PSEUDO(MachineInstr &MI,
                                           MachineBasicBlock *BB,
@@ -3829,7 +3749,9 @@ MipsSETargetLowering::emitFPEXTEND_PSEUDO(MachineInstr &MI,
   MachineRegisterInfo &RegInfo = BB->getParent()->getRegInfo();
   const TargetRegisterClass *GPRRC =
       IsFGR64onMips64 ? &Mips::GPR64RegClass : &Mips::GPR32RegClass;
-  unsigned MTC1Opc = IsFGR64onMips64 ? Mips::DMTC1 : Mips::MTC1;
+  unsigned MTC1Opc = IsFGR64onMips64
+                         ? Mips::DMTC1
+                         : (IsFGR64onMips32 ? Mips::MTC1_D64 : Mips::MTC1);
   unsigned COPYOpc = IsFGR64onMips64 ? Mips::COPY_S_D : Mips::COPY_S_W;
 
   unsigned Wtemp = RegInfo.createVirtualRegister(&Mips::MSA128WRegClass);

@@ -18,6 +18,7 @@
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/DebugInfo/CodeView/CVRecord.h"
 #include "llvm/DebugInfo/CodeView/CodeView.h"
+#include "llvm/DebugInfo/CodeView/GUID.h"
 #include "llvm/DebugInfo/CodeView/TypeIndex.h"
 #include "llvm/Support/BinaryStreamArray.h"
 #include "llvm/Support/Endian.h"
@@ -329,9 +330,18 @@ public:
     return !!(Attrs & uint32_t(PointerOptions::Unaligned));
   }
 
+  bool isRestrict() const {
+    return !!(Attrs & uint32_t(PointerOptions::Restrict));
+  }
+
   TypeIndex ReferentType;
   uint32_t Attrs;
   Optional<MemberPointerInfo> MemberInfo;
+
+  void setAttrs(PointerKind PK, PointerMode PM, PointerOptions PO,
+                uint8_t Size) {
+    Attrs = calcAttrs(PK, PM, PO, Size);
+  }
 
 private:
   static uint32_t calcAttrs(PointerKind PK, PointerMode PM, PointerOptions PO,
@@ -409,6 +419,14 @@ public:
 
   bool hasUniqueName() const {
     return (Options & ClassOptions::HasUniqueName) != ClassOptions::None;
+  }
+
+  bool isNested() const {
+    return (Options & ClassOptions::Nested) != ClassOptions::None;
+  }
+
+  bool isForwardRef() const {
+    return (Options & ClassOptions::ForwardReference) != ClassOptions::None;
   }
 
   uint16_t getMemberCount() const { return MemberCount; }
@@ -539,15 +557,17 @@ class TypeServer2Record : public TypeRecord {
 public:
   TypeServer2Record() = default;
   explicit TypeServer2Record(TypeRecordKind Kind) : TypeRecord(Kind) {}
-  TypeServer2Record(StringRef Guid, uint32_t Age, StringRef Name)
-      : TypeRecord(TypeRecordKind::TypeServer2), Guid(Guid), Age(Age),
-        Name(Name) {}
+  TypeServer2Record(StringRef GuidStr, uint32_t Age, StringRef Name)
+      : TypeRecord(TypeRecordKind::TypeServer2), Age(Age), Name(Name) {
+    assert(GuidStr.size() == 16 && "guid isn't 16 bytes");
+    ::memcpy(Guid.Guid, GuidStr.data(), 16);
+  }
 
-  StringRef getGuid() const { return Guid; }
+  const GUID &getGuid() const { return Guid; }
   uint32_t getAge() const { return Age; }
   StringRef getName() const { return Name; }
 
-  StringRef Guid;
+  GUID Guid;
   uint32_t Age;
   StringRef Name;
 };
@@ -876,6 +896,33 @@ public:
   TypeIndex ContinuationIndex;
 };
 
+// LF_PRECOMP
+class PrecompRecord : public TypeRecord {
+public:
+  PrecompRecord() = default;
+  explicit PrecompRecord(TypeRecordKind Kind) : TypeRecord(Kind) {}
+
+  uint32_t getStartTypeIndex() const { return StartTypeIndex; }
+  uint32_t getTypesCount() const { return TypesCount; }
+  uint32_t getSignature() const { return Signature; }
+  StringRef getPrecompFilePath() const { return PrecompFilePath; }
+
+  uint32_t StartTypeIndex;
+  uint32_t TypesCount;
+  uint32_t Signature;
+  StringRef PrecompFilePath;
+};
+
+// LF_ENDPRECOMP
+class EndPrecompRecord : public TypeRecord {
+public:
+  EndPrecompRecord() = default;
+  explicit EndPrecompRecord(TypeRecordKind Kind) : TypeRecord(Kind) {}
+
+  uint32_t getSignature() const { return Signature; }
+
+  uint32_t Signature;
+};
 } // end namespace codeview
 } // end namespace llvm
 

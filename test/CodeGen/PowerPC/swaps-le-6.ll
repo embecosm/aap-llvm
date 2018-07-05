@@ -27,17 +27,17 @@ entry:
 
 ; CHECK-LABEL: @bar0
 ; CHECK-DAG: lxvd2x [[REG1:[0-9]+]]
-; CHECK-DAG: lxsdx [[REG2:[0-9]+]]
+; CHECK-DAG: lfdx [[REG2:[0-9]+]]
 ; CHECK: xxspltd [[REG4:[0-9]+]], [[REG2]], 0
 ; CHECK: xxpermdi [[REG5:[0-9]+]], [[REG4]], [[REG1]], 1
 ; CHECK: stxvd2x [[REG5]]
 
 ; CHECK-P9-LABEL: @bar0
-; CHECK-P9-DAG: lxv [[REG1:[0-9]+]]
+; CHECK-P9-DAG: lxvx [[REG1:[0-9]+]]
 ; CHECK-P9-DAG: lfd [[REG2:[0-9]+]], 0(3)
 ; CHECK-P9: xxspltd [[REG4:[0-9]+]], [[REG2]], 0
 ; CHECK-P9: xxpermdi [[REG5:[0-9]+]], [[REG1]], [[REG4]], 1
-; CHECK-P9: stxv [[REG5]]
+; CHECK-P9: stxvx [[REG5]]
 
 define void @bar1() {
 entry:
@@ -50,15 +50,15 @@ entry:
 
 ; CHECK-LABEL: @bar1
 ; CHECK-DAG: lxvd2x [[REG1:[0-9]+]]
-; CHECK-DAG: lxsdx [[REG2:[0-9]+]]
+; CHECK-DAG: lfdx [[REG2:[0-9]+]]
 ; CHECK: xxspltd [[REG4:[0-9]+]], [[REG2]], 0
 ; CHECK: xxmrghd [[REG5:[0-9]+]], [[REG1]], [[REG4]]
 ; CHECK: stxvd2x [[REG5]]
 
 ; CHECK-P9-LABEL: @bar1
-; CHECK-P9-DAG: lxv [[REG1:[0-9]+]]
+; CHECK-P9-DAG: lxvx [[REG1:[0-9]+]]
 ; CHECK-P9-DAG: lfd [[REG2:[0-9]+]], 0(3)
 ; CHECK-P9: xxspltd [[REG4:[0-9]+]], [[REG2]], 0
 ; CHECK-P9: xxmrgld [[REG5:[0-9]+]], [[REG4]], [[REG1]]
-; CHECK-P9: stxv [[REG5]]
+; CHECK-P9: stxvx [[REG5]]
 

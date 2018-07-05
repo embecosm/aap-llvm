@@ -172,11 +172,11 @@ entry:
 ; CHECK: callq
 }
 
-declare void @llvm.memcpy.p0i8.p0i8.i64(i8*, i8*, i64, i32, i1)
+declare void @llvm.memcpy.p0i8.p0i8.i64(i8*, i8*, i64, i1)
 
 ; rdar://9289488 - fast-isel shouldn't bail out on llvm.memcpy
 define void @test15(i8* %a, i8* %b) nounwind {
-  call void @llvm.memcpy.p0i8.p0i8.i64(i8* %a, i8* %b, i64 4, i32 4, i1 false)
+  call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %a, i8* align 4 %b, i64 4, i1 false)
   ret void
 ; CHECK-LABEL: test15:
 ; CHECK-NEXT: movl	(%rsi), %eax
@@ -316,7 +316,7 @@ define void @allocamaterialize() {
 
 ; STDERR-NOT: FastISel missed terminator:   ret void
 ; CHECK-LABEL: win64ccfun
-define x86_64_win64cc void @win64ccfun(i32 %i) {
+define win64cc void @win64ccfun(i32 %i) {
 ; CHECK: ret
   ret void
 }

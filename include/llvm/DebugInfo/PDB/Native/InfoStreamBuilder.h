@@ -37,8 +37,12 @@ public:
   void setVersion(PdbRaw_ImplVer V);
   void setSignature(uint32_t S);
   void setAge(uint32_t A);
-  void setGuid(PDB_UniqueId G);
+  void setGuid(codeview::GUID G);
   void addFeature(PdbRaw_FeatureSig Sig);
+
+  uint32_t getAge() const { return Age; }
+  codeview::GUID getGuid() const { return Guid; }
+  Optional<uint32_t> getSignature() const { return Signature; }
 
   uint32_t finalize();
 
@@ -52,9 +56,9 @@ private:
 
   std::vector<PdbRaw_FeatureSig> Features;
   PdbRaw_ImplVer Ver;
-  uint32_t Sig;
   uint32_t Age;
-  PDB_UniqueId Guid;
+  Optional<uint32_t> Signature;
+  codeview::GUID Guid;
 
   NamedStreamMap &NamedStreams;
 };

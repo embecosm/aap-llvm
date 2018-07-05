@@ -21,16 +21,16 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
 #include "llvm/Analysis/GlobalsModRef.h"
+#include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/InstVisitor.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Type.h"
@@ -44,7 +44,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Instrumentation.h"
-#include "llvm/Transforms/PGOInstrumentation.h"
+#include "llvm/Transforms/Instrumentation/PGOInstrumentation.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include <cassert>
 #include <cstdint>
@@ -110,6 +110,7 @@ private:
   bool runOnFunction(Function &F) override;
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<BlockFrequencyInfoWrapperPass>();
+    AU.addRequired<OptimizationRemarkEmitterWrapperPass>();
     AU.addPreserved<GlobalsAAWrapperPass>();
   }
 };
@@ -131,8 +132,9 @@ FunctionPass *llvm::createPGOMemOPSizeOptLegacyPass() {
 namespace {
 class MemOPSizeOpt : public InstVisitor<MemOPSizeOpt> {
 public:
-  MemOPSizeOpt(Function &Func, BlockFrequencyInfo &BFI)
-      : Func(Func), BFI(BFI), Changed(false) {
+  MemOPSizeOpt(Function &Func, BlockFrequencyInfo &BFI,
+               OptimizationRemarkEmitter &ORE)
+      : Func(Func), BFI(BFI), ORE(ORE), Changed(false) {
     ValueDataArray =
         llvm::make_unique<InstrProfValueData[]>(MemOPMaxVersion + 2);
     // Get the MemOPSize range information from option MemOPSizeRange,
@@ -149,8 +151,9 @@ public:
       if (perform(MI)) {
         Changed = true;
         ++NumOfPGOMemOPOpt;
-        DEBUG(dbgs() << "MemOP call: " << MI->getCalledFunction()->getName()
-                     << "is Transformed.\n");
+        LLVM_DEBUG(dbgs() << "MemOP call: "
+                          << MI->getCalledFunction()->getName()
+                          << "is Transformed.\n");
       }
     }
   }
@@ -166,6 +169,7 @@ public:
 private:
   Function &Func;
   BlockFrequencyInfo &BFI;
+  OptimizationRemarkEmitter &ORE;
   bool Changed;
   std::vector<MemIntrinsic *> WorkList;
   // Start of the previse range.
@@ -242,9 +246,9 @@ bool MemOPSizeOpt::perform(MemIntrinsic *MI) {
   }
 
   ArrayRef<InstrProfValueData> VDs(ValueDataArray.get(), NumVals);
-  DEBUG(dbgs() << "Read one memory intrinsic profile with count " << ActualCount
-               << "\n");
-  DEBUG(
+  LLVM_DEBUG(dbgs() << "Read one memory intrinsic profile with count "
+                    << ActualCount << "\n");
+  LLVM_DEBUG(
       for (auto &VD
            : VDs) { dbgs() << "  (" << VD.Value << "," << VD.Count << ")\n"; });
 
@@ -257,8 +261,8 @@ bool MemOPSizeOpt::perform(MemIntrinsic *MI) {
 
   TotalCount = ActualCount;
   if (MemOPScaleCount)
-    DEBUG(dbgs() << "Scale counts: numerator = " << ActualCount
-                 << " denominator = " << SavedTotalCount << "\n");
+    LLVM_DEBUG(dbgs() << "Scale counts: numerator = " << ActualCount
+                      << " denominator = " << SavedTotalCount << "\n");
 
   // Keeping track of the count of the default case:
   uint64_t RemainCount = TotalCount;
@@ -307,9 +311,9 @@ bool MemOPSizeOpt::perform(MemIntrinsic *MI) {
 
   uint64_t SumForOpt = TotalCount - RemainCount;
 
-  DEBUG(dbgs() << "Optimize one memory intrinsic call to " << Version
-               << " Versions (covering " << SumForOpt << " out of "
-               << TotalCount << ")\n");
+  LLVM_DEBUG(dbgs() << "Optimize one memory intrinsic call to " << Version
+                    << " Versions (covering " << SumForOpt << " out of "
+                    << TotalCount << ")\n");
 
   // mem_op(..., size)
   // ==>
@@ -328,8 +332,8 @@ bool MemOPSizeOpt::perform(MemIntrinsic *MI) {
   // merge_bb:
 
   BasicBlock *BB = MI->getParent();
-  DEBUG(dbgs() << "\n\n== Basic Block Before ==\n");
-  DEBUG(dbgs() << *BB << "\n");
+  LLVM_DEBUG(dbgs() << "\n\n== Basic Block Before ==\n");
+  LLVM_DEBUG(dbgs() << *BB << "\n");
   auto OrigBBFreq = BFI.getBlockFreq(BB);
 
   BasicBlock *DefaultBB = SplitBlock(BB, MI);
@@ -355,44 +359,51 @@ bool MemOPSizeOpt::perform(MemIntrinsic *MI) {
     annotateValueSite(*Func.getParent(), *MI, VDs.slice(Version),
                       SavedRemainCount, IPVK_MemOPSize, NumVals);
 
-  DEBUG(dbgs() << "\n\n== Basic Block After==\n");
+  LLVM_DEBUG(dbgs() << "\n\n== Basic Block After==\n");
 
   for (uint64_t SizeId : SizeIds) {
-    ConstantInt *CaseSizeId = ConstantInt::get(Type::getInt64Ty(Ctx), SizeId);
     BasicBlock *CaseBB = BasicBlock::Create(
         Ctx, Twine("MemOP.Case.") + Twine(SizeId), &Func, DefaultBB);
     Instruction *NewInst = MI->clone();
     // Fix the argument.
-    dyn_cast<MemIntrinsic>(NewInst)->setLength(CaseSizeId);
+    MemIntrinsic * MemI = dyn_cast<MemIntrinsic>(NewInst);
+    IntegerType *SizeType = dyn_cast<IntegerType>(MemI->getLength()->getType());
+    assert(SizeType && "Expected integer type size argument.");
+    ConstantInt *CaseSizeId = ConstantInt::get(SizeType, SizeId);
+    MemI->setLength(CaseSizeId);
     CaseBB->getInstList().push_back(NewInst);
     IRBuilder<> IRBCase(CaseBB);
     IRBCase.CreateBr(MergeBB);
     SI->addCase(CaseSizeId, CaseBB);
-    DEBUG(dbgs() << *CaseBB << "\n");
+    LLVM_DEBUG(dbgs() << *CaseBB << "\n");
   }
   setProfMetadata(Func.getParent(), SI, CaseCounts, MaxCount);
 
-  DEBUG(dbgs() << *BB << "\n");
-  DEBUG(dbgs() << *DefaultBB << "\n");
-  DEBUG(dbgs() << *MergeBB << "\n");
+  LLVM_DEBUG(dbgs() << *BB << "\n");
+  LLVM_DEBUG(dbgs() << *DefaultBB << "\n");
+  LLVM_DEBUG(dbgs() << *MergeBB << "\n");
 
-  emitOptimizationRemark(Func.getContext(), "memop-opt", Func,
-                         MI->getDebugLoc(),
-                         Twine("optimize ") + getMIName(MI) + " with count " +
-                             Twine(SumForOpt) + " out of " + Twine(TotalCount) +
-                             " for " + Twine(Version) + " versions");
+  ORE.emit([&]() {
+    using namespace ore;
+    return OptimizationRemark(DEBUG_TYPE, "memopt-opt", MI)
+             << "optimized " << NV("Intrinsic", StringRef(getMIName(MI)))
+             << " with count " << NV("Count", SumForOpt) << " out of "
+             << NV("Total", TotalCount) << " for " << NV("Versions", Version)
+             << " versions";
+  });
 
   return true;
 }
 } // namespace
 
-static bool PGOMemOPSizeOptImpl(Function &F, BlockFrequencyInfo &BFI) {
+static bool PGOMemOPSizeOptImpl(Function &F, BlockFrequencyInfo &BFI,
+                                OptimizationRemarkEmitter &ORE) {
   if (DisableMemOPOPT)
     return false;
 
   if (F.hasFnAttribute(Attribute::OptimizeForSize))
     return false;
-  MemOPSizeOpt MemOPSizeOpt(F, BFI);
+  MemOPSizeOpt MemOPSizeOpt(F, BFI, ORE);
   MemOPSizeOpt.perform();
   return MemOPSizeOpt.isChanged();
 }
@@ -400,7 +411,8 @@ static bool PGOMemOPSizeOptImpl(Function &F, BlockFrequencyInfo &BFI) {
 bool PGOMemOPSizeOptLegacyPass::runOnFunction(Function &F) {
   BlockFrequencyInfo &BFI =
       getAnalysis<BlockFrequencyInfoWrapperPass>().getBFI();
-  return PGOMemOPSizeOptImpl(F, BFI);
+  auto &ORE = getAnalysis<OptimizationRemarkEmitterWrapperPass>().getORE();
+  return PGOMemOPSizeOptImpl(F, BFI, ORE);
 }
 
 namespace llvm {
@@ -409,7 +421,8 @@ char &PGOMemOPSizeOptID = PGOMemOPSizeOptLegacyPass::ID;
 PreservedAnalyses PGOMemOPSizeOpt::run(Function &F,
                                        FunctionAnalysisManager &FAM) {
   auto &BFI = FAM.getResult<BlockFrequencyAnalysis>(F);
-  bool Changed = PGOMemOPSizeOptImpl(F, BFI);
+  auto &ORE = FAM.getResult<OptimizationRemarkEmitterAnalysis>(F);
+  bool Changed = PGOMemOPSizeOptImpl(F, BFI, ORE);
   if (!Changed)
     return PreservedAnalyses::all();
   auto PA = PreservedAnalyses();

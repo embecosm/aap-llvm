@@ -371,6 +371,8 @@ type ('a, 'b) llrev_pos =
 
 (** {6 Exceptions} *)
 
+exception FeatureDisabled of string
+
 exception IoError of string
 
 
@@ -2617,7 +2619,7 @@ module PassManager : sig
       See the [llvm::FunctionPassManager::run] method. *)
   val run_function : llvalue -> [ `Function ] t -> bool
 
-  (** [finalize fpm] finalizes all of the function passes scheduled in in the
+  (** [finalize fpm] finalizes all of the function passes scheduled in the
       function pass manager [fpm]. Returns [true] if any of the passes
       modified the module, [false] otherwise.
       See the [llvm::FunctionPassManager::doFinalization] method. *)

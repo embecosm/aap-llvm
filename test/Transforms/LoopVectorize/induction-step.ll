@@ -15,7 +15,7 @@
 ; CHECK:       for.body.lr.ph:
 ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, i32* @int_inc, align 4
 ; CHECK:       vector.ph:
-; CHECK-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <8 x i32> undef, i32 %init, i32 0
+; CHECK:         [[DOTSPLATINSERT:%.*]] = insertelement <8 x i32> undef, i32 %init, i32 0
 ; CHECK-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <8 x i32> [[DOTSPLATINSERT]], <8 x i32> undef, <8 x i32> zeroinitializer
 ; CHECK-NEXT:    [[DOTSPLATINSERT2:%.*]] = insertelement <8 x i32> undef, i32 [[TMP0]], i32 0
 ; CHECK-NEXT:    [[DOTSPLAT3:%.*]] = shufflevector <8 x i32> [[DOTSPLATINSERT2]], <8 x i32> undef, <8 x i32> zeroinitializer
@@ -30,7 +30,7 @@
 ; CHECK-NEXT:    %vec.ind = phi <8 x i32> [ [[INDUCTION4]], %vector.ph ], [ %vec.ind.next, %vector.body ]
 ; CHECK:         [[TMP8:%.*]] = add i64 %index, 0
 ; CHECK-NEXT:    [[TMP9:%.*]] = getelementptr inbounds i32, i32* [[A:%.*]], i64 [[TMP8]]
-; CHECK-NEXT:    [[TMP10:%.*]] = getelementptr i32, i32* [[TMP9]], i32 0
+; CHECK-NEXT:    [[TMP10:%.*]] = getelementptr inbounds i32, i32* [[TMP9]], i32 0
 ; CHECK-NEXT:    [[TMP11:%.*]] = bitcast i32* [[TMP10]] to <8 x i32>*
 ; CHECK-NEXT:    store <8 x i32> %vec.ind, <8 x i32>* [[TMP11]], align 4
 ; CHECK:         %index.next = add i64 %index, 8
@@ -86,7 +86,7 @@ for.end:                                          ; preds = %for.end.loopexit, %
 
 ; CHECK-LABEL: @induction_with_loop_inv(
 ; CHECK:       vector.ph:
-; CHECK-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <8 x i32> undef, i32 %x.011, i32 0
+; CHECK:         [[DOTSPLATINSERT:%.*]] = insertelement <8 x i32> undef, i32 %x.011, i32 0
 ; CHECK-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <8 x i32> [[DOTSPLATINSERT]], <8 x i32> undef, <8 x i32> zeroinitializer
 ; CHECK-NEXT:    [[DOTSPLATINSERT2:%.*]] = insertelement <8 x i32> undef, i32 %j.012, i32 0
 ; CHECK-NEXT:    [[DOTSPLAT3:%.*]] = shufflevector <8 x i32> [[DOTSPLATINSERT2]], <8 x i32> undef, <8 x i32> zeroinitializer
@@ -101,7 +101,7 @@ for.end:                                          ; preds = %for.end.loopexit, %
 ; CHECK-NEXT:    %vec.ind = phi <8 x i32> [ [[INDUCTION4]], %vector.ph ], [ %vec.ind.next, %vector.body ]
 ; CHECK:         [[TMP6:%.*]] = add i64 %index, 0
 ; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds i32, i32* [[A:%.*]], i64 [[TMP6]]
-; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr i32, i32* [[TMP7]], i32 0
+; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds i32, i32* [[TMP7]], i32 0
 ; CHECK-NEXT:    [[TMP9:%.*]] = bitcast i32* [[TMP8]] to <8 x i32>*
 ; CHECK-NEXT:    store <8 x i32> %vec.ind, <8 x i32>* [[TMP9]], align 4
 ; CHECK:         %index.next = add i64 %index, 8
@@ -174,7 +174,7 @@ for.end6:                                         ; preds = %for.end6.loopexit, 
 ; CHECK:         [[VEC_IND10:%.*]] = phi <8 x i32> [ [[INDUCTION7]], %vector.ph ], [ [[VEC_IND_NEXT11:%.*]], %vector.body ]
 ; CHECK:         [[TMP6:%.*]] = add i64 %index, 0
 ; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds i32, i32* [[A:%.*]], i64 [[TMP6]]
-; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr i32, i32* [[TMP7]], i32 0
+; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds i32, i32* [[TMP7]], i32 0
 ; CHECK-NEXT:    [[TMP9:%.*]] = bitcast i32* [[TMP8]] to <8 x i32>*
 ; CHECK-NEXT:    store <8 x i32> [[VEC_IND10]], <8 x i32>* [[TMP9]], align 4
 ; CHECK-NEXT:    %index.next = add i64 %index, 8

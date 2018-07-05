@@ -86,6 +86,11 @@ OPTIONS
 
   All other variables get undefined after each encountered ``CHECK-LABEL``.
 
+.. option:: -D<VAR=VALUE>
+
+  Sets a filecheck variable ``VAR`` with value ``VALUE`` that can be used in
+  ``CHECK:`` lines.
+
 .. option:: -version
 
  Show the version number of this program.
@@ -234,6 +239,25 @@ For example, the following works like you'd expect:
 
 "``CHECK-SAME:``" directives reject the input if there are any newlines between
 it and the previous directive.  A "``CHECK-SAME:``" cannot be the first
+directive in a file.
+
+The "CHECK-EMPTY:" directive
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you need to check that the next line has nothing on it, not even whitespace,
+you can use the "``CHECK-EMPTY:``" directive.
+
+.. code-block:: llvm
+
+   foo
+
+   bar
+   ; CHECK: foo
+   ; CHECK-EMPTY:
+   ; CHECK-NEXT: bar
+
+Just like "``CHECK-NEXT:``" the directive will fail if there is more than one
+newline before it finds the next blank line, and it cannot be the first
 directive in a file.
 
 The "CHECK-NOT:" directive
@@ -397,10 +421,11 @@ All FileCheck directives take a pattern to match.
 For most uses of FileCheck, fixed string matching is perfectly sufficient.  For
 some things, a more flexible form of matching is desired.  To support this,
 FileCheck allows you to specify regular expressions in matching strings,
-surrounded by double braces: ``{{yourregex}}``.  Because we want to use fixed
-string matching for a majority of what we do, FileCheck has been designed to
-support mixing and matching fixed string matching with regular expressions.
-This allows you to write things like this:
+surrounded by double braces: ``{{yourregex}}``. FileCheck implements a POSIX
+regular expression matcher; it supports Extended POSIX regular expressions
+(ERE). Because we want to use fixed string matching for a majority of what we
+do, FileCheck has been designed to support mixing and matching fixed string
+matching with regular expressions.  This allows you to write things like this:
 
 .. code-block:: llvm
 
@@ -434,7 +459,7 @@ The first check line matches a regex ``%[a-z]+`` and captures it into the
 variable ``REGISTER``.  The second line verifies that whatever is in
 ``REGISTER`` occurs later in the file after an "``andw``".  :program:`FileCheck`
 variable references are always contained in ``[[ ]]`` pairs, and their names can
-be formed with the regex ``[a-zA-Z][a-zA-Z0-9]*``.  If a colon follows the name,
+be formed with the regex ``[a-zA-Z_][a-zA-Z0-9_]*``.  If a colon follows the name,
 then it is a definition of the variable; otherwise, it is a use.
 
 :program:`FileCheck` variables can be defined multiple times, and uses always

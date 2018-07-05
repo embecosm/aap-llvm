@@ -22,6 +22,7 @@ namespace llvm {
 class FunctionPass;
 class ImmutablePass;
 class InstructionSelector;
+class ModulePass;
 class PassRegistry;
 class X86RegisterBankInfo;
 class X86Subtarget;
@@ -49,6 +50,15 @@ FunctionPass *createX86FloatingPointStackifierPass();
 /// transition penalty between functions encoded with AVX and SSE.
 FunctionPass *createX86IssueVZeroUpperPass();
 
+/// This pass instruments the function prolog to save the return address to a
+/// 'shadow call stack' and the function epilog to check that the return address
+/// did not change during function execution.
+FunctionPass *createShadowCallStackPass();
+
+/// This pass inserts ENDBR instructions before indirect jump/call
+/// destinations as part of CET IBT mechanism.
+FunctionPass *createX86IndirectBranchTrackingPass();
+
 /// Return a pass that pads short functions with NOOPs.
 /// This will prevent a stall when returning on the Atom.
 FunctionPass *createX86PadShortFunctions();
@@ -64,6 +74,12 @@ FunctionPass *createX86OptimizeLEAs();
 
 /// Return a pass that transforms setcc + movzx pairs into xor + setcc.
 FunctionPass *createX86FixupSetCC();
+
+/// Return a pass that avoids creating store forward block issues in the hardware.
+FunctionPass *createX86AvoidStoreForwardingBlocks();
+
+/// Return a pass that lowers EFLAGS copy pseudo instructions.
+FunctionPass *createX86FlagsCopyLoweringPass();
 
 /// Return a pass that expands WinAlloca pseudo-instructions.
 FunctionPass *createX86WinAllocaExpander();
@@ -83,17 +99,27 @@ FunctionPass *createX86WinEHStatePass();
 /// the MachineInstr to MC.
 FunctionPass *createX86ExpandPseudoPass();
 
+/// This pass converts X86 cmov instructions into branch when profitable.
+FunctionPass *createX86CmovConverterPass();
+
 /// Return a Machine IR pass that selectively replaces
 /// certain byte and word instructions by equivalent 32 bit instructions,
 /// in order to eliminate partial register usage, false dependences on
 /// the upper portions of registers, and to save code size.
 FunctionPass *createX86FixupBWInsts();
 
+/// Return a Machine IR pass that reassigns instruction chains from one domain
+/// to another, when profitable.
+FunctionPass *createX86DomainReassignmentPass();
+
 void initializeFixupBWInstPassPass(PassRegistry &);
 
-/// This pass replaces EVEX ecnoded of AVX-512 instructiosn by VEX 
+/// This pass replaces EVEX encoded of AVX-512 instructiosn by VEX
 /// encoding when possible in order to reduce code size.
 FunctionPass *createX86EvexToVexInsts();
+
+/// This pass creates the thunks for the retpoline feature.
+FunctionPass *createX86RetpolineThunksPass();
 
 InstructionSelector *createX86InstructionSelector(const X86TargetMachine &TM,
                                                   X86Subtarget &,

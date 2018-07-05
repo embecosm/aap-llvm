@@ -14,22 +14,36 @@
 #ifndef LLVM_ANALYSIS_BASICALIASANALYSIS_H
 #define LLVM_ANALYSIS_BASICALIASANALYSIS_H
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AssumptionCache.h"
-#include "llvm/Analysis/TargetLibraryInfo.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/GetElementPtrTypeIterator.h"
-#include "llvm/IR/Instruction.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
+#include "llvm/Analysis/MemoryLocation.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Pass.h"
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <utility>
 
 namespace llvm {
+
+struct AAMDNodes;
+class APInt;
 class AssumptionCache;
+class BasicBlock;
+class DataLayout;
 class DominatorTree;
+class Function;
+class GEPOperator;
 class LoopInfo;
+class PHINode;
+class SelectInst;
+class TargetLibraryInfo;
+class Value;
 
 /// This is the AA result object for the basic, local, and stateless alias
 /// analysis. It implements the AA query interface in an entirely stateless
@@ -86,7 +100,6 @@ private:
   // A linear transformation of a Value; this class represents ZExt(SExt(V,
   // SExtBits), ZExtBits) * Scale + Offset.
   struct VariableGEPIndex {
-
     // An opaque Value - we can't decompose this further.
     const Value *V;
 
@@ -124,8 +137,8 @@ private:
   };
 
   /// Track alias queries to guard against recursion.
-  typedef std::pair<MemoryLocation, MemoryLocation> LocPair;
-  typedef SmallDenseMap<LocPair, AliasResult, 8> AliasCacheTy;
+  using LocPair = std::pair<MemoryLocation, MemoryLocation>;
+  using AliasCacheTy = SmallDenseMap<LocPair, AliasResult, 8>;
   AliasCacheTy AliasCache;
 
   /// Tracks phi nodes we have visited.
@@ -158,9 +171,9 @@ private:
 
   static bool isGEPBaseAtNegativeOffset(const GEPOperator *GEPOp,
       const DecomposedGEP &DecompGEP, const DecomposedGEP &DecompObject,
-      uint64_t ObjectAccessSize);
+      LocationSize ObjectAccessSize);
 
-  /// \brief A Heuristic for aliasGEP that searches for a constant offset
+  /// A Heuristic for aliasGEP that searches for a constant offset
   /// between the variables.
   ///
   /// GetLinearExpression has some limitations, as generally zext(%x + 1)
@@ -170,41 +183,44 @@ private:
   /// the addition overflows.
   bool
   constantOffsetHeuristic(const SmallVectorImpl<VariableGEPIndex> &VarIndices,
-                          uint64_t V1Size, uint64_t V2Size, int64_t BaseOffset,
-                          AssumptionCache *AC, DominatorTree *DT);
+                          LocationSize V1Size, LocationSize V2Size,
+                          int64_t BaseOffset, AssumptionCache *AC,
+                          DominatorTree *DT);
 
   bool isValueEqualInPotentialCycles(const Value *V1, const Value *V2);
 
   void GetIndexDifference(SmallVectorImpl<VariableGEPIndex> &Dest,
                           const SmallVectorImpl<VariableGEPIndex> &Src);
 
-  AliasResult aliasGEP(const GEPOperator *V1, uint64_t V1Size,
+  AliasResult aliasGEP(const GEPOperator *V1, LocationSize V1Size,
                        const AAMDNodes &V1AAInfo, const Value *V2,
-                       uint64_t V2Size, const AAMDNodes &V2AAInfo,
+                       LocationSize V2Size, const AAMDNodes &V2AAInfo,
                        const Value *UnderlyingV1, const Value *UnderlyingV2);
 
-  AliasResult aliasPHI(const PHINode *PN, uint64_t PNSize,
+  AliasResult aliasPHI(const PHINode *PN, LocationSize PNSize,
                        const AAMDNodes &PNAAInfo, const Value *V2,
-                       uint64_t V2Size, const AAMDNodes &V2AAInfo,
+                       LocationSize V2Size, const AAMDNodes &V2AAInfo,
                        const Value *UnderV2);
 
-  AliasResult aliasSelect(const SelectInst *SI, uint64_t SISize,
+  AliasResult aliasSelect(const SelectInst *SI, LocationSize SISize,
                           const AAMDNodes &SIAAInfo, const Value *V2,
-                          uint64_t V2Size, const AAMDNodes &V2AAInfo,
+                          LocationSize V2Size, const AAMDNodes &V2AAInfo,
                           const Value *UnderV2);
 
-  AliasResult aliasCheck(const Value *V1, uint64_t V1Size, AAMDNodes V1AATag,
-                         const Value *V2, uint64_t V2Size, AAMDNodes V2AATag,
+  AliasResult aliasCheck(const Value *V1, LocationSize V1Size,
+                         AAMDNodes V1AATag, const Value *V2,
+                         LocationSize V2Size, AAMDNodes V2AATag,
                          const Value *O1 = nullptr, const Value *O2 = nullptr);
 };
 
 /// Analysis pass providing a never-invalidated alias analysis result.
 class BasicAA : public AnalysisInfoMixin<BasicAA> {
   friend AnalysisInfoMixin<BasicAA>;
+
   static AnalysisKey Key;
 
 public:
-  typedef BasicAAResult Result;
+  using Result = BasicAAResult;
 
   BasicAAResult run(Function &F, FunctionAnalysisManager &AM);
 };
@@ -251,6 +267,6 @@ public:
   }
 };
 
-}
+} // end namespace llvm
 
-#endif
+#endif // LLVM_ANALYSIS_BASICALIASANALYSIS_H

@@ -28,13 +28,15 @@
 
 namespace llvm {
 
-template<>
-inline void DominatorTreeBase<MachineBasicBlock>::addRoot(MachineBasicBlock* MBB) {
+template <>
+inline void DominatorTreeBase<MachineBasicBlock, false>::addRoot(
+    MachineBasicBlock *MBB) {
   this->Roots.push_back(MBB);
 }
 
 extern template class DomTreeNodeBase<MachineBasicBlock>;
-extern template class DominatorTreeBase<MachineBasicBlock>;
+extern template class DominatorTreeBase<MachineBasicBlock, false>; // DomTree
+extern template class DominatorTreeBase<MachineBasicBlock, true>; // PostDomTree
 
 using MachineDomTreeNode = DomTreeNodeBase<MachineBasicBlock>;
 
@@ -43,7 +45,7 @@ using MachineDomTreeNode = DomTreeNodeBase<MachineBasicBlock>;
 /// compute a normal dominator tree.
 ///
 class MachineDominatorTree : public MachineFunctionPass {
-  /// \brief Helper structure used to hold all the basic blocks
+  /// Helper structure used to hold all the basic blocks
   /// involved in the split of a critical edge.
   struct CriticalEdge {
     MachineBasicBlock *FromBB;
@@ -51,12 +53,12 @@ class MachineDominatorTree : public MachineFunctionPass {
     MachineBasicBlock *NewBB;
   };
 
-  /// \brief Pile up all the critical edges to be split.
+  /// Pile up all the critical edges to be split.
   /// The splitting of a critical edge is local and thus, it is possible
   /// to apply several of those changes at the same time.
   mutable SmallVector<CriticalEdge, 32> CriticalEdgesToSplit;
 
-  /// \brief Remember all the basic blocks that are inserted during
+  /// Remember all the basic blocks that are inserted during
   /// edge splitting.
   /// Invariant: NewBBs == all the basic blocks contained in the NewBB
   /// field of all the elements of CriticalEdgesToSplit.
@@ -65,9 +67,9 @@ class MachineDominatorTree : public MachineFunctionPass {
   mutable SmallSet<MachineBasicBlock *, 32> NewBBs;
 
   /// The DominatorTreeBase that is used to compute a normal dominator tree
-  std::unique_ptr<DominatorTreeBase<MachineBasicBlock>> DT;
+  std::unique_ptr<DomTreeBase<MachineBasicBlock>> DT;
 
-  /// \brief Apply all the recorded critical edges to the DT.
+  /// Apply all the recorded critical edges to the DT.
   /// This updates the underlying DT information in a way that uses
   /// the fast query path of DT as much as possible.
   ///
@@ -79,9 +81,8 @@ public:
 
   MachineDominatorTree();
 
-  DominatorTreeBase<MachineBasicBlock> &getBase() {
-    if (!DT)
-      DT.reset(new DominatorTreeBase<MachineBasicBlock>(false));
+  DomTreeBase<MachineBasicBlock> &getBase() {
+    if (!DT) DT.reset(new DomTreeBase<MachineBasicBlock>());
     applySplitCriticalEdges();
     return *DT;
   }
@@ -92,7 +93,7 @@ public:
   /// multiple blocks if we are computing post dominators.  For forward
   /// dominators, this will always be a single block (the entry node).
   ///
-  inline const std::vector<MachineBasicBlock*> &getRoots() const {
+  inline const SmallVectorImpl<MachineBasicBlock*> &getRoots() const {
     applySplitCriticalEdges();
     return DT->getRoots();
   }
@@ -227,7 +228,7 @@ public:
 
   void print(raw_ostream &OS, const Module*) const override;
 
-  /// \brief Record that the critical edge (FromBB, ToBB) has been
+  /// Record that the critical edge (FromBB, ToBB) has been
   /// split with NewBB.
   /// This is best to use this method instead of directly update the
   /// underlying information, because this helps mitigating the
@@ -248,12 +249,6 @@ public:
            "A basic block inserted via edge splitting cannot appear twice");
     CriticalEdgesToSplit.push_back({FromBB, ToBB, NewBB});
   }
-
-  /// \brief Verify the correctness of the domtree by re-computing it.
-  ///
-  /// This should only be used for debugging as it aborts the program if the
-  /// verification fails.
-  void verifyDomTree() const;
 };
 
 //===-------------------------------------

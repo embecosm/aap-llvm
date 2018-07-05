@@ -251,6 +251,104 @@ TEST_F(CloneInstruction, DuplicateInstructionsToSplit) {
   delete F;
 }
 
+TEST_F(CloneInstruction, DuplicateInstructionsToSplitBlocksEq1) {
+  Type *ArgTy1[] = {Type::getInt32PtrTy(context)};
+  FunctionType *FT = FunctionType::get(Type::getVoidTy(context), ArgTy1, false);
+  V = new Argument(Type::getInt32Ty(context));
+
+  Function *F = Function::Create(FT, Function::ExternalLinkage);
+
+  BasicBlock *BB1 = BasicBlock::Create(context, "", F);
+  IRBuilder<> Builder1(BB1);
+
+  BasicBlock *BB2 = BasicBlock::Create(context, "", F);
+  IRBuilder<> Builder2(BB2);
+
+  Builder1.CreateBr(BB2);
+
+  Instruction *AddInst = cast<Instruction>(Builder2.CreateAdd(V, V));
+  Instruction *MulInst = cast<Instruction>(Builder2.CreateMul(AddInst, V));
+  Instruction *SubInst = cast<Instruction>(Builder2.CreateSub(MulInst, V));
+  Builder2.CreateBr(BB2);
+
+  ValueToValueMapTy Mapping;
+
+  auto Split = DuplicateInstructionsInSplitBetween(BB2, BB2, BB2->getTerminator(), Mapping);
+
+  EXPECT_TRUE(Split);
+  EXPECT_EQ(Mapping.size(), 3u);
+  EXPECT_TRUE(Mapping.find(AddInst) != Mapping.end());
+  EXPECT_TRUE(Mapping.find(MulInst) != Mapping.end());
+  EXPECT_TRUE(Mapping.find(SubInst) != Mapping.end());
+
+  auto AddSplit = dyn_cast<Instruction>(Mapping[AddInst]);
+  EXPECT_TRUE(AddSplit);
+  EXPECT_EQ(AddSplit->getOperand(0), V);
+  EXPECT_EQ(AddSplit->getOperand(1), V);
+  EXPECT_EQ(AddSplit->getParent(), Split);
+
+  auto MulSplit = dyn_cast<Instruction>(Mapping[MulInst]);
+  EXPECT_TRUE(MulSplit);
+  EXPECT_EQ(MulSplit->getOperand(0), AddSplit);
+  EXPECT_EQ(MulSplit->getOperand(1), V);
+  EXPECT_EQ(MulSplit->getParent(), Split);
+
+  auto SubSplit = dyn_cast<Instruction>(Mapping[SubInst]);
+  EXPECT_EQ(MulSplit->getNextNode(), SubSplit);
+  EXPECT_EQ(SubSplit->getNextNode(), Split->getTerminator());
+  EXPECT_EQ(Split->getSingleSuccessor(), BB2);
+  EXPECT_EQ(BB2->getSingleSuccessor(), Split);
+
+  delete F;
+}
+
+TEST_F(CloneInstruction, DuplicateInstructionsToSplitBlocksEq2) {
+  Type *ArgTy1[] = {Type::getInt32PtrTy(context)};
+  FunctionType *FT = FunctionType::get(Type::getVoidTy(context), ArgTy1, false);
+  V = new Argument(Type::getInt32Ty(context));
+
+  Function *F = Function::Create(FT, Function::ExternalLinkage);
+
+  BasicBlock *BB1 = BasicBlock::Create(context, "", F);
+  IRBuilder<> Builder1(BB1);
+
+  BasicBlock *BB2 = BasicBlock::Create(context, "", F);
+  IRBuilder<> Builder2(BB2);
+
+  Builder1.CreateBr(BB2);
+
+  Instruction *AddInst = cast<Instruction>(Builder2.CreateAdd(V, V));
+  Instruction *MulInst = cast<Instruction>(Builder2.CreateMul(AddInst, V));
+  Instruction *SubInst = cast<Instruction>(Builder2.CreateSub(MulInst, V));
+  Builder2.CreateBr(BB2);
+
+  ValueToValueMapTy Mapping;
+
+  auto Split = DuplicateInstructionsInSplitBetween(BB2, BB2, SubInst, Mapping);
+
+  EXPECT_TRUE(Split);
+  EXPECT_EQ(Mapping.size(), 2u);
+  EXPECT_TRUE(Mapping.find(AddInst) != Mapping.end());
+  EXPECT_TRUE(Mapping.find(MulInst) != Mapping.end());
+
+  auto AddSplit = dyn_cast<Instruction>(Mapping[AddInst]);
+  EXPECT_TRUE(AddSplit);
+  EXPECT_EQ(AddSplit->getOperand(0), V);
+  EXPECT_EQ(AddSplit->getOperand(1), V);
+  EXPECT_EQ(AddSplit->getParent(), Split);
+
+  auto MulSplit = dyn_cast<Instruction>(Mapping[MulInst]);
+  EXPECT_TRUE(MulSplit);
+  EXPECT_EQ(MulSplit->getOperand(0), AddSplit);
+  EXPECT_EQ(MulSplit->getOperand(1), V);
+  EXPECT_EQ(MulSplit->getParent(), Split);
+  EXPECT_EQ(MulSplit->getNextNode(), Split->getTerminator());
+  EXPECT_EQ(Split->getSingleSuccessor(), BB2);
+  EXPECT_EQ(BB2->getSingleSuccessor(), Split);
+
+  delete F;
+}
+
 class CloneFunc : public ::testing::Test {
 protected:
   void SetUp() override {
@@ -309,8 +407,7 @@ protected:
         DBuilder.createAutoVariable(Subprogram, "x", File, 5, IntType, true);
     auto *DL = DILocation::get(Subprogram->getContext(), 5, 0, Subprogram);
     DBuilder.insertDeclare(Alloca, Variable, E, DL, Store);
-    DBuilder.insertDbgValueIntrinsic(AllocaContent, 0, Variable, E, DL,
-                                     Entry);
+    DBuilder.insertDbgValueIntrinsic(AllocaContent, Variable, E, DL, Entry);
     // Also create an inlined variable.
     // Create a distinct struct type that we should not duplicate during
     // cloning).
@@ -507,6 +604,19 @@ protected:
                                 DINode::FlagZero, false);
     F->setSubprogram(Subprogram);
 
+    // Create and assign DIGlobalVariableExpression to gv
+    auto GVExpression = DBuilder.createGlobalVariableExpression(
+        Subprogram, "gv", "gv", File, 1, DBuilder.createNullPtrType(), false);
+    GV->addDebugInfo(GVExpression);
+
+    // DIGlobalVariableExpression not attached to any global variable
+    auto Expr = DBuilder.createExpression(
+        ArrayRef<uint64_t>{dwarf::DW_OP_constu, 42U, dwarf::DW_OP_stack_value});
+
+    DBuilder.createGlobalVariableExpression(
+        Subprogram, "unattached", "unattached", File, 1,
+        DBuilder.createNullPtrType(), false, Expr);
+
     auto *Entry = BasicBlock::Create(C, "", F);
     IBuilder.SetInsertPoint(Entry);
     IBuilder.CreateRetVoid();
@@ -515,7 +625,7 @@ protected:
     DBuilder.finalize();
   }
 
-  void CreateNewModule() { NewM = llvm::CloneModule(OldM).release(); }
+  void CreateNewModule() { NewM = llvm::CloneModule(*OldM).release(); }
 
   LLVMContext C;
   Module *OldM;
@@ -544,6 +654,52 @@ TEST_F(CloneModule, Subprogram) {
 TEST_F(CloneModule, GlobalMetadata) {
   GlobalVariable *NewGV = NewM->getGlobalVariable("gv");
   EXPECT_NE(nullptr, NewGV->getMetadata(LLVMContext::MD_type));
+}
+
+TEST_F(CloneModule, GlobalDebugInfo) {
+  GlobalVariable *NewGV = NewM->getGlobalVariable("gv");
+  EXPECT_TRUE(NewGV != nullptr);
+
+  // Find debug info expression assigned to global
+  SmallVector<DIGlobalVariableExpression *, 1> GVs;
+  NewGV->getDebugInfo(GVs);
+  EXPECT_EQ(GVs.size(), 1U);
+
+  DIGlobalVariableExpression *GVExpr = GVs[0];
+  DIGlobalVariable *GV = GVExpr->getVariable();
+  EXPECT_TRUE(GV != nullptr);
+
+  EXPECT_EQ(GV->getName(), "gv");
+  EXPECT_EQ(GV->getLine(), 1U);
+
+  // Assert that the scope of the debug info attached to
+  // global variable matches the cloned function.
+  DISubprogram *SP = NewM->getFunction("f")->getSubprogram();
+  EXPECT_TRUE(SP != nullptr);
+  EXPECT_EQ(GV->getScope(), SP);
+}
+
+TEST_F(CloneModule, CompileUnit) {
+  // Find DICompileUnit listed in llvm.dbg.cu
+  auto *NMD = NewM->getNamedMetadata("llvm.dbg.cu");
+  EXPECT_TRUE(NMD != nullptr);
+  EXPECT_EQ(NMD->getNumOperands(), 1U);
+
+  DICompileUnit *CU = dyn_cast<llvm::DICompileUnit>(NMD->getOperand(0));
+  EXPECT_TRUE(CU != nullptr);
+
+  // Assert this CU is consistent with the cloned function debug info
+  DISubprogram *SP = NewM->getFunction("f")->getSubprogram();
+  EXPECT_TRUE(SP != nullptr);
+  EXPECT_EQ(SP->getUnit(), CU);
+
+  // Check globals listed in CU have the correct scope
+  DIGlobalVariableExpressionArray GlobalArray = CU->getGlobalVariables();
+  EXPECT_EQ(GlobalArray.size(), 2U);
+  for (DIGlobalVariableExpression *GVExpr : GlobalArray) {
+    DIGlobalVariable *GV = GVExpr->getVariable();
+    EXPECT_EQ(GV->getScope(), SP);
+  }
 }
 
 TEST_F(CloneModule, Comdat) {

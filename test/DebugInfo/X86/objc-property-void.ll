@@ -1,5 +1,5 @@
 ; RUN: llc -filetype=obj -o %t.o < %s >/dev/null 2>&1
-; RUN: llvm-dwarfdump -debug-dump=info %t.o | FileCheck %s
+; RUN: llvm-dwarfdump -v -debug-info %t.o | FileCheck %s
 
 ; CHECK: DW_TAG_structure_type
 ; CHECK:  DW_AT_APPLE_objc_complete_type
@@ -81,7 +81,7 @@ attributes #1 = { nounwind readnone }
 !6 = !DIFile(filename: "<stdin>", directory: "")
 !7 = !{!8}
 !8 = !DIObjCProperty(name: "foo", line: 2, attributes: 2117, file: !6)
-!10 = distinct !DISubprogram(name: "-[Foo foo]", line: 5, isLocal: true, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, unit: !0, scopeLine: 5, file: !5, scope: !6, type: !11, variables: !2)
+!10 = distinct !DISubprogram(name: "-[Foo foo]", line: 5, isLocal: true, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, unit: !0, scopeLine: 5, file: !5, scope: !6, type: !11, retainedNodes: !2)
 !11 = !DISubroutineType(types: !12)
 !12 = !{null, !13, !14}
 !13 = !DIDerivedType(tag: DW_TAG_pointer_type, size: 64, align: 64, flags: DIFlagArtificial | DIFlagObjectPointer, baseType: !4)

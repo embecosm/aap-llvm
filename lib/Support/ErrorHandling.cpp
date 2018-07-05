@@ -45,22 +45,36 @@ static void *ErrorHandlerUserData = nullptr;
 static fatal_error_handler_t BadAllocErrorHandler = nullptr;
 static void *BadAllocErrorHandlerUserData = nullptr;
 
+#if LLVM_ENABLE_THREADS == 1
 // Mutexes to synchronize installing error handlers and calling error handlers.
 // Do not use ManagedStatic, or that may allocate memory while attempting to
 // report an OOM.
+//
+// This usage of std::mutex has to be conditionalized behind ifdefs because
+// of this script:
+//   compiler-rt/lib/sanitizer_common/symbolizer/scripts/build_symbolizer.sh
+// That script attempts to statically link the LLVM symbolizer library with the
+// STL and hide all of its symbols with 'opt -internalize'. To reduce size, it
+// cuts out the threading portions of the hermetic copy of libc++ that it
+// builds. We can remove these ifdefs if that script goes away.
 static std::mutex ErrorHandlerMutex;
 static std::mutex BadAllocErrorHandlerMutex;
+#endif
 
 void llvm::install_fatal_error_handler(fatal_error_handler_t handler,
                                        void *user_data) {
+#if LLVM_ENABLE_THREADS == 1
   std::lock_guard<std::mutex> Lock(ErrorHandlerMutex);
+#endif
   assert(!ErrorHandler && "Error handler already registered!\n");
   ErrorHandler = handler;
   ErrorHandlerUserData = user_data;
 }
 
 void llvm::remove_fatal_error_handler() {
+#if LLVM_ENABLE_THREADS == 1
   std::lock_guard<std::mutex> Lock(ErrorHandlerMutex);
+#endif
   ErrorHandler = nullptr;
   ErrorHandlerUserData = nullptr;
 }
@@ -83,7 +97,9 @@ void llvm::report_fatal_error(const Twine &Reason, bool GenCrashDiag) {
   {
     // Only acquire the mutex while reading the handler, so as not to invoke a
     // user-supplied callback under a lock.
+#if LLVM_ENABLE_THREADS == 1
     std::lock_guard<std::mutex> Lock(ErrorHandlerMutex);
+#endif
     handler = ErrorHandler;
     handlerData = ErrorHandlerUserData;
   }
@@ -112,14 +128,18 @@ void llvm::report_fatal_error(const Twine &Reason, bool GenCrashDiag) {
 
 void llvm::install_bad_alloc_error_handler(fatal_error_handler_t handler,
                                            void *user_data) {
+#if LLVM_ENABLE_THREADS == 1
   std::lock_guard<std::mutex> Lock(BadAllocErrorHandlerMutex);
+#endif
   assert(!ErrorHandler && "Bad alloc error handler already registered!\n");
   BadAllocErrorHandler = handler;
   BadAllocErrorHandlerUserData = user_data;
 }
 
 void llvm::remove_bad_alloc_error_handler() {
+#if LLVM_ENABLE_THREADS == 1
   std::lock_guard<std::mutex> Lock(BadAllocErrorHandlerMutex);
+#endif
   BadAllocErrorHandler = nullptr;
   BadAllocErrorHandlerUserData = nullptr;
 }
@@ -130,7 +150,9 @@ void llvm::report_bad_alloc_error(const char *Reason, bool GenCrashDiag) {
   {
     // Only acquire the mutex while reading the handler, so as not to invoke a
     // user-supplied callback under a lock.
+#if LLVM_ENABLE_THREADS == 1
     std::lock_guard<std::mutex> Lock(BadAllocErrorHandlerMutex);
+#endif
     Handler = BadAllocErrorHandler;
     HandlerData = BadAllocErrorHandlerUserData;
   }
@@ -147,10 +169,44 @@ void llvm::report_bad_alloc_error(const char *Reason, bool GenCrashDiag) {
   // Don't call the normal error handler. It may allocate memory. Directly write
   // an OOM to stderr and abort.
   char OOMMessage[] = "LLVM ERROR: out of memory\n";
-  (void)::write(2, OOMMessage, strlen(OOMMessage));
+  ssize_t written = ::write(2, OOMMessage, strlen(OOMMessage));
+  (void)written;
   abort();
 #endif
 }
+
+#ifdef LLVM_ENABLE_EXCEPTIONS
+// Do not set custom new handler if exceptions are enabled. In this case OOM
+// errors are handled by throwing 'std::bad_alloc'.
+void llvm::install_out_of_memory_new_handler() {
+}
+#else
+// Causes crash on allocation failure. It is called prior to the handler set by
+// 'install_bad_alloc_error_handler'.
+static void out_of_memory_new_handler() {
+  llvm::report_bad_alloc_error("Allocation failed");
+}
+
+// Installs new handler that causes crash on allocation failure. It does not
+// need to be called explicitly, if this file is linked to application, because
+// in this case it is called during construction of 'new_handler_installer'.
+void llvm::install_out_of_memory_new_handler() {
+  static bool out_of_memory_new_handler_installed = false;
+  if (!out_of_memory_new_handler_installed) {
+    std::set_new_handler(out_of_memory_new_handler);
+    out_of_memory_new_handler_installed = true;
+  }
+}
+
+// Static object that causes installation of 'out_of_memory_new_handler' before
+// execution of 'main'.
+static class NewHandlerInstaller {
+public:
+  NewHandlerInstaller() {
+    install_out_of_memory_new_handler();
+  }
+} new_handler_installer;
+#endif
 
 void llvm::llvm_unreachable_internal(const char *msg, const char *file,
                                      unsigned line) {
@@ -187,7 +243,7 @@ void LLVMResetFatalErrorHandler() {
   remove_fatal_error_handler();
 }
 
-#ifdef LLVM_ON_WIN32
+#ifdef _WIN32
 
 #include <winerror.h>
 

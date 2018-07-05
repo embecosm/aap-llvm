@@ -1,5 +1,5 @@
-# RUN: not llvm-mc -arch=mips -mcpu=mips32r2 -mattr=+mt -show-encoding < %s \
-# RUN:       2>&1 | FileCheck %s
+# RUN: not llvm-mc -arch=mips -mcpu=mips32r2 -mattr=+mt -show-encoding < %s 2>%t1
+# RUN: FileCheck %s < %t1
 
 # The integrated assembler produces a wrong or misleading error message.
 

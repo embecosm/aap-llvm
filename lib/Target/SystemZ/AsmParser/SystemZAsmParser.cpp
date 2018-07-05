@@ -275,6 +275,10 @@ public:
   SMLoc getEndLoc() const override { return EndLoc; }
   void print(raw_ostream &OS) const override;
 
+  /// getLocRange - Get the range between the first and last token of this
+  /// operand.
+  SMRange getLocRange() const { return SMRange(StartLoc, EndLoc); }
+
   // Used by the TableGen code to add particular types of operand
   // to an instruction.
   void addRegOperands(MCInst &Inst, unsigned N) const {
@@ -421,7 +425,7 @@ public:
   SystemZAsmParser(const MCSubtargetInfo &sti, MCAsmParser &parser,
                    const MCInstrInfo &MII,
                    const MCTargetOptions &Options)
-    : MCTargetAsmParser(Options, sti), Parser(parser) {
+    : MCTargetAsmParser(Options, sti, MII), Parser(parser) {
     MCAsmParserExtension::Initialize(Parser);
 
     // Alias the .word directive to .short.
@@ -539,6 +543,7 @@ public:
 #define GET_REGISTER_MATCHER
 #define GET_SUBTARGET_FEATURE_NAME
 #define GET_MATCHER_IMPLEMENTATION
+#define GET_MNEMONIC_SPELL_CHECKER
 #include "SystemZGenAsmMatcher.inc"
 
 // Used for the .insn directives; contains information needed to parse the
@@ -1164,6 +1169,9 @@ bool SystemZAsmParser::parseOperand(OperandVector &Operands,
   return false;
 }
 
+static std::string SystemZMnemonicSpellCheck(StringRef S, uint64_t FBS,
+                                             unsigned VariantID = 0);
+
 bool SystemZAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                                OperandVector &Operands,
                                                MCStreamer &Out,
@@ -1209,8 +1217,13 @@ bool SystemZAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
     return Error(ErrorLoc, "invalid operand for instruction");
   }
 
-  case Match_MnemonicFail:
-    return Error(IDLoc, "invalid instruction");
+  case Match_MnemonicFail: {
+    uint64_t FBS = ComputeAvailableFeatures(getSTI().getFeatureBits());
+    std::string Suggestion = SystemZMnemonicSpellCheck(
+      ((SystemZOperand &)*Operands[0]).getToken(), FBS);
+    return Error(IDLoc, "invalid instruction" + Suggestion,
+                 ((SystemZOperand &)*Operands[0]).getLocRange());
+  }
   }
 
   llvm_unreachable("Unexpected match type");

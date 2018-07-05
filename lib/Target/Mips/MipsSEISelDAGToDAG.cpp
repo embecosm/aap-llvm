@@ -161,7 +161,7 @@ void MipsSEDAGToDAGISel::initGlobalBaseReg(MachineFunction &MF) {
     // lui $v0, %hi(%neg(%gp_rel(fname)))
     // daddu $v1, $v0, $t9
     // daddiu $globalbasereg, $v1, %lo(%neg(%gp_rel(fname)))
-    const GlobalValue *FName = MF.getFunction();
+    const GlobalValue *FName = &MF.getFunction();
     BuildMI(MBB, I, DL, TII.get(Mips::LUi64), V0)
       .addGlobalAddress(FName, 0, MipsII::MO_GPOFF_HI);
     BuildMI(MBB, I, DL, TII.get(Mips::DADDu), V1).addReg(V0)
@@ -190,7 +190,7 @@ void MipsSEDAGToDAGISel::initGlobalBaseReg(MachineFunction &MF) {
     // lui $v0, %hi(%neg(%gp_rel(fname)))
     // addu $v1, $v0, $t9
     // addiu $globalbasereg, $v1, %lo(%neg(%gp_rel(fname)))
-    const GlobalValue *FName = MF.getFunction();
+    const GlobalValue *FName = &MF.getFunction();
     BuildMI(MBB, I, DL, TII.get(Mips::LUi), V0)
       .addGlobalAddress(FName, 0, MipsII::MO_GPOFF_HI);
     BuildMI(MBB, I, DL, TII.get(Mips::ADDu), V1).addReg(V0).addReg(Mips::T9);
@@ -245,46 +245,64 @@ void MipsSEDAGToDAGISel::processFunctionAfterISel(MachineFunction &MF) {
   }
 }
 
-void MipsSEDAGToDAGISel::selectAddESubE(unsigned MOp, SDValue InFlag,
-                                        SDValue CmpLHS, const SDLoc &DL,
-                                        SDNode *Node) const {
-  unsigned Opc = InFlag.getOpcode(); (void)Opc;
-
-  assert(((Opc == ISD::ADDC || Opc == ISD::ADDE) ||
-          (Opc == ISD::SUBC || Opc == ISD::SUBE)) &&
-         "(ADD|SUB)E flag operand must come from (ADD|SUB)C/E insn");
-
-  unsigned SLTuOp = Mips::SLTu, ADDuOp = Mips::ADDu;
-  if (Subtarget->isGP64bit()) {
-    SLTuOp = Mips::SLTu64;
-    ADDuOp = Mips::DADDu;
-  }
-
-  SDValue Ops[] = { CmpLHS, InFlag.getOperand(1) };
+void MipsSEDAGToDAGISel::selectAddE(SDNode *Node, const SDLoc &DL) const {
+  SDValue InFlag = Node->getOperand(2);
+  unsigned Opc = InFlag.getOpcode();
   SDValue LHS = Node->getOperand(0), RHS = Node->getOperand(1);
   EVT VT = LHS.getValueType();
 
-  SDNode *Carry = CurDAG->getMachineNode(SLTuOp, DL, VT, Ops);
-
-  if (Subtarget->isGP64bit()) {
-    // On 64-bit targets, sltu produces an i64 but our backend currently says
-    // that SLTu64 produces an i32. We need to fix this in the long run but for
-    // now, just make the DAG type-correct by asserting the upper bits are zero.
-    Carry = CurDAG->getMachineNode(Mips::SUBREG_TO_REG, DL, VT,
-                                   CurDAG->getTargetConstant(0, DL, VT),
-                                   SDValue(Carry, 0),
-                                   CurDAG->getTargetConstant(Mips::sub_32, DL,
-                                                             VT));
+  // In the base case, we can rely on the carry bit from the addsc
+  // instruction.
+  if (Opc == ISD::ADDC) {
+    SDValue Ops[3] = {LHS, RHS, InFlag};
+    CurDAG->SelectNodeTo(Node, Mips::ADDWC, VT, MVT::Glue, Ops);
+    return;
   }
 
-  // Generate a second addition only if we know that RHS is not a
-  // constant-zero node.
-  SDNode *AddCarry = Carry;
-  ConstantSDNode *C = dyn_cast<ConstantSDNode>(RHS);
-  if (!C || C->getZExtValue())
-    AddCarry = CurDAG->getMachineNode(ADDuOp, DL, VT, SDValue(Carry, 0), RHS);
+  assert(Opc == ISD::ADDE && "ISD::ADDE not in a chain of ADDE nodes!");
 
-  CurDAG->SelectNodeTo(Node, MOp, VT, MVT::Glue, LHS, SDValue(AddCarry, 0));
+  // The more complex case is when there is a chain of ISD::ADDE nodes like:
+  // (adde (adde (adde (addc a b) c) d) e).
+  //
+  // The addwc instruction does not write to the carry bit, instead it writes
+  // to bit 20 of the dsp control register. To match this series of nodes, each
+  // intermediate adde node must be expanded to write the carry bit before the
+  // addition.
+
+  // Start by reading the overflow field for addsc and moving the value to the
+  // carry field. The usage of 1 here with MipsISD::RDDSP / Mips::WRDSP
+  // corresponds to reading/writing the entire control register to/from a GPR.
+
+  SDValue CstOne = CurDAG->getTargetConstant(1, DL, MVT::i32);
+
+  SDValue OuFlag = CurDAG->getTargetConstant(20, DL, MVT::i32);
+
+  SDNode *DSPCtrlField =
+      CurDAG->getMachineNode(Mips::RDDSP, DL, MVT::i32, MVT::Glue, CstOne, InFlag);
+
+  SDNode *Carry = CurDAG->getMachineNode(
+      Mips::EXT, DL, MVT::i32, SDValue(DSPCtrlField, 0), OuFlag, CstOne);
+
+  SDValue Ops[4] = {SDValue(DSPCtrlField, 0),
+                    CurDAG->getTargetConstant(6, DL, MVT::i32), CstOne,
+                    SDValue(Carry, 0)};
+  SDNode *DSPCFWithCarry = CurDAG->getMachineNode(Mips::INS, DL, MVT::i32, Ops);
+
+  // My reading of the MIPS DSP 3.01 specification isn't as clear as I
+  // would like about whether bit 20 always gets overwritten by addwc.
+  // Hence take an extremely conservative view and presume it's sticky. We
+  // therefore need to clear it.
+
+  SDValue Zero = CurDAG->getRegister(Mips::ZERO, MVT::i32);
+
+  SDValue InsOps[4] = {Zero, OuFlag, CstOne, SDValue(DSPCFWithCarry, 0)};
+  SDNode *DSPCtrlFinal = CurDAG->getMachineNode(Mips::INS, DL, MVT::i32, InsOps);
+
+  SDNode *WrDSP = CurDAG->getMachineNode(Mips::WRDSP, DL, MVT::Glue,
+                                         SDValue(DSPCtrlFinal, 0), CstOne);
+
+  SDValue Operands[3] = {LHS, RHS, SDValue(WrDSP, 0)};
+  CurDAG->SelectNodeTo(Node, Mips::ADDWC, VT, MVT::Glue, Operands);
 }
 
 /// Match frameindex
@@ -765,19 +783,8 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
   switch(Opcode) {
   default: break;
 
-  case ISD::SUBE: {
-    SDValue InFlag = Node->getOperand(2);
-    unsigned Opc = Subtarget->isGP64bit() ? Mips::DSUBu : Mips::SUBu;
-    selectAddESubE(Opc, InFlag, InFlag.getOperand(0), DL, Node);
-    return true;
-  }
-
   case ISD::ADDE: {
-    if (Subtarget->hasDSP()) // Select DSP instructions, ADDSC and ADDWC.
-      break;
-    SDValue InFlag = Node->getOperand(2);
-    unsigned Opc = Subtarget->isGP64bit() ? Mips::DADDu : Mips::ADDu;
-    selectAddESubE(Opc, InFlag, InFlag.getValue(0), DL, Node);
+    selectAddE(Node, DL);
     return true;
   }
 
@@ -898,6 +905,64 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
     break;
   }
 
+  // Manually match MipsISD::Ins nodes to get the correct instruction. It has
+  // to be done in this fashion so that we respect the differences between
+  // dins and dinsm, as the difference is that the size operand has the range
+  // 0 < size <= 32 for dins while dinsm has the range 2 <= size <= 64 which
+  // means SelectionDAGISel would have to test all the operands at once to
+  // match the instruction.
+  case MipsISD::Ins: {
+
+    // Sanity checking for the node operands.
+    if (Node->getValueType(0) != MVT::i32 && Node->getValueType(0) != MVT::i64)
+      return false;
+
+    if (Node->getNumOperands() != 4)
+      return false;
+
+    if (Node->getOperand(1)->getOpcode() != ISD::Constant ||
+        Node->getOperand(2)->getOpcode() != ISD::Constant)
+      return false;
+
+    MVT ResTy = Node->getSimpleValueType(0);
+    uint64_t Pos = Node->getConstantOperandVal(1);
+    uint64_t Size = Node->getConstantOperandVal(2);
+
+    // Size has to be >0 for 'ins', 'dins' and 'dinsu'.
+    if (!Size)
+      return false;
+
+    if (Pos + Size > 64)
+      return false;
+
+    if (ResTy != MVT::i32 && ResTy != MVT::i64)
+      return false;
+
+    unsigned Opcode = 0;
+    if (ResTy == MVT::i32) {
+      if (Pos + Size <= 32)
+        Opcode = Mips::INS;
+    } else {
+      if (Pos + Size <= 32)
+        Opcode = Mips::DINS;
+      else if (Pos < 32 && 1 < Size)
+        Opcode = Mips::DINSM;
+      else
+        Opcode = Mips::DINSU;
+    }
+
+    if (Opcode) {
+      SDValue Ops[4] = {
+          Node->getOperand(0), CurDAG->getTargetConstant(Pos, DL, MVT::i32),
+          CurDAG->getTargetConstant(Size, DL, MVT::i32), Node->getOperand(3)};
+
+      ReplaceNode(Node, CurDAG->getMachineNode(Opcode, DL, ResTy, Ops));
+      return true;
+    }
+
+    return false;
+  }
+
   case MipsISD::ThreadPointer: {
     EVT PtrVT = getTargetLowering()->getPointerTy(CurDAG->getDataLayout());
     unsigned RdhwrOpc, DestReg;
@@ -911,9 +976,9 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
     }
 
     SDNode *Rdhwr =
-      CurDAG->getMachineNode(RdhwrOpc, DL,
-                             Node->getValueType(0),
-                             CurDAG->getRegister(Mips::HWR29, MVT::i32));
+        CurDAG->getMachineNode(RdhwrOpc, DL, Node->getValueType(0),
+                               CurDAG->getRegister(Mips::HWR29, MVT::i32),
+                               CurDAG->getTargetConstant(0, DL, MVT::i32));
     SDValue Chain = CurDAG->getCopyToReg(CurDAG->getEntryNode(), DL, DestReg,
                                          SDValue(Rdhwr, 0));
     SDValue ResNode = CurDAG->getCopyFromReg(Chain, DL, DestReg, PtrVT);
@@ -1181,9 +1246,12 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
         // The obvious "missing" case is when both are zero, but that case is
         // handled by the ldi case.
         if (ResNonZero) {
+          IntegerType *Int32Ty =
+              IntegerType::get(MF->getFunction().getContext(), 32);
+          const ConstantInt *Const32 = ConstantInt::get(Int32Ty, 32);
           SDValue Ops[4] = {HiResNonZero ? SDValue(HiRes, 0) : Zero64Val,
-                            CurDAG->getTargetConstant(64, DL, MVT::i32),
-                            CurDAG->getTargetConstant(32, DL, MVT::i32),
+                            CurDAG->getConstant(*Const32, DL, MVT::i32),
+                            CurDAG->getConstant(*Const32, DL, MVT::i32),
                             SDValue(Res, 0)};
 
           Res = CurDAG->getMachineNode(Mips::DINSU, DL, MVT::i64, Ops);

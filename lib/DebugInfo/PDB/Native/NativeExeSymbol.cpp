@@ -38,6 +38,8 @@ NativeExeSymbol::findChildren(PDB_SymType Type) const {
     consumeError(Dbi.takeError());
     break;
   }
+  case PDB_SymType::Enum:
+    return Session.createTypeEnumerator(codeview::LF_ENUM);
   default:
     break;
   }
@@ -56,12 +58,12 @@ std::string NativeExeSymbol::getSymbolsFileName() const {
   return File.getFilePath();
 }
 
-PDB_UniqueId NativeExeSymbol::getGuid() const {
+codeview::GUID NativeExeSymbol::getGuid() const {
   auto IS = File.getPDBInfoStream();
   if (IS)
     return IS->getGuid();
   consumeError(IS.takeError());
-  return PDB_UniqueId{{0}};
+  return codeview::GUID{{0}};
 }
 
 bool NativeExeSymbol::hasCTypes() const {
