@@ -75,8 +75,7 @@ unsigned AAPELFObjectWriter::getRelocType(MCContext & /*Ctx*/,
   return ELF::R_AAP_NONE;
 }
 
-MCObjectWriter *llvm::createAAPELFObjectWriter(raw_pwrite_stream &OS,
-                                               uint8_t OSABI, StringRef CPU) {
-  MCELFObjectTargetWriter *MOTW = new AAPELFObjectWriter(OSABI, CPU);
-  return createELFObjectWriter(MOTW, OS, /*IsLittleEndian*/ true);
+std::unique_ptr<MCObjectTargetWriter>
+llvm::createAAPELFObjectWriter(uint8_t OSABI, StringRef CPU) {
+  return llvm::make_unique<AAPELFObjectWriter>(OSABI, CPU);
 }

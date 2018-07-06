@@ -15,13 +15,15 @@
 #define LLVM_LIB_TARGET_AAP_MCTARGETDESC_AAPMCTARGETDESC_H
 
 #include "llvm/Support/DataTypes.h"
+#include <memory>
 
 namespace llvm {
 class MCAsmBackend;
 class MCCodeEmitter;
 class MCContext;
 class MCInstrInfo;
-class MCObjectWriter;
+class MCObjectTargetWriter;
+class MCSubtargetInfo;
 class MCRegisterInfo;
 class MCTargetOptions;
 class StringRef;
@@ -35,12 +37,12 @@ MCCodeEmitter *createAAPMCCodeEmitter(MCInstrInfo const &MCII,
                                       MCRegisterInfo const &MRI,
                                       MCContext &Context);
 
-MCAsmBackend *createAAPAsmBackend(const Target &T, const MCRegisterInfo &MRI,
-                                  const Triple &TT, StringRef CPU,
+MCAsmBackend *createAAPAsmBackend(const Target &T, const MCSubtargetInfo &STI,
+                                  const MCRegisterInfo &MRI,
                                   const MCTargetOptions &Options);
 
-MCObjectWriter *createAAPELFObjectWriter(raw_pwrite_stream &OS, uint8_t OSABI,
-                                         StringRef CPU);
+std::unique_ptr<MCObjectTargetWriter>
+createAAPELFObjectWriter(uint8_t OSABI, StringRef CPU);
 
 } // End llvm namespace
 

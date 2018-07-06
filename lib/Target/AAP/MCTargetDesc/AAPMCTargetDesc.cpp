@@ -48,11 +48,6 @@ static MCSubtargetInfo *createAAPMCSubtargetInfo(const Triple &TT,
   return createAAPMCSubtargetInfoImpl(TT, CPU, FS);
 }
 
-static void adjustCodeGenOpts(const Triple &TT, Reloc::Model RM,
-                              CodeModel::Model &CM) {
-  return;
-}
-
 static MCInstPrinter *createAAPMCInstPrinter(const Triple &T,
                                              unsigned SyntaxVariant,
                                              const MCAsmInfo &MAI,
@@ -67,9 +62,6 @@ extern "C" void LLVMInitializeAAPTargetMC() {
   // Register the MC asm info.
   RegisterMCAsmInfo<AAPMCAsmInfo> X(getTheAAPTarget());
 
-  // Register the MC codegen info.
-  TargetRegistry::registerMCAdjustCodeGenOpts(getTheAAPTarget(),
-                                              adjustCodeGenOpts);
   // Register the MC instruction info.
   TargetRegistry::RegisterMCInstrInfo(getTheAAPTarget(), createAAPMCInstrInfo);
 

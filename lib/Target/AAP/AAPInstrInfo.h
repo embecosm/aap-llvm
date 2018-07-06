@@ -16,7 +16,7 @@
 
 #include "AAP.h"
 #include "AAPRegisterInfo.h"
-#include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
 
 #define GET_INSTRINFO_HEADER
 #include "AAPGenInstrInfo.inc"

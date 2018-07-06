@@ -20,5 +20,6 @@ Target &getTheAAPTarget() {
 }
 
 extern "C" void LLVMInitializeAAPTargetInfo() {
-  RegisterTarget<Triple::aap> X(getTheAAPTarget(), "aap", "AAP [experimental]");
+  RegisterTarget<Triple::aap> X(getTheAAPTarget(), "aap", "AAP [experimental]",
+                                "AAP");
 }

@@ -13,6 +13,7 @@
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCFixupKindInfo.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCObjectWriter.h"
 
 using namespace llvm;
@@ -21,7 +22,7 @@ namespace {
 
 class AAPAsmBackend : public MCAsmBackend {
 public:
-  AAPAsmBackend(Target const &T) {}
+  AAPAsmBackend(Target const &T) : MCAsmBackend(support::little) {}
 
   unsigned getNumFixupKinds() const override { return 14; }
 
@@ -63,7 +64,8 @@ public:
 
     void applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
                     const MCValue &Target, MutableArrayRef<char> Data,
-                    uint64_t Value, bool IsResolved) const override {
+                    uint64_t Value, bool IsResolved,
+                    const MCSubtargetInfo *STI) const override {
     // No target specific fixups are applied in the backend as they are all
     // handled as relocations in the linker.
     // Generic relocations are handled, as they may be literal values which
@@ -93,7 +95,8 @@ public:
 
 //===------------------------ Relaxation interface ------------------------===//
 
-  bool mayNeedRelaxation(MCInst const &Inst) const override {
+  bool mayNeedRelaxation(MCInst const &Inst,
+                         MCSubtargetInfo const &STI) const override {
     // We already generate the longest instruction necessary, so there is
     // nothing to relax.
     return false;
@@ -123,14 +126,14 @@ public:
     llvm_unreachable("Unexpected short instruction with fixup");
   }
 
-  bool writeNopData(uint64_t Count, MCObjectWriter *OW) const override {
+  bool writeNopData(raw_ostream &OS, uint64_t Count) const override {
     if ((Count % 2) != 0) {
       return false;
     }
 
     // 0x0001 corresponds to nop $r0, 1
     for (uint64_t i = 0; i < Count; i += 2) {
-      OW->write16(0x0001);
+      OS.write_hex(0x0001);
     }
     return true;
   }
@@ -145,18 +148,21 @@ public:
   ELFAAPAsmBackend(Target const &T, uint8_t OSABI)
       : AAPAsmBackend(T), OSABI(OSABI) {}
 
-  MCObjectWriter *createObjectWriter(raw_pwrite_stream &OS) const override {
+  std::unique_ptr<MCObjectTargetWriter>
+  createObjectTargetWriter() const override {
     StringRef CPU("Default");
-    return createAAPELFObjectWriter(OS, OSABI, CPU);
+    return createAAPELFObjectWriter(OSABI, CPU);
   }
 };
 } // end anonymous namespace
 
 namespace llvm {
-MCAsmBackend *createAAPAsmBackend(const Target &T, const MCRegisterInfo &MRI,
-                                  const Triple &TT, StringRef CPU,
+MCAsmBackend *createAAPAsmBackend(const Target &T,
+                                  const MCSubtargetInfo &STI,
+                                  const MCRegisterInfo &MRI,
                                   const MCTargetOptions &Options) {
-  uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(Triple(TT).getOS());
+  uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(
+      Triple(STI.getTargetTriple()).getOS());
   return new ELFAAPAsmBackend(T, OSABI);
 }
 }

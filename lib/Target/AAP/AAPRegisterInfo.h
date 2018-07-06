@@ -14,7 +14,7 @@
 #ifndef AAPREGISTERINFO_H
 #define AAPREGISTERINFO_H
 
-#include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/CodeGen/TargetRegisterInfo.h"
 
 #define GET_REGINFO_HEADER
 #include "AAPGenRegisterInfo.inc"
