@@ -133,7 +133,8 @@ public:
 
     // 0x0001 corresponds to nop $r0, 1
     for (uint64_t i = 0; i < Count; i += 2) {
-      OS.write_hex(0x0001);
+      OS.write(0x00);
+      OS.write(0x01);
     }
     return true;
   }
