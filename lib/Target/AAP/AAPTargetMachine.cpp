@@ -79,5 +79,6 @@ bool AAPPassConfig::addInstSelector() {
 }
 
 void AAPPassConfig::addPreEmitPass() {
+  addPass(&BranchRelaxationPassID);
   addPass(createAAPShortInstrPeepholePass(getAAPTargetMachine()), false);
 }

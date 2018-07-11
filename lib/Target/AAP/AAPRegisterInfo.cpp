@@ -54,6 +54,11 @@ bool AAPRegisterInfo::requiresRegisterScavenging(
   return false;
 }
 
+bool AAPRegisterInfo::trackLivenessAfterRegAlloc(
+    const MachineFunction &MF) const {
+  return true;
+}
+
 void AAPRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MBBI,
                                           int SPAdj, unsigned FIOperandNum,
                                           RegScavenger *RS) const {

@@ -534,14 +534,16 @@ multiclass BRCC<bits<4> cc, string opname> {
   }
 }
 
-let isBranch = 1, isTerminator = 1, isBarrier = 1 in {
+let isBranch = 1, isTerminator = 1 in {
   defm BEQ  : BRCC<0x2, "beq">;
   defm BNE  : BRCC<0x3, "bne">;
   defm BLTS : BRCC<0x4, "blts">;
   defm BLES : BRCC<0x5, "bles">;
   defm BLTU : BRCC<0x6, "bltu">;
   defm BLEU : BRCC<0x7, "bleu">;
+}
 
+let isBranch = 1, isTerminator = 1, isBarrier = 1 in {
   // BRA may expand to short equivalent in the peephole
   def BRA : Inst_i22
     <0x2, 0x0, (outs), (ins brtarget:$imm), "bra\t$imm", [(br bb:$imm)]>;

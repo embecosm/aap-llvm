@@ -11,10 +11,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AAP.h"
+#include "AAPTargetMachine.h"
 #include "AAPInstrInfo.h"
 #include "AAPMachineFunctionInfo.h"
 #include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -77,6 +80,31 @@ unsigned AAPInstrInfo::getBranchOpcodeFromCond(AAPCC::CondCode CC) const {
   case AAPCC::COND_LEU:
     return AAP::BLEU_;
   }
+}
+
+bool AAPInstrInfo::isBranchOffsetInRange(unsigned BranchOpc,
+                                         int64_t BrOffset) const {
+  switch (BranchOpc) {
+  default:
+    llvm_unreachable("Invalid opcode");
+  case AAP::BRA:
+    return AAP::isOff22(BrOffset);
+  case AAP::BEQ_:
+  case AAP::BNE_:
+  case AAP::BLTS_:
+  case AAP::BLES_:
+  case AAP::BLTU_:
+  case AAP::BLEU_:
+    return AAP::isOff10(BrOffset);
+  }
+}
+
+MachineBasicBlock *
+AAPInstrInfo::getBranchDestBlock(const MachineInstr &MI) const {
+  assert(MI.getDesc().isBranch() && "Invalid opcode");
+
+  // The branch target is always the first operand.
+  return MI.getOperand(0).getMBB();
 }
 
 bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
@@ -231,33 +259,54 @@ unsigned AAPInstrInfo::insertBranch(MachineBasicBlock &MBB,
                                     int *BytesAdded) const {
   assert(TBB && "InsertBranch cannot insert a fallthrough");
   assert(Cond.size() == 3 || Cond.size() == 0);
-  assert(!BytesAdded && "Code size not handled");
+
+  MachineInstr *MI;
 
   if (Cond.empty()) {
     assert(!FBB && "Unconditional branch cannot have multiple successors");
-    BuildMI(&MBB, DL, get(AAP::BRA)).addMBB(TBB);
+    MI = BuildMI(&MBB, DL, get(AAP::BRA)).addMBB(TBB);
+    if (BytesAdded)
+      *BytesAdded += getInstSizeInBytes(*MI);
     return 1;
   }
   // Conditional branch
   unsigned Count = 0;
   AAPCC::CondCode CC = (AAPCC::CondCode)Cond[0].getImm();
-  BuildMI(&MBB, DL, get(getBranchOpcodeFromCond(CC)))
+  MI = BuildMI(&MBB, DL, get(getBranchOpcodeFromCond(CC)))
       .addMBB(TBB)
       .addReg(Cond[1].getReg())
       .addReg(Cond[2].getReg());
+  if (BytesAdded)
+    *BytesAdded += getInstSizeInBytes(*MI);
   ++Count;
 
   if (FBB) {
-    BuildMI(&MBB, DL, get(AAP::BRA)).addMBB(FBB);
+    MI = BuildMI(&MBB, DL, get(AAP::BRA)).addMBB(FBB);
+    if (BytesAdded)
+      *BytesAdded += getInstSizeInBytes(*MI);
     ++Count;
   }
   return Count;
 }
 
+unsigned AAPInstrInfo::insertIndirectBranch(MachineBasicBlock &MBB,
+                                            MachineBasicBlock &DestBB,
+                                            const DebugLoc &DL,
+                                            int64_t BrOffset,
+                                            RegScavenger *RS) const {
+  // Since AAP does not have an indirect branch, the next best thing is to use
+  // the direct 22-immediate unconditional branch instead. This function is used
+  // by the BranchRelaxation pass in order to generate a long unconditional
+  // branch as an alternative to a long conditional branch, meaning the effect
+  // of using a direct branch with a larger immediate value gives the same
+  // benefit as an indirect branch of drastically increasing the range.
+  auto &MI = *BuildMI(&MBB, DL, get(AAP::BRA)).addMBB(&DestBB);
+
+  return getInstSizeInBytes(MI);
+}
+
 unsigned AAPInstrInfo::removeBranch(MachineBasicBlock &MBB,
                                     int *BytesRemoved) const {
-  assert(!BytesRemoved && "Code size not handled");
-
   unsigned Count = 0;
   auto I = MBB.end();
   while (I != MBB.begin()) {
@@ -268,6 +317,9 @@ unsigned AAPInstrInfo::removeBranch(MachineBasicBlock &MBB,
       break;
     // Remove the branch
     I->eraseFromParent();
+    // Add to the number of bytes removed
+    if (BytesRemoved)
+      *BytesRemoved += getInstSizeInBytes(*I);
     I = MBB.end();
     ++Count;
   }
@@ -337,9 +389,50 @@ void AAPInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
       .addMemOperand(MMO);
 }
 
+static AAPCC::CondCode reverseCondCode(AAPCC::CondCode CC) {
+  switch (CC) {
+  default:
+    llvm_unreachable("Invalid condition code");
+  case AAPCC::COND_EQ:
+    return AAPCC::COND_NE;
+  case AAPCC::COND_NE:
+    return AAPCC::COND_EQ;
+  case AAPCC::COND_LES:
+  case AAPCC::COND_LEU:
+  case AAPCC::COND_LTS:
+  case AAPCC::COND_LTU:
+    return AAPCC::COND_INVALID;
+  }
+}
+
 /// ReverseBranchCondition - Return the inverse opcode of the
 /// specified Branch instruction.
 bool AAPInstrInfo::reverseBranchCondition(
     SmallVectorImpl<MachineOperand> &Cond) const {
+  assert(Cond.size() == 3 && "Invalid branch");
+
+  AAPCC::CondCode RCC = reverseCondCode((AAPCC::CondCode) Cond[0].getImm());
+  if (RCC == AAPCC::COND_INVALID)
+    return true;
+
+  Cond[0].setImm(RCC);
   return false;
+}
+
+unsigned AAPInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
+  switch (MI.getOpcode()) {
+  default:
+    return MI.getDesc().getSize();
+  case TargetOpcode::EH_LABEL:
+  case TargetOpcode::IMPLICIT_DEF:
+  case TargetOpcode::KILL:
+  case TargetOpcode::DBG_VALUE:
+    return 0;
+  case TargetOpcode::INLINEASM: {
+    const MachineFunction &MF = *MI.getParent()->getParent();
+    const auto &TM = static_cast<const AAPTargetMachine &>(MF.getTarget());
+    return getInlineAsmLength(MI.getOperand(0).getSymbolName(),
+                              *TM.getMCAsmInfo());
+  }
+  }
 }

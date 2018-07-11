@@ -53,6 +53,7 @@ static bool inline isOff3(int64_t I) { return isInt<3>(I); }
 static bool inline isOff6(int64_t I) { return isInt<6>(I); }
 static bool inline isOff9(int64_t I) { return isInt<9>(I); }
 static bool inline isOff10(int64_t I) { return isInt<10>(I); }
+static bool inline isOff22(int64_t I) { return isInt<22>(I); }
 
 static bool inline isField16(int64_t I) {
   return isInt<16>(I) || isUInt<16>(I);
