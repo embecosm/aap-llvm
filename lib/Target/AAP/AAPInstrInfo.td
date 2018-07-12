@@ -598,7 +598,7 @@ let isCall = 1, Uses = [R1], Defs = [R0] in {
   }
 }
 
-let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
+let isIndirectBranch = 1, isTerminator = 1, isBarrier = 1 in {
   // May expand to JMP_short in peephole
   def JMP :
     Inst_r<0x2, 0x8, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
@@ -611,6 +611,9 @@ def : Pat<(callflag GR64:$rD, GR64:$rB), (JAL GR64:$rD, GR64:$rB)>;
 
 // Returns are encoded as a jump through the link register
 def : Pat<(retflag GR64:$rD), (JMP GR64:$rD)>;
+
+// Indirect branches are a jump through a given register
+def : Pat<(brind GR64:$rD), (JMP GR64:$rD)>;
 
 // Stack adjustment
 let Defs = [R1], Uses = [R1] in {

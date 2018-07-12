@@ -83,9 +83,6 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setCondCodeAction(ISD::SETUGT,     MVT::i16,   Expand);
   setCondCodeAction(ISD::SETUGE,     MVT::i16,   Expand);
 
-  // Currently no support for indirect branches
-  setOperationAction(ISD::BRIND,     MVT::Other, Expand);
-
   // No support for jump tables
   setOperationAction(ISD::JumpTable, MVT::i16,   Expand);
   setOperationAction(ISD::BR_JT,     MVT::Other, Expand);
