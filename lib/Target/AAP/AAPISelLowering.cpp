@@ -83,8 +83,7 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setCondCodeAction(ISD::SETUGT,     MVT::i16,   Expand);
   setCondCodeAction(ISD::SETUGE,     MVT::i16,   Expand);
 
-  // No support for jump tables
-  setOperationAction(ISD::JumpTable, MVT::i16,   Expand);
+  // BR_JT unsupported by the architecture
   setOperationAction(ISD::BR_JT,     MVT::Other, Expand);
 
   // vaarg
@@ -130,6 +129,9 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
 
   setMinFunctionAlignment(1);
   setPrefFunctionAlignment(2);
+
+  // No support for jump tables
+  setMinimumJumpTableEntries(INT_MAX);
 }
 
 const char *AAPTargetLowering::getTargetNodeName(unsigned Opcode) const {
