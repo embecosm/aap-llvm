@@ -215,6 +215,8 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerSELECT_CC(Op, DAG);
   case ISD::VASTART:
     return LowerVASTART(Op, DAG);
+  case ISD::RETURNADDR:
+    return LowerRETURNADDR(Op, DAG);
   }
   llvm_unreachable("unimplemented operand");
 }
@@ -302,6 +304,28 @@ SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
   // Create a store of the frame index to the location operand
   return DAG.getStore(Op.getOperand(0), SDLoc(Op), FrameIndex, Op.getOperand(1),
                       MachinePointerInfo(Src));
+}
+
+SDValue AAPTargetLowering::LowerRETURNADDR(SDValue Op,
+                                           SelectionDAG &DAG) const {
+  const TargetRegisterInfo &RI = *Subtarget.getRegisterInfo();
+  MachineFunction &MF = DAG.getMachineFunction();
+
+  if (verifyReturnAddressArgumentIsConstant(Op, DAG))
+    return SDValue();
+
+  // If the operand specifies a non-zero function depth, the required return
+  // address could be found by traversing back up the stack to find where the
+  // link register was stored for that depth. AAP does not define a frame
+  // register, so this is a non-trivial operation that is not supported yet.
+  unsigned Depth = cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue();
+  if (Depth)
+    return SDValue();
+
+  // Since the function depth is 0, the return address is currently stored in
+  // the return address register, IE the link register.
+  unsigned Reg = MF.addLiveIn(RI.getRARegister(), getRegClassFor(MVT::i16));
+  return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), Reg, MVT::i16);
 }
 
 SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,

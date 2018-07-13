@@ -91,6 +91,7 @@ private:
   SDValue LowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerRETURNADDR(SDValue Op, SelectionDAG &DAG) const;
 
 //===-------------------- Calling Convention Implementation -------------===//
 private:
