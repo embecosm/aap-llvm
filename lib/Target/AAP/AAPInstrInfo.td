@@ -555,7 +555,7 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1 in {
 }
 
 // Implements the BR_CC DAG node. Expanded into one of the above branches.
-let isBranch = 1, isTerminator = 1, isBarrier = 1, usesCustomInserter = 1 in {
+let isBranch = 1, isTerminator = 1, usesCustomInserter = 1 in {
   def BR_CC : Pseudo
     <(outs), (ins i16imm:$cc, GR64:$lhs, GR64:$rhs, brtarget:$target),
       "#BR_CC", [(AAPbrcc imm:$cc, GR64:$lhs, GR64:$rhs, bb:$target)]>;
@@ -598,7 +598,7 @@ let isCall = 1, Uses = [R1], Defs = [R0] in {
   }
 }
 
-let isIndirectBranch = 1, isTerminator = 1, isBarrier = 1 in {
+let isBranch = 1, isIndirectBranch = 1, isTerminator = 1, isBarrier = 1 in {
   // May expand to JMP_short in peephole
   def JMP :
     Inst_r<0x2, 0x8, (outs), (ins GR64:$rD), "jmp\t$rD", []>;
@@ -610,7 +610,10 @@ let isIndirectBranch = 1, isTerminator = 1, isBarrier = 1 in {
 def : Pat<(callflag GR64:$rD, GR64:$rB), (JAL GR64:$rD, GR64:$rB)>;
 
 // Returns are encoded as a jump through the link register
-def : Pat<(retflag GR64:$rD), (JMP GR64:$rD)>;
+let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
+  def PseudoRET : Pseudo<(outs), (ins GR64:$rD), "jmp\t$rD",
+                         [(retflag GR64:$rD)]>;
+}
 
 // Indirect branches are a jump through a given register
 def : Pat<(brind GR64:$rD), (JMP GR64:$rD)>;
