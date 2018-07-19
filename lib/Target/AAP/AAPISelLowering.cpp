@@ -507,6 +507,17 @@ SDValue AAPTargetLowering::LowerCCCArguments(
   return Chain;
 }
 
+bool AAPTargetLowering::CanLowerReturn(CallingConv::ID CallConv,
+                                       MachineFunction &MF, bool isVarArg,
+                                       const SmallVectorImpl<ISD::OutputArg> &Outs,
+                                       LLVMContext &Context) const {
+  SmallVector<CCValAssign, 16> RVLocs;
+  CCState CCInfo(CallConv, isVarArg, MF, RVLocs, Context);
+
+  // Check return values via the calling convention.
+  return CCInfo.CheckReturn(Outs, RetCC_AAP);
+}
+
 SDValue
 AAPTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
                                bool isVarArg,
