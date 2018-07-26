@@ -36,6 +36,8 @@ public:
 
   MCOperand LowerSymbolOperand(const MachineOperand &MO, MCSymbol *Sym) const;
 
+  bool LowerMachineOperand(const MachineOperand &MO, MCOperand &MCOp) const;
+
   MCSymbol *GetGlobalAddressSymbol(const MachineOperand &MO) const;
   MCSymbol *GetExternalSymbolSymbol(const MachineOperand &MO) const;
   MCSymbol *GetJumpTableSymbol(const MachineOperand &MO) const;

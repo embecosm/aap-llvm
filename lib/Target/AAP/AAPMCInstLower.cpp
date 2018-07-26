@@ -120,6 +120,44 @@ MCOperand AAPMCInstLower::LowerSymbolOperand(const MachineOperand &MO,
   return MCOperand::createExpr(Expr);
 }
 
+bool AAPMCInstLower::LowerMachineOperand(const MachineOperand &MO,
+                                         MCOperand &MCOp) const {
+  switch (MO.getType()) {
+  default:
+    llvm_unreachable("unknown operand type");
+  case MachineOperand::MO_RegisterMask:
+    return false;
+  case MachineOperand::MO_Register:
+    // Ignore all implicit register operands.
+    if (MO.isImplicit())
+      return false;
+    MCOp = MCOperand::createReg(MO.getReg());
+    return true;
+  case MachineOperand::MO_Immediate:
+    MCOp = MCOperand::createImm(MO.getImm());
+    return true;
+  case MachineOperand::MO_MachineBasicBlock:
+    MCOp = MCOperand::createExpr(
+        MCSymbolRefExpr::create(MO.getMBB()->getSymbol(), Ctx));
+    return true;
+  case MachineOperand::MO_GlobalAddress:
+    MCOp = LowerSymbolOperand(MO, GetGlobalAddressSymbol(MO));
+    return true;
+  case MachineOperand::MO_ExternalSymbol:
+    MCOp = LowerSymbolOperand(MO, GetExternalSymbolSymbol(MO));
+    return true;
+  case MachineOperand::MO_JumpTableIndex:
+    MCOp = LowerSymbolOperand(MO, GetJumpTableSymbol(MO));
+    return true;
+  case MachineOperand::MO_ConstantPoolIndex:
+    MCOp = LowerSymbolOperand(MO, GetConstantPoolIndexSymbol(MO));
+    return true;
+  case MachineOperand::MO_BlockAddress:
+    MCOp = LowerSymbolOperand(MO, GetBlockAddressSymbol(MO));
+    return true;
+  }
+}
+
 void AAPMCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
   OutMI.setOpcode(MI->getOpcode());
 
@@ -127,41 +165,9 @@ void AAPMCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
     const MachineOperand &MO = MI->getOperand(i);
 
     MCOperand MCOp;
-    switch (MO.getType()) {
-    default:
-      MI->dump();
-      llvm_unreachable("unknown operand type");
-    case MachineOperand::MO_Register:
-      // Ignore all implicit register operands.
-      if (MO.isImplicit())
-        continue;
-      MCOp = MCOperand::createReg(MO.getReg());
-      break;
-    case MachineOperand::MO_Immediate:
-      MCOp = MCOperand::createImm(MO.getImm());
-      break;
-    case MachineOperand::MO_MachineBasicBlock:
-      MCOp = MCOperand::createExpr(
-          MCSymbolRefExpr::create(MO.getMBB()->getSymbol(), Ctx));
-      break;
-    case MachineOperand::MO_GlobalAddress:
-      MCOp = LowerSymbolOperand(MO, GetGlobalAddressSymbol(MO));
-      break;
-    case MachineOperand::MO_ExternalSymbol:
-      MCOp = LowerSymbolOperand(MO, GetExternalSymbolSymbol(MO));
-      break;
-    case MachineOperand::MO_JumpTableIndex:
-      MCOp = LowerSymbolOperand(MO, GetJumpTableSymbol(MO));
-      break;
-    case MachineOperand::MO_ConstantPoolIndex:
-      MCOp = LowerSymbolOperand(MO, GetConstantPoolIndexSymbol(MO));
-      break;
-    case MachineOperand::MO_BlockAddress:
-      MCOp = LowerSymbolOperand(MO, GetBlockAddressSymbol(MO));
-      break;
-    case MachineOperand::MO_RegisterMask:
+
+    if (!LowerMachineOperand(MO, MCOp))
       continue;
-    }
 
     OutMI.addOperand(MCOp);
   }

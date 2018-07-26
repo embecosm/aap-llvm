@@ -57,6 +57,13 @@ public:
                              unsigned AsmVariant, const char *ExtraCode,
                              raw_ostream &O) override;
 
+  // Wrapper used by tablegen pseudo lowering implementation.
+  bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp);
+
+  // Implemented by tablegen.
+  bool emitPseudoExpansionLowering(MCStreamer &OutStreamer,
+                                   const MachineInstr *MI);
+
   void EmitInstruction(const MachineInstr *MI) override;
 };
 } // end of anonymous namespace
@@ -105,7 +112,19 @@ bool AAPAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
   return false;
 }
 
+bool AAPAsmPrinter::lowerOperand(const MachineOperand &MO, MCOperand &MCOp) {
+  AAPMCInstLower MCInstLowering(OutContext, *this);
+
+  return MCInstLowering.LowerMachineOperand(MO, MCOp);
+}
+
+// Auto-generated lowering of simple pseudo instructions.
+#include "AAPGenMCPseudoLowering.inc"
+
 void AAPAsmPrinter::EmitInstruction(const MachineInstr *MI) {
+  if (emitPseudoExpansionLowering(*OutStreamer, MI))
+    return;
+
   AAPMCInstLower MCInstLowering(OutContext, *this);
 
   MCInst TmpInst;
