@@ -7566,7 +7566,7 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
   // Remember the HasSideEffect, AlignStack, AsmDialect, MayLoad and MayStore
   // bits as operand 3.
   AsmNodeOperands.push_back(DAG.getTargetConstant(
-      ExtraInfo.get(), getCurSDLoc(), TLI.getPointerTy(DAG.getDataLayout())));
+      ExtraInfo.get(), getCurSDLoc(), MVT::i32));
 
   // Loop over all of the inputs, copying the operand values into the
   // appropriate registers and processing the output regs.
@@ -7684,7 +7684,7 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
         OpFlag = InlineAsm::getFlagWordForMatchingOp(OpFlag,
                                                     OpInfo.getMatchedOperand());
         AsmNodeOperands.push_back(DAG.getTargetConstant(
-            OpFlag, getCurSDLoc(), TLI.getPointerTy(DAG.getDataLayout())));
+            OpFlag, getCurSDLoc(), MVT::i32));
         AsmNodeOperands.push_back(AsmNodeOperands[CurOp+1]);
         break;
       }
@@ -7708,7 +7708,7 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
         unsigned ResOpType =
           InlineAsm::getFlagWord(InlineAsm::Kind_Imm, Ops.size());
         AsmNodeOperands.push_back(DAG.getTargetConstant(
-            ResOpType, getCurSDLoc(), TLI.getPointerTy(DAG.getDataLayout())));
+            ResOpType, getCurSDLoc(), MVT::i32));
         AsmNodeOperands.insert(AsmNodeOperands.end(), Ops.begin(), Ops.end());
         break;
       }
