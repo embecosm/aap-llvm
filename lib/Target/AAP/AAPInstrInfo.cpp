@@ -208,7 +208,6 @@ bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
       DebugLoc DL = MBB.findDebugLoc(CondBrIter);
 
       MachineInstr *OldCondBr = &*CondBrIter;
-      MachineInstrBuilder MIB;
       CondBrIter = BuildMI(&MBB, DL, get(InvertedOpcode))
           .addMBB(Target)
           .addReg(CondBrIter->getOperand(1).getReg())
