@@ -22,7 +22,7 @@ entry:
 ;CHECK-DAG: stb [$[[REG2]], 0], $[[REG1]]     {{.*STB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 0
   store i8 123, i8* %0
-  ret void ;CHECK jmp   {{.*PseudoRET}}
+  ret void ;CHECK jmp   {{.*JMP}}
 }
 
 define void @stb_global_short_imm_offset_imm() {
@@ -33,7 +33,7 @@ entry:
 ;CHECK-DAG: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 3
   store i8 123, i8* %0
-  ret void ;CHECK jmp   {{.*PseudoRET}}
+  ret void ;CHECK jmp   {{.*JMP}}
 }
 
 define void @stb_global_imm_offset_imm() {
@@ -44,7 +44,7 @@ entry:
 ;CHECK-DAG: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 4
   store i8 123, i8* %0
-  ret void ;CHECK jmp   {{.*PseudoRET}}
+  ret void ;CHECK jmp   {{.*JMP}}
 }
 
 
@@ -59,7 +59,7 @@ entry:
 ;CHECK-DAG: stb [$[[REG2]], 0], $[[REG1]]         {{.*STB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 511
   store i8 123, i8* %0
-  ret void ;CHECK jmp   {{.*PseudoRET}}
+  ret void ;CHECK jmp   {{.*JMP}}
 }
 
 define void @stb_global_big_neg_imm_offset_imm() {
@@ -70,7 +70,7 @@ entry:
 ;CHECK-DAG: stb [$[[REG2]], 0], $[[REG1]]   {{.*STB(_short)?}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -513
   store i8 123, i8* %0
-  ret void ;CHECK jmp   {{.*PseudoRET}}
+  ret void ;CHECK jmp   {{.*JMP}}
 }
 
 
@@ -86,7 +86,7 @@ entry:
   %1 = add i16 %0, 2
   %2 = inttoptr i16 %1 to i16*
   store i16 12345, i16* %2
-  ret void ;CHECK: jmp   {{.*PseudoRET}}
+  ret void ;CHECK: jmp   {{.*JMP}}
 }
 
 define void @stw_reg_big_neg_imm_offset_imm(i16* %x) {
@@ -100,5 +100,5 @@ entry:
   %1 = sub i16 %0, 9280
   %2 = inttoptr i16 %1 to i16*
   store i16 17291, i16* %2
-  ret void ;CHECK jmp   {{.*PseudoRET}}
+  ret void ;CHECK jmp   {{.*JMP}}
 }

@@ -29,7 +29,7 @@ if.end:
 
 return:
   %retval.0 = phi i32 [ 0, %if.end ], [ -1, %entry ]
-  ret i32 %retval.0 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i32 %retval.0 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; Check relaxation of BLTS, which does not have a reverse condition and so
@@ -66,5 +66,5 @@ if.end:
 return:
 ;CHECK:     .LBB1_2:
   %retval.0 = phi i32 [ 0, %if.end ], [ -1, %entry ]
-  ret i32 %retval.0 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i32 %retval.0 ;CHECK: jmp   {{.*JMP}}
 }

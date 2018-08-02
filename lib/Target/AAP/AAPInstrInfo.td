@@ -611,8 +611,9 @@ def : Pat<(callflag GR64:$rD, GR64:$rB), (JAL GR64:$rD, GR64:$rB)>;
 
 // Returns are encoded as a jump through the link register
 let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
-  def PseudoRET : Pseudo<(outs), (ins), "#PseudoRET", [(retflag R0)]>,
-                  PseudoInstExpansion<(JMP R0)>;
+  def PseudoRET : Pseudo<(outs), (ins GR64:$rD), "#PseudoRET",
+                         [(retflag GR64:$rD)]>,
+                  PseudoInstExpansion<(JMP GR64:$rD)>;
 }
 
 // Indirect branches are a jump through a given register

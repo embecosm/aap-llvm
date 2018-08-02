@@ -21,7 +21,7 @@ entry:
 ;CHECK: ldb ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 0
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 define i8 @ldb_global_short_imm_1() {
@@ -31,7 +31,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 2
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is only just small enough to fit in the LDB_short offset.
@@ -42,7 +42,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 3
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is just too large for the LDB_short offset
@@ -53,7 +53,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 4
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is too large for the LDB_short offset field, but will still
@@ -65,7 +65,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 26
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is large enough to exceed the signed LDB offset field,
@@ -77,7 +77,7 @@ entry:
 ;CHECK: ldb ${{r[0-9]+}}, [$[[REG1]], 0]        {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 768
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is too large for the LDB offset field
@@ -88,7 +88,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 1234
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 
@@ -102,7 +102,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -2
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is only just small enough to fit in the LDB_short offset.
@@ -113,7 +113,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -4
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is just too large for the LDB_short offset
@@ -124,7 +124,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -5
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is too large for the LDB_short offset field, but will still
@@ -136,7 +136,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -26
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is large enough to exceed the signed LDB offset field,
@@ -148,7 +148,7 @@ entry:
 ;CHECK: ldb ${{r[0-9]+}}, [$[[REG1]], 0]        {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -755
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is too large for the LDB offset field
@@ -159,7 +159,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -1234
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 
@@ -174,7 +174,7 @@ entry:
   %1 = add i16 %0, 15
   %2 = inttoptr i16 %1 to i8*
   %3 = load i8, i8* %2
-  ret i8 %3 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %3 ;CHECK: jmp   {{.*JMP}}
 }
 
 define i8 @ldb_reg_big_imm(i8* %x) {
@@ -187,7 +187,7 @@ entry:
   %1 = add i16 %0, 12345
   %2 = inttoptr i16 %1 to i8*
   %3 = load i8, i8* %2
-  ret i8 %3 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %3 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; With a negative offset
@@ -199,7 +199,7 @@ entry:
   %1 = sub i16 %0, 432
   %2 = inttoptr i16 %1 to i8*
   %3 = load i8, i8* %2
-  ret i8 %3 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %3 ;CHECK: jmp   {{.*JMP}}
 }
 
 
@@ -214,7 +214,7 @@ entry:
 ;CHECK-DAG: ldb ${{r[0-9]+}}, [$[[REG1]], 0]                    {{.*LDB}}
   %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 %x
   %1 = load i8, i8* %0
-  ret i8 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; With a negative register offset
@@ -227,7 +227,7 @@ entry:
   %0 = sub i16 0, %x
   %1 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 %0
   %2 = load i8, i8* %1
-  ret i8 %2 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %2 ;CHECK: jmp   {{.*JMP}}
 }
 
 
@@ -242,7 +242,7 @@ entry:
   %0 = ptrtoint i8* @i8_ptr to i16
   %1 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 %0
   %2 = load i8, i8* %1
-  ret i8 %2 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %2 ;CHECK: jmp   {{.*JMP}}
 }
 
 define i8 @ldb_global_neg_global() {
@@ -256,7 +256,7 @@ entry:
   %1 = sub i16 0, %0
   %2 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 %1
   %3 = load i8, i8* %2
-  ret i8 %3 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i8 %3 ;CHECK: jmp   {{.*JMP}}
 }
 
 
@@ -270,7 +270,7 @@ entry:
 ;CHECK: ldw ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDW}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 0
   %1 = load i16, i16* %0
-  ret i16 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i16 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 define i16 @ldw_global_short_imm() {
@@ -280,7 +280,7 @@ entry:
 ;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDW}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 1
   %1 = load i16, i16* %0
-  ret i16 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i16 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is too large for the LDW_short offset field, but will still
@@ -292,7 +292,7 @@ entry:
 ;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDW}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 212
   %1 = load i16, i16* %0
-  ret i16 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i16 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is too large for the LDB offset field
@@ -303,7 +303,7 @@ entry:
 ;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 0]        {{.*LDW}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 1234
   %1 = load i16, i16* %0
-  ret i16 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i16 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 
@@ -317,7 +317,7 @@ entry:
 ;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 0]    {{.*LDW}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 -2
   %1 = load i16, i16* %0
-  ret i16 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i16 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 ; The immediate is large enough to exceed the signed LDW offset field,
@@ -329,7 +329,7 @@ entry:
 ;CHECK: ldw ${{r[0-9]+}}, [$[[REG1]], 0]        {{.*LDW}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 -317
   %1 = load i16, i16* %0
-  ret i16 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i16 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 
@@ -344,7 +344,7 @@ entry:
   %1 = add i16 %0, 16
   %2 = inttoptr i16 %1 to i16*
   %3 = load i16, i16* %2
-  ret i16 %3 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i16 %3 ;CHECK: jmp   {{.*JMP}}
 }
 
 define i16 @ldw_reg_big_neg_imm(i16* %x) {
@@ -357,7 +357,7 @@ entry:
   %1 = sub i16 %0, 22222
   %2 = inttoptr i16 %1 to i16*
   %3 = load i16, i16* %2
-  ret i16 %3 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i16 %3 ;CHECK: jmp   {{.*JMP}}
 }
 
 
@@ -372,7 +372,7 @@ entry:
 ;CHECK-DAG: ldw ${{r[0-9]+}}, [$[[REG1]], 0]                    {{.*LDW}}
   %0 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 %x
   %1 = load i16, i16* %0
-  ret i16 %1 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i16 %1 ;CHECK: jmp   {{.*JMP}}
 }
 
 
@@ -390,5 +390,5 @@ entry:
   %1 = sub i16 0, %0
   %2 = getelementptr [12345 x i16], [12345 x i16]* @i16_array, i16 0, i16 %1
   %3 = load i16, i16* %2
-  ret i16 %3 ;CHECK: jmp   {{.*PseudoRET}}
+  ret i16 %3 ;CHECK: jmp   {{.*JMP}}
 }
