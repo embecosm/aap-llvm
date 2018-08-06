@@ -19,9 +19,9 @@
 #include "AAPInstrInfo.h"
 #include "AAPSelectionDAGInfo.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include <string>
 
 #define GET_SUBTARGETINFO_HEADER
@@ -62,6 +62,6 @@ public:
     return &InstrInfo.getRegisterInfo();
   }
 };
-} // End llvm namespace
+} // namespace llvm
 
 #endif

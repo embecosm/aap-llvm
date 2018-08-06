@@ -38,6 +38,6 @@ public:
   void processFunctionBeforeFrameFinalized(
       MachineFunction &MF, RegScavenger *RS = nullptr) const override;
 };
-}
+} // namespace llvm
 
 #endif

@@ -11,10 +11,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AAP.h"
-#include "AAPTargetMachine.h"
 #include "AAPInstrInfo.h"
+#include "AAP.h"
 #include "AAPMachineFunctionInfo.h"
+#include "AAPTargetMachine.h"
 #include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -256,9 +256,9 @@ bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
 
       MachineInstr *OldCondBr = &*FirstBr;
       FirstBr = BuildMI(&MBB, DL, get(getBranchOpcodeFromCond(RCC)))
-          .addMBB(Target)
-          .addReg(FirstBr->getOperand(1).getReg())
-          .addReg(FirstBr->getOperand(2).getReg());
+                    .addMBB(Target)
+                    .addReg(FirstBr->getOperand(1).getReg())
+                    .addReg(FirstBr->getOperand(2).getReg());
 
       // Replace the conditional branch with the inverted branch
       FirstUnCondBr->eraseFromParent();
@@ -306,8 +306,7 @@ unsigned AAPInstrInfo::insertBranch(MachineBasicBlock &MBB,
                                     MachineBasicBlock *TBB,
                                     MachineBasicBlock *FBB,
                                     ArrayRef<MachineOperand> Cond,
-                                    const DebugLoc &DL,
-                                    int *BytesAdded) const {
+                                    const DebugLoc &DL, int *BytesAdded) const {
   assert(TBB && "InsertBranch cannot insert a fallthrough");
   assert(Cond.size() == 3 || Cond.size() == 0);
 
@@ -324,9 +323,9 @@ unsigned AAPInstrInfo::insertBranch(MachineBasicBlock &MBB,
   unsigned Count = 0;
   AAPCC::CondCode CC = (AAPCC::CondCode)Cond[0].getImm();
   MI = BuildMI(&MBB, DL, get(getBranchOpcodeFromCond(CC)))
-      .addMBB(TBB)
-      .addReg(Cond[1].getReg())
-      .addReg(Cond[2].getReg());
+           .addMBB(TBB)
+           .addReg(Cond[1].getReg())
+           .addReg(Cond[2].getReg());
   if (BytesAdded)
     *BytesAdded += getInstSizeInBytes(*MI);
   ++Count;
@@ -446,7 +445,7 @@ bool AAPInstrInfo::reverseBranchCondition(
     SmallVectorImpl<MachineOperand> &Cond) const {
   assert(Cond.size() == 3 && "Invalid branch");
 
-  AAPCC::CondCode RCC = reverseCondCode((AAPCC::CondCode) Cond[0].getImm());
+  AAPCC::CondCode RCC = reverseCondCode((AAPCC::CondCode)Cond[0].getImm());
   if (RCC == AAPCC::COND_INVALID)
     return true;
 

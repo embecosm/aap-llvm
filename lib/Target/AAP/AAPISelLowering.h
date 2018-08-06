@@ -68,14 +68,14 @@ public:
 private:
   const AAPSubtarget &Subtarget;
 
-//===--------------------- Custom DAG Combine ---------------------------===//
+//===------------------------ Custom DAG Combine ------------------------===//
 public:
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 
 private:
   SDValue PerformADDCombine(SDNode *N, DAGCombinerInfo &DCE) const;
 
-//===----------------------- Custom Lowering ----------------------------===//
+//===------------------------- Custom Lowering --------------------------===//
 public:
   /// LowerOperation - Provide custom lowering hooks for some operations.
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
@@ -93,7 +93,7 @@ private:
   SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerRETURNADDR(SDValue Op, SelectionDAG &DAG) const;
 
-//===-------------------- Calling Convention Implementation -------------===//
+//===---------------- Calling Convention Implementation -----------------===//
 private:
   SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv,
                                bool isVarArg,
@@ -138,7 +138,7 @@ private:
                       const SmallVectorImpl<SDValue> &OutVals, const SDLoc &dl,
                       SelectionDAG &DAG) const override;
 
-//===---------------- AAP Custom Instruction Emissions -------------------===//
+//===----------------- AAP Custom Instruction Emissions -----------------===//
 public:
   MachineBasicBlock *
   EmitInstrWithCustomInserter(MachineInstr &MI,
@@ -149,7 +149,7 @@ private:
   MachineBasicBlock *emitSelectCC(MachineInstr &MI,
                                   MachineBasicBlock *MBB) const;
 
-//===--------------------- AAP Inline Assembly Support -------------------===//
+//===------------------- AAP Inline Assembly Support --------------------===//
 public:
   TargetLowering::ConstraintType
   getConstraintType(const StringRef Constraint) const override;
@@ -158,6 +158,6 @@ public:
   getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
                                StringRef Constraint, MVT VT) const override;
 };
-}
+} // namespace llvm
 
 #endif

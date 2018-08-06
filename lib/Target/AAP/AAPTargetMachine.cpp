@@ -40,7 +40,7 @@ static CodeModel::Model getEffectiveCodeModel(Optional<CodeModel::Model> CM) {
 AAPTargetMachine::AAPTargetMachine(const Target &T, const Triple &TT,
                                    StringRef CPU, StringRef FS,
                                    const TargetOptions &Options,
-                                   Optional<Reloc::Model> RM, 
+                                   Optional<Reloc::Model> RM,
                                    Optional<CodeModel::Model> CM,
                                    CodeGenOpt::Level OL, bool JIT)
     : LLVMTargetMachine(T, "e-m:e-p:16:16-i32:16-i64:16-f32:16-f64:16-n16", TT,

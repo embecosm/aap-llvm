@@ -44,8 +44,8 @@ public:
   unsigned isLoadFromStackSlot(const MachineInstr &MI,
                                int &FrameIndex) const override;
 
-  bool
-  isBranchOffsetInRange(unsigned BranchOpc, int64_t BrOffset) const override;
+  bool isBranchOffsetInRange(unsigned BranchOpc,
+                             int64_t BrOffset) const override;
 
   MachineBasicBlock *getBranchDestBlock(const MachineInstr &MI) const override;
 
@@ -60,8 +60,7 @@ public:
                         int *BytesAdded = nullptr) const override;
 
   unsigned insertIndirectBranch(MachineBasicBlock &MBB,
-                                MachineBasicBlock &DestBB,
-                                const DebugLoc &DL,
+                                MachineBasicBlock &DestBB, const DebugLoc &DL,
                                 int64_t BrOffset,
                                 RegScavenger *RS) const override;
 
@@ -88,6 +87,6 @@ public:
 
   unsigned getInstSizeInBytes(const MachineInstr &MI) const override;
 };
-}
+} // namespace llvm
 
 #endif

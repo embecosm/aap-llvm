@@ -44,6 +44,6 @@ public:
   MCSymbol *GetConstantPoolIndexSymbol(const MachineOperand &MO) const;
   MCSymbol *GetBlockAddressSymbol(const MachineOperand &MO) const;
 };
-}
+} // namespace llvm
 
 #endif

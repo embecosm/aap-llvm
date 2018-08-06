@@ -60,6 +60,6 @@ public:
   void setVarArgsFrameIndex(int Index) { VarArgsFrameIndex = Index; }
 };
 
-} // End llvm namespace
+} // namespace llvm
 
 #endif
