@@ -38,6 +38,12 @@ public:
   unsigned getBranchOpcodeFromCond(AAPCC::CondCode CC) const;
   AAPCC::CondCode reverseCondCode(AAPCC::CondCode CC) const;
 
+  unsigned isStoreToStackSlot(const MachineInstr &MI,
+                              int &FrameIndex) const override;
+
+  unsigned isLoadFromStackSlot(const MachineInstr &MI,
+                               int &FrameIndex) const override;
+
   bool
   isBranchOffsetInRange(unsigned BranchOpc, int64_t BrOffset) const override;
 

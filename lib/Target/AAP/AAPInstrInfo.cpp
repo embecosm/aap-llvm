@@ -98,6 +98,52 @@ AAPCC::CondCode AAPInstrInfo::reverseCondCode(AAPCC::CondCode CC) const {
   }
 }
 
+unsigned AAPInstrInfo::isStoreToStackSlot(const MachineInstr &MI,
+                                          int &FrameIndex) const {
+  switch (MI.getOpcode()) {
+  default:
+    return 0;
+  case AAP::STB:
+  case AAP::STW:
+  case AAP::STB_postinc:
+  case AAP::STW_postinc:
+  case AAP::STB_predec:
+  case AAP::STW_predec:
+    break;
+  }
+
+  if (MI.getOperand(0).isFI() && MI.getOperand(1).isImm() &&
+      MI.getOperand(1).getImm() == 0) {
+    FrameIndex = MI.getOperand(0).getIndex();
+    return MI.getOperand(2).getReg();
+  }
+
+  return 0;
+}
+
+unsigned AAPInstrInfo::isLoadFromStackSlot(const MachineInstr &MI,
+                                           int &FrameIndex) const {
+  switch (MI.getOpcode()) {
+  default:
+    return 0;
+  case AAP::LDB:
+  case AAP::LDW:
+  case AAP::LDB_postinc:
+  case AAP::LDW_postinc:
+  case AAP::LDB_predec:
+  case AAP::LDW_predec:
+    break;
+  }
+
+  if (MI.getOperand(1).isFI() && MI.getOperand(2).isImm() &&
+      MI.getOperand(2).getImm() == 0) {
+    FrameIndex = MI.getOperand(1).getIndex();
+    return MI.getOperand(0).getReg();
+  }
+
+  return 0;
+}
+
 bool AAPInstrInfo::isBranchOffsetInRange(unsigned BranchOpc,
                                          int64_t BrOffset) const {
   switch (BranchOpc) {
