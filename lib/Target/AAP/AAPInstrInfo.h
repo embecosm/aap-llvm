@@ -36,6 +36,7 @@ public:
 
   AAPCC::CondCode getCondFromBranchOpcode(unsigned Opcode) const;
   unsigned getBranchOpcodeFromCond(AAPCC::CondCode CC) const;
+  AAPCC::CondCode reverseCondCode(AAPCC::CondCode CC) const;
 
   bool
   isBranchOffsetInRange(unsigned BranchOpc, int64_t BrOffset) const override;

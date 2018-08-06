@@ -82,6 +82,22 @@ unsigned AAPInstrInfo::getBranchOpcodeFromCond(AAPCC::CondCode CC) const {
   }
 }
 
+AAPCC::CondCode AAPInstrInfo::reverseCondCode(AAPCC::CondCode CC) const {
+  switch (CC) {
+  default:
+    llvm_unreachable("Invalid condition code");
+  case AAPCC::COND_EQ:
+    return AAPCC::COND_NE;
+  case AAPCC::COND_NE:
+    return AAPCC::COND_EQ;
+  case AAPCC::COND_LES:
+  case AAPCC::COND_LEU:
+  case AAPCC::COND_LTS:
+  case AAPCC::COND_LTU:
+    return AAPCC::COND_INVALID;
+  }
+}
+
 bool AAPInstrInfo::isBranchOffsetInRange(unsigned BranchOpc,
                                          int64_t BrOffset) const {
   switch (BranchOpc) {
@@ -112,9 +128,16 @@ bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
                                  MachineBasicBlock *&FBB,
                                  SmallVectorImpl<MachineOperand> &Cond,
                                  bool AllowModify) const {
-  // Find the first unconditional branch
+  // Setup default return state
+  TBB = FBB = nullptr;
+  Cond.clear();
+
   MachineBasicBlock::iterator I = MBB.end();
-  MachineBasicBlock::iterator UnCondBrIter = MBB.end();
+  MachineBasicBlock::iterator FirstBr = MBB.end();
+  MachineBasicBlock::iterator FirstUnCondBr = MBB.end();
+  unsigned NumTerminators = 0;
+
+  // Find the first branch and the first unconditional branch
   while (I != MBB.begin()) {
     --I;
     if (I->isDebugValue())
@@ -123,65 +146,42 @@ bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
     // If we see a non-terminator, we're done
     if (!isUnpredicatedTerminator(*I))
       break;
-    // Unconditional branch
+
+    ++NumTerminators;
+    FirstBr = I;
     if (I->getDesc().isUnconditionalBranch() || I->getDesc().isIndirectBranch())
-      UnCondBrIter = I;
+      FirstUnCondBr = I;
   }
 
-  bool HaveUnCondBr = UnCondBrIter != MBB.end();
+  bool HaveUnCondBr = FirstUnCondBr != MBB.end();
 
   // Nuke everything after the first unconditional branch
   if (AllowModify && HaveUnCondBr) {
-    while (std::next(UnCondBrIter) != MBB.end())
-      std::next(UnCondBrIter)->eraseFromParent();
+    while (std::next(FirstUnCondBr) != MBB.end()) {
+      std::next(FirstUnCondBr)->eraseFromParent();
+      --NumTerminators;
+    }
   }
 
   // If the block ends in an unconditional branch we can't analyze it further
-  if (HaveUnCondBr && UnCondBrIter->getDesc().isIndirectBranch())
+  if (HaveUnCondBr && FirstUnCondBr->getDesc().isIndirectBranch())
     return true;
 
-  // Remove the unconditional branch if it's actually a fallthrough
+  // Nuke the unconditional branch if it's actually a fallthrough
   if (AllowModify && HaveUnCondBr &&
-      MBB.isLayoutSuccessor(getBranchDestBlock(*UnCondBrIter))) {
-    UnCondBrIter->eraseFromParent();
+      MBB.isLayoutSuccessor(getBranchDestBlock(*FirstUnCondBr))) {
+    FirstUnCondBr->eraseFromParent();
+    --NumTerminators;
     HaveUnCondBr = false;
   }
 
-  // Find either:
-  // - The first conditional branch before an unconditional branch
-  // - The first conditional branch, if no unconditional branch was found
-  if (HaveUnCondBr)
-    I = UnCondBrIter;
-  else
-    I = MBB.end();
-  MachineBasicBlock::iterator CondBrIter = MBB.end();
-  unsigned NumCondBr = 0;
-  while (I != MBB.begin()) {
-    --I;
-    if (I->isDebugValue())
-      continue;
-
-    // If we see a non-terminator, we're done
-    if (!isUnpredicatedTerminator(*I))
-      break;
-
-    // Check for conditional branch
-    if (!I->getDesc().isConditionalBranch())
-      break;
-
-    ++NumCondBr;
-    CondBrIter = I;
-  }
-
-  // If there's more than one conditional branch, we can't analyze it
+  // If the block ends in more than one conditional branch, we can't analyze it
   // TODO: Relax this constraint. We should be able to handle things such as:
   //   beq  L1, r0, r1
   //   bne  L2, r0, r1
   // More elegantly
-  if (NumCondBr > 1)
+  if ((!HaveUnCondBr && NumTerminators > 1) || NumTerminators > 2)
     return true;
-
-  bool HaveCondBr = CondBrIter != MBB.end();
 
   // We may be able to modify the following code:
   //
@@ -198,61 +198,61 @@ bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
   //   ...
   // L2:
   //
-  if (AllowModify && HaveUnCondBr && HaveCondBr &&
-      MBB.isLayoutSuccessor(getBranchDestBlock(*CondBrIter))) {
-    unsigned Opcode = CondBrIter->getOpcode();
-    if (Opcode == AAP::BEQ_ || Opcode == AAP::BNE_) {
-      unsigned InvertedOpcode = Opcode == AAP::BEQ_ ? AAP::BNE_ : AAP::BEQ_;
+  if (AllowModify && HaveUnCondBr && NumTerminators == 2 &&
+      MBB.isLayoutSuccessor(getBranchDestBlock(*FirstBr))) {
+    AAPCC::CondCode CC = getCondFromBranchOpcode(FirstBr->getOpcode());
+    AAPCC::CondCode RCC = reverseCondCode(CC);
+    if (RCC != AAPCC::COND_INVALID) {
 
-      MachineBasicBlock *Target = UnCondBrIter->getOperand(0).getMBB();
-      DebugLoc DL = MBB.findDebugLoc(CondBrIter);
+      MachineBasicBlock *Target = getBranchDestBlock(*FirstUnCondBr);
 
-      MachineInstr *OldCondBr = &*CondBrIter;
-      CondBrIter = BuildMI(&MBB, DL, get(InvertedOpcode))
+      DebugLoc DL = MBB.findDebugLoc(FirstBr);
+
+      MachineInstr *OldCondBr = &*FirstBr;
+      FirstBr = BuildMI(&MBB, DL, get(getBranchOpcodeFromCond(RCC)))
           .addMBB(Target)
-          .addReg(CondBrIter->getOperand(1).getReg())
-          .addReg(CondBrIter->getOperand(2).getReg());
+          .addReg(FirstBr->getOperand(1).getReg())
+          .addReg(FirstBr->getOperand(2).getReg());
 
       // Replace the conditional branch with the inverted branch
-      UnCondBrIter->eraseFromParent();
+      FirstUnCondBr->eraseFromParent();
       OldCondBr->eraseFromParent();
+      --NumTerminators;
       HaveUnCondBr = false;
     }
   }
 
-  TBB = FBB = nullptr;
-
-  // Block ends with no branches (falls through to its successor)
-  if (!HaveUnCondBr && !HaveCondBr)
+  // If the block has no terminators, it's just a fallthrough
+  if (NumTerminators == 0)
     return false;
-
-  // Unconditional branch preceded by conditional branch
-  if (HaveUnCondBr && HaveCondBr) {
-    TBB = CondBrIter->getOperand(0).getMBB();
-    FBB = UnCondBrIter->getOperand(0).getMBB();
-
-    AAPCC::CondCode CC = getCondFromBranchOpcode(CondBrIter->getOpcode());
-    Cond.push_back(MachineOperand::CreateImm(CC));
-    Cond.push_back(CondBrIter->getOperand(1));
-    Cond.push_back(CondBrIter->getOperand(2));
-    return false;
-  }
 
   // Only an unconditional branch, set TBB to the destination block
-  if (HaveUnCondBr && !HaveCondBr) {
-    TBB = UnCondBrIter->getOperand(0).getMBB();
+  if (HaveUnCondBr && NumTerminators == 1) {
+    TBB = getBranchDestBlock(*FirstUnCondBr);
     return false;
   }
-
-  assert(!HaveUnCondBr && HaveCondBr);
 
   // Conditional branch /w fallthrough. Set TBB to destination and
   // set Cond to operands to evaluate the condition
-  TBB = CondBrIter->getOperand(0).getMBB();
-  AAPCC::CondCode CC = getCondFromBranchOpcode(CondBrIter->getOpcode());
+  if (!HaveUnCondBr && NumTerminators == 1) {
+    TBB = getBranchDestBlock(*FirstBr);
+    AAPCC::CondCode CC = getCondFromBranchOpcode(FirstBr->getOpcode());
+    Cond.push_back(MachineOperand::CreateImm(CC));
+    Cond.push_back(FirstBr->getOperand(1));
+    Cond.push_back(FirstBr->getOperand(2));
+    return false;
+  }
+
+  // Unconditional branch preceded by conditional branch
+  assert(HaveUnCondBr && NumTerminators == 2);
+
+  TBB = getBranchDestBlock(*FirstBr);
+  FBB = getBranchDestBlock(*FirstUnCondBr);
+
+  AAPCC::CondCode CC = getCondFromBranchOpcode(FirstBr->getOpcode());
   Cond.push_back(MachineOperand::CreateImm(CC));
-  Cond.push_back(CondBrIter->getOperand(1));
-  Cond.push_back(CondBrIter->getOperand(2));
+  Cond.push_back(FirstBr->getOperand(1));
+  Cond.push_back(FirstBr->getOperand(2));
   return false;
 }
 
@@ -392,22 +392,6 @@ void AAPInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
       .addFrameIndex(FrameIdx)
       .addImm(0)
       .addMemOperand(MMO);
-}
-
-static AAPCC::CondCode reverseCondCode(AAPCC::CondCode CC) {
-  switch (CC) {
-  default:
-    llvm_unreachable("Invalid condition code");
-  case AAPCC::COND_EQ:
-    return AAPCC::COND_NE;
-  case AAPCC::COND_NE:
-    return AAPCC::COND_EQ;
-  case AAPCC::COND_LES:
-  case AAPCC::COND_LEU:
-  case AAPCC::COND_LTS:
-  case AAPCC::COND_LTU:
-    return AAPCC::COND_INVALID;
-  }
 }
 
 /// ReverseBranchCondition - Return the inverse opcode of the
