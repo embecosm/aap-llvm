@@ -25,8 +25,8 @@ namespace {
 template <typename Impl> class X86BenchmarkRunner : public Impl {
   using Impl::Impl;
 
-  llvm::Expected<SnippetPrototype>
-  generatePrototype(unsigned Opcode) const override {
+  llvm::Expected<CodeTemplate>
+  generateCodeTemplate(unsigned Opcode) const override {
     // Test whether we can generate a snippet for this instruction.
     const auto &InstrInfo = this->State.getInstrInfo();
     const auto OpcodeName = InstrInfo.getName(Opcode);
@@ -44,9 +44,9 @@ template <typename Impl> class X86BenchmarkRunner : public Impl {
     case llvm::X86II::NotFP:
       break;
     case llvm::X86II::ZeroArgFP:
-      return Impl::handleZeroArgFP(Instr);
+      return llvm::make_error<BenchmarkFailure>("Unsupported x87 ZeroArgFP");
     case llvm::X86II::OneArgFP:
-      return Impl::handleOneArgFP(Instr); // fstp ST(0)
+      return llvm::make_error<BenchmarkFailure>("Unsupported x87 OneArgFP");
     case llvm::X86II::OneArgFPRW:
     case llvm::X86II::TwoArgFP: {
       // These are instructions like
@@ -54,20 +54,20 @@ template <typename Impl> class X86BenchmarkRunner : public Impl {
       //   - `ST(0) = ST(0) + ST(i)` (TwoArgFP)
       // They are intrinsically serial and do not modify the state of the stack.
       // We generate the same code for latency and uops.
-      return this->generateSelfAliasingPrototype(Instr);
+      return this->generateSelfAliasingCodeTemplate(Instr);
     }
     case llvm::X86II::CompareFP:
       return Impl::handleCompareFP(Instr);
     case llvm::X86II::CondMovFP:
       return Impl::handleCondMovFP(Instr);
     case llvm::X86II::SpecialFP:
-      return Impl::handleSpecialFP(Instr);
+      return llvm::make_error<BenchmarkFailure>("Unsupported x87 SpecialFP");
     default:
       llvm_unreachable("Unknown FP Type!");
     }
 
     // Fallback to generic implementation.
-    return Impl::Base::generatePrototype(Opcode);
+    return Impl::Base::generateCodeTemplate(Opcode);
   }
 };
 
@@ -75,25 +75,11 @@ class X86LatencyImpl : public LatencyBenchmarkRunner {
 protected:
   using Base = LatencyBenchmarkRunner;
   using Base::Base;
-  llvm::Expected<SnippetPrototype>
-  handleZeroArgFP(const Instruction &Instr) const {
-    return llvm::make_error<BenchmarkFailure>("Unsupported x87 ZeroArgFP");
-  }
-  llvm::Expected<SnippetPrototype>
-  handleOneArgFP(const Instruction &Instr) const {
-    return llvm::make_error<BenchmarkFailure>("Unsupported x87 OneArgFP");
-  }
-  llvm::Expected<SnippetPrototype>
-  handleCompareFP(const Instruction &Instr) const {
+  llvm::Expected<CodeTemplate> handleCompareFP(const Instruction &Instr) const {
     return llvm::make_error<BenchmarkFailure>("Unsupported x87 CompareFP");
   }
-  llvm::Expected<SnippetPrototype>
-  handleCondMovFP(const Instruction &Instr) const {
+  llvm::Expected<CodeTemplate> handleCondMovFP(const Instruction &Instr) const {
     return llvm::make_error<BenchmarkFailure>("Unsupported x87 CondMovFP");
-  }
-  llvm::Expected<SnippetPrototype>
-  handleSpecialFP(const Instruction &Instr) const {
-    return llvm::make_error<BenchmarkFailure>("Unsupported x87 SpecialFP");
   }
 };
 
@@ -101,25 +87,15 @@ class X86UopsImpl : public UopsBenchmarkRunner {
 protected:
   using Base = UopsBenchmarkRunner;
   using Base::Base;
-  llvm::Expected<SnippetPrototype>
-  handleZeroArgFP(const Instruction &Instr) const {
-    return llvm::make_error<BenchmarkFailure>("Unsupported x87 ZeroArgFP");
+  // We can compute uops for any FP instruction that does not grow or shrink the
+  // stack (either do not touch the stack or push as much as they pop).
+  llvm::Expected<CodeTemplate> handleCompareFP(const Instruction &Instr) const {
+    return generateUnconstrainedCodeTemplate(
+        Instr, "instruction does not grow/shrink the FP stack");
   }
-  llvm::Expected<SnippetPrototype>
-  handleOneArgFP(const Instruction &Instr) const {
-    return llvm::make_error<BenchmarkFailure>("Unsupported x87 OneArgFP");
-  }
-  llvm::Expected<SnippetPrototype>
-  handleCompareFP(const Instruction &Instr) const {
-    return llvm::make_error<BenchmarkFailure>("Unsupported x87 CompareFP");
-  }
-  llvm::Expected<SnippetPrototype>
-  handleCondMovFP(const Instruction &Instr) const {
-    return llvm::make_error<BenchmarkFailure>("Unsupported x87 CondMovFP");
-  }
-  llvm::Expected<SnippetPrototype>
-  handleSpecialFP(const Instruction &Instr) const {
-    return llvm::make_error<BenchmarkFailure>("Unsupported x87 SpecialFP");
+  llvm::Expected<CodeTemplate> handleCondMovFP(const Instruction &Instr) const {
+    return generateUnconstrainedCodeTemplate(
+        Instr, "instruction does not grow/shrink the FP stack");
   }
 };
 
@@ -127,6 +103,48 @@ class ExegesisX86Target : public ExegesisTarget {
   void addTargetSpecificPasses(llvm::PassManagerBase &PM) const override {
     // Lowers FP pseudo-instructions, e.g. ABS_Fp32 -> ABS_F.
     PM.add(llvm::createX86FloatingPointStackifierPass());
+  }
+
+  unsigned getScratchMemoryRegister(const llvm::Triple &TT) const override {
+    if (!TT.isArch64Bit()) {
+      // FIXME: This would require popping from the stack, so we would have to
+      // add some additional setup code.
+      return 0;
+    }
+    return TT.isOSWindows() ? llvm::X86::RCX : llvm::X86::RDI;
+  }
+
+  unsigned getMaxMemoryAccessSize() const override { return 64; }
+
+  void fillMemoryOperands(InstructionBuilder &IB, unsigned Reg,
+                          unsigned Offset) const override {
+    // FIXME: For instructions that read AND write to memory, we use the same
+    // value for input and output.
+    for (size_t I = 0, E = IB.Instr.Operands.size(); I < E; ++I) {
+      const Operand *Op = &IB.Instr.Operands[I];
+      if (Op->IsExplicit && Op->IsMem) {
+        // Case 1: 5-op memory.
+        assert((I + 5 <= E) && "x86 memory references are always 5 ops");
+        IB.getValueFor(*Op) = llvm::MCOperand::createReg(Reg); // BaseReg
+        Op = &IB.Instr.Operands[++I];
+        assert(Op->IsMem);
+        assert(Op->IsExplicit);
+        IB.getValueFor(*Op) = llvm::MCOperand::createImm(1); // ScaleAmt
+        Op = &IB.Instr.Operands[++I];
+        assert(Op->IsMem);
+        assert(Op->IsExplicit);
+        IB.getValueFor(*Op) = llvm::MCOperand::createReg(0); // IndexReg
+        Op = &IB.Instr.Operands[++I];
+        assert(Op->IsMem);
+        assert(Op->IsExplicit);
+        IB.getValueFor(*Op) = llvm::MCOperand::createImm(Offset); // Disp
+        Op = &IB.Instr.Operands[++I];
+        assert(Op->IsMem);
+        assert(Op->IsExplicit);
+        IB.getValueFor(*Op) = llvm::MCOperand::createReg(0); // Segment
+        // Case2: segment:index addressing. We assume that ES is 0.
+      }
+    }
   }
 
   std::vector<llvm::MCInst> setRegToConstant(const llvm::MCSubtargetInfo &STI,
@@ -163,6 +181,15 @@ class ExegesisX86Target : public ExegesisTarget {
         llvm::X86::RFP64RegClass.contains(Reg) ||
         llvm::X86::RFP80RegClass.contains(Reg))
       return setVectorRegToConstant(Reg, 8, llvm::X86::LD_Fp64m);
+    if (Reg == llvm::X86::EFLAGS) {
+      // Set all flags to 0 but the bits that are "reserved and set to 1".
+      constexpr const uint32_t kImmValue = 0x00007002u;
+      std::vector<llvm::MCInst> Result;
+      Result.push_back(allocateStackSpace(8));
+      Result.push_back(fillStackSpace(llvm::X86::MOV64mi32, 0, kImmValue));
+      Result.push_back(llvm::MCInstBuilder(llvm::X86::POPF64)); // Also pops.
+      return Result;
+    }
     return {};
   }
 
@@ -193,40 +220,58 @@ private:
     // value that has set bits for all byte values and is a normal float/
     // double. 0x40404040 is ~32.5 when interpreted as a double and ~3.0f when
     // interpreted as a float.
-    constexpr const uint64_t kImmValue = 0x40404040ull;
+    constexpr const uint32_t kImmValue = 0x40404040u;
     std::vector<llvm::MCInst> Result;
-    // Allocate scratch memory on the stack.
-    Result.push_back(llvm::MCInstBuilder(llvm::X86::SUB64ri8)
-                         .addReg(llvm::X86::RSP)
-                         .addReg(llvm::X86::RSP)
-                         .addImm(RegSizeBytes));
-    // Fill scratch memory.
-    for (unsigned Disp = 0; Disp < RegSizeBytes; Disp += 4) {
-      Result.push_back(llvm::MCInstBuilder(llvm::X86::MOV32mi)
-                           // Address = ESP
-                           .addReg(llvm::X86::RSP) // BaseReg
-                           .addImm(1)              // ScaleAmt
-                           .addReg(0)              // IndexReg
-                           .addImm(Disp)           // Disp
-                           .addReg(0)              // Segment
-                           // Immediate.
-                           .addImm(kImmValue));
+    Result.push_back(allocateStackSpace(RegSizeBytes));
+    constexpr const unsigned kMov32NumBytes = 4;
+    for (unsigned Disp = 0; Disp < RegSizeBytes; Disp += kMov32NumBytes) {
+      Result.push_back(fillStackSpace(llvm::X86::MOV32mi, Disp, kImmValue));
     }
-    // Load Reg from scratch memory.
-    Result.push_back(llvm::MCInstBuilder(RMOpcode)
-                         .addReg(Reg)
-                         // Address = ESP
-                         .addReg(llvm::X86::RSP) // BaseReg
-                         .addImm(1)              // ScaleAmt
-                         .addReg(0)              // IndexReg
-                         .addImm(0)              // Disp
-                         .addReg(0));            // Segment
-    // Release scratch memory.
-    Result.push_back(llvm::MCInstBuilder(llvm::X86::ADD64ri8)
-                         .addReg(llvm::X86::RSP)
-                         .addReg(llvm::X86::RSP)
-                         .addImm(RegSizeBytes));
+    Result.push_back(loadToReg(Reg, RMOpcode));
+    Result.push_back(releaseStackSpace(RegSizeBytes));
     return Result;
+  }
+
+  // Allocates scratch memory on the stack.
+  static llvm::MCInst allocateStackSpace(unsigned Bytes) {
+    return llvm::MCInstBuilder(llvm::X86::SUB64ri8)
+        .addReg(llvm::X86::RSP)
+        .addReg(llvm::X86::RSP)
+        .addImm(Bytes);
+  }
+
+  // Fills scratch memory at offset `OffsetBytes` with value `Imm`.
+  static llvm::MCInst fillStackSpace(unsigned MovOpcode, unsigned OffsetBytes,
+                                     uint64_t Imm) {
+    return llvm::MCInstBuilder(MovOpcode)
+        // Address = ESP
+        .addReg(llvm::X86::RSP) // BaseReg
+        .addImm(1)              // ScaleAmt
+        .addReg(0)              // IndexReg
+        .addImm(OffsetBytes)    // Disp
+        .addReg(0)              // Segment
+        // Immediate.
+        .addImm(Imm);
+  }
+
+  // Loads scratch memory into register `Reg` using opcode `RMOpcode`.
+  static llvm::MCInst loadToReg(unsigned Reg, unsigned RMOpcode) {
+    return llvm::MCInstBuilder(RMOpcode)
+        .addReg(Reg)
+        // Address = ESP
+        .addReg(llvm::X86::RSP) // BaseReg
+        .addImm(1)              // ScaleAmt
+        .addReg(0)              // IndexReg
+        .addImm(0)              // Disp
+        .addReg(0);             // Segment
+  }
+
+  // Releases scratch memory.
+  static llvm::MCInst releaseStackSpace(unsigned Bytes) {
+    return llvm::MCInstBuilder(llvm::X86::ADD64ri8)
+        .addReg(llvm::X86::RSP)
+        .addReg(llvm::X86::RSP)
+        .addImm(Bytes);
   }
 };
 

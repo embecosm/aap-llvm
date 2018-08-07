@@ -1698,7 +1698,7 @@ void MDFieldPrinter::printDIFlags(StringRef Name, DINode::DIFlags Flags) {
 
 void MDFieldPrinter::printEmissionKind(StringRef Name,
                                        DICompileUnit::DebugEmissionKind EK) {
-  Out << FS << Name << ": " << DICompileUnit::EmissionKindString(EK);
+  Out << FS << Name << ": " << DICompileUnit::emissionKindString(EK);
 }
 
 template <class IntTy, class Stringifier>
@@ -2618,8 +2618,9 @@ void AssemblyWriter::printModuleSummaryIndex() {
   unsigned i = 0;
   for (auto &ModPair : moduleVec) {
     Out << "^" << i++ << " = module: (";
-    Out << "path: \"" << ModPair.first << "\"";
-    Out << ", hash: (";
+    Out << "path: \"";
+    printEscapedString(ModPair.first, Out);
+    Out << "\", hash: (";
     FieldSeparator FS;
     for (auto Hash : ModPair.second)
       Out << FS << Hash;

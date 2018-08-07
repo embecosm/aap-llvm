@@ -11,6 +11,7 @@
 #include "MCTargetDesc/AArch64MCExpr.h"
 #include "MCTargetDesc/AArch64MCTargetDesc.h"
 #include "MCTargetDesc/AArch64TargetStreamer.h"
+#include "AArch64InstrInfo.h"
 #include "Utils/AArch64BaseInfo.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -79,6 +80,67 @@ private:
   // Map of register aliases registers via the .req directive.
   StringMap<std::pair<RegKind, unsigned>> RegisterReqs;
 
+  class PrefixInfo {
+  public:
+    static PrefixInfo CreateFromInst(const MCInst &Inst, uint64_t TSFlags) {
+      PrefixInfo Prefix;
+      switch (Inst.getOpcode()) {
+      case AArch64::MOVPRFX_ZZ:
+        Prefix.Active = true;
+        Prefix.Dst = Inst.getOperand(0).getReg();
+        break;
+      case AArch64::MOVPRFX_ZPmZ_B:
+      case AArch64::MOVPRFX_ZPmZ_H:
+      case AArch64::MOVPRFX_ZPmZ_S:
+      case AArch64::MOVPRFX_ZPmZ_D:
+        Prefix.Active = true;
+        Prefix.Predicated = true;
+        Prefix.ElementSize = TSFlags & AArch64::ElementSizeMask;
+        assert(Prefix.ElementSize != AArch64::ElementSizeNone &&
+               "No destructive element size set for movprfx");
+        Prefix.Dst = Inst.getOperand(0).getReg();
+        Prefix.Pg = Inst.getOperand(2).getReg();
+        break;
+      case AArch64::MOVPRFX_ZPzZ_B:
+      case AArch64::MOVPRFX_ZPzZ_H:
+      case AArch64::MOVPRFX_ZPzZ_S:
+      case AArch64::MOVPRFX_ZPzZ_D:
+        Prefix.Active = true;
+        Prefix.Predicated = true;
+        Prefix.ElementSize = TSFlags & AArch64::ElementSizeMask;
+        assert(Prefix.ElementSize != AArch64::ElementSizeNone &&
+               "No destructive element size set for movprfx");
+        Prefix.Dst = Inst.getOperand(0).getReg();
+        Prefix.Pg = Inst.getOperand(1).getReg();
+        break;
+      default:
+        break;
+      }
+
+      return Prefix;
+    }
+
+    PrefixInfo() : Active(false), Predicated(false) {}
+    bool isActive() const { return Active; }
+    bool isPredicated() const { return Predicated; }
+    unsigned getElementSize() const {
+      assert(Predicated);
+      return ElementSize;
+    }
+    unsigned getDstReg() const { return Dst; }
+    unsigned getPgReg() const {
+      assert(Predicated);
+      return Pg;
+    }
+
+  private:
+    bool Active;
+    bool Predicated;
+    unsigned ElementSize;
+    unsigned Dst;
+    unsigned Pg;
+  } NextPrefix;
+
   AArch64TargetStreamer &getTargetStreamer() {
     MCTargetStreamer &TS = *getParser().getStreamer().getTargetStreamer();
     return static_cast<AArch64TargetStreamer &>(TS);
@@ -113,7 +175,8 @@ private:
   bool parseDirectiveReq(StringRef Name, SMLoc L);
   bool parseDirectiveUnreq(SMLoc L);
 
-  bool validateInstruction(MCInst &Inst, SmallVectorImpl<SMLoc> &Loc);
+  bool validateInstruction(MCInst &Inst, SMLoc &IDLoc,
+                           SmallVectorImpl<SMLoc> &Loc);
   bool MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
                                OperandVector &Operands, MCStreamer &Out,
                                uint64_t &ErrorInfo,
@@ -536,6 +599,16 @@ public:
 
   bool isImm() const override { return Kind == k_Immediate; }
   bool isMem() const override { return false; }
+
+  bool isUImm6() const {
+    if (!isImm())
+      return false;
+    const MCConstantExpr *MCE = dyn_cast<MCConstantExpr>(getImm());
+    if (!MCE)
+      return false;
+    int64_t Val = MCE->getValue();
+    return (Val >= 0 && Val < 64);
+  }
 
   template <int Width> bool isSImm() const { return isSImmScaled<Width, 1>(); }
 
@@ -1499,6 +1572,12 @@ public:
     Inst.addOperand(MCOperand::createImm(MCE->getValue() / Scale));
   }
 
+  void addUImm6Operands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    const MCConstantExpr *MCE = cast<MCConstantExpr>(getImm());
+    Inst.addOperand(MCOperand::createImm(MCE->getValue()));
+  }
+
   template <int Scale>
   void addImmScaledOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
@@ -2374,14 +2453,17 @@ AArch64AsmParser::tryParseAdrLabel(OperandVector &Operands) {
   SMLoc S = getLoc();
   const MCExpr *Expr;
 
-  parseOptionalToken(AsmToken::Hash);
-  if (getParser().parseExpression(Expr))
-    return MatchOperand_ParseFail;
+  const AsmToken &Tok = getParser().getTok();
+  if (parseOptionalToken(AsmToken::Hash) || Tok.is(AsmToken::Integer)) {
+    if (getParser().parseExpression(Expr))
+      return MatchOperand_ParseFail;
 
-  SMLoc E = SMLoc::getFromPointer(getLoc().getPointer() - 1);
-  Operands.push_back(AArch64Operand::CreateImm(Expr, S, E, getContext()));
+    SMLoc E = SMLoc::getFromPointer(getLoc().getPointer() - 1);
+    Operands.push_back(AArch64Operand::CreateImm(Expr, S, E, getContext()));
 
-  return MatchOperand_Success;
+    return MatchOperand_Success;
+  }
+  return MatchOperand_NoMatch;
 }
 
 /// tryParseFPImm - A floating point immediate expression operand.
@@ -2646,6 +2728,10 @@ static void setRequiredFeatureString(FeatureBitset FBS, std::string &Str) {
     Str += "ARMv8.1a";
   else if (FBS[AArch64::HasV8_2aOps])
     Str += "ARMv8.2a";
+  else if (FBS[AArch64::HasV8_3aOps])
+    Str += "ARMv8.3a";
+  else if (FBS[AArch64::HasV8_4aOps])
+    Str += "ARMv8.4a";
   else
     Str += "(unknown)";
 }
@@ -2756,9 +2842,11 @@ AArch64AsmParser::tryParseBarrierOperand(OperandVector &Operands) {
   MCAsmParser &Parser = getParser();
   const AsmToken &Tok = Parser.getTok();
 
+  if (Mnemonic == "tsb" && Tok.isNot(AsmToken::Identifier)) {
+    TokError("'csync' operand expected");
+    return MatchOperand_ParseFail;
   // Can be either a #imm style literal or an option name
-  if (parseOptionalToken(AsmToken::Hash) ||
-      Tok.is(AsmToken::Integer)) {
+  } else if (parseOptionalToken(AsmToken::Hash) || Tok.is(AsmToken::Integer)) {
     // Immediate operand.
     const MCExpr *ImmVal;
     SMLoc ExprLoc = getLoc();
@@ -2784,18 +2872,23 @@ AArch64AsmParser::tryParseBarrierOperand(OperandVector &Operands) {
     return MatchOperand_ParseFail;
   }
 
+  auto TSB = AArch64TSB::lookupTSBByName(Tok.getString());
   // The only valid named option for ISB is 'sy'
   auto DB = AArch64DB::lookupDBByName(Tok.getString());
   if (Mnemonic == "isb" && (!DB || DB->Encoding != AArch64DB::sy)) {
     TokError("'sy' or #imm operand expected");
     return MatchOperand_ParseFail;
-  } else if (!DB) {
+  // The only valid named option for TSB is 'csync'
+  } else if (Mnemonic == "tsb" && (!TSB || TSB->Encoding != AArch64TSB::csync)) {
+    TokError("'csync' operand expected");
+    return MatchOperand_ParseFail;
+  } else if (!DB && !TSB) {
     TokError("invalid barrier option name");
     return MatchOperand_ParseFail;
   }
 
   Operands.push_back(AArch64Operand::CreateBarrier(
-      DB->Encoding, Tok.getString(), getLoc(), getContext()));
+      DB ? DB->Encoding : TSB->Encoding, Tok.getString(), getLoc(), getContext()));
   Parser.Lex(); // Consume the option
 
   return MatchOperand_Success;
@@ -3635,12 +3728,89 @@ bool AArch64AsmParser::ParseInstruction(ParseInstructionInfo &Info,
   return false;
 }
 
+static inline bool isMatchingOrAlias(unsigned ZReg, unsigned Reg) {
+  assert((ZReg >= AArch64::Z0) && (ZReg <= AArch64::Z31));
+  return (ZReg == ((Reg - AArch64::B0) + AArch64::Z0)) ||
+         (ZReg == ((Reg - AArch64::H0) + AArch64::Z0)) ||
+         (ZReg == ((Reg - AArch64::S0) + AArch64::Z0)) ||
+         (ZReg == ((Reg - AArch64::D0) + AArch64::Z0)) ||
+         (ZReg == ((Reg - AArch64::Q0) + AArch64::Z0)) ||
+         (ZReg == ((Reg - AArch64::Z0) + AArch64::Z0));
+}
+
 // FIXME: This entire function is a giant hack to provide us with decent
 // operand range validation/diagnostics until TableGen/MC can be extended
 // to support autogeneration of this kind of validation.
-bool AArch64AsmParser::validateInstruction(MCInst &Inst,
-                                         SmallVectorImpl<SMLoc> &Loc) {
+bool AArch64AsmParser::validateInstruction(MCInst &Inst, SMLoc &IDLoc,
+                                           SmallVectorImpl<SMLoc> &Loc) {
   const MCRegisterInfo *RI = getContext().getRegisterInfo();
+  const MCInstrDesc &MCID = MII.get(Inst.getOpcode());
+
+  // A prefix only applies to the instruction following it.  Here we extract
+  // prefix information for the next instruction before validating the current
+  // one so that in the case of failure we don't erronously continue using the
+  // current prefix.
+  PrefixInfo Prefix = NextPrefix;
+  NextPrefix = PrefixInfo::CreateFromInst(Inst, MCID.TSFlags);
+
+  // Before validating the instruction in isolation we run through the rules
+  // applicable when it follows a prefix instruction.
+  // NOTE: brk & hlt can be prefixed but require no additional validation.
+  if (Prefix.isActive() &&
+      (Inst.getOpcode() != AArch64::BRK) &&
+      (Inst.getOpcode() != AArch64::HLT)) {
+
+    // Prefixed intructions must have a destructive operand.
+    if ((MCID.TSFlags & AArch64::DestructiveInstTypeMask) ==
+        AArch64::NotDestructive)
+      return Error(IDLoc, "instruction is unpredictable when following a"
+                   " movprfx, suggest replacing movprfx with mov");
+
+    // Destination operands must match.
+    if (Inst.getOperand(0).getReg() != Prefix.getDstReg())
+      return Error(Loc[0], "instruction is unpredictable when following a"
+                   " movprfx writing to a different destination");
+
+    // Destination operand must not be used in any other location.
+    for (unsigned i = 1; i < Inst.getNumOperands(); ++i) {
+      if (Inst.getOperand(i).isReg() &&
+          (MCID.getOperandConstraint(i, MCOI::TIED_TO) == -1) &&
+          isMatchingOrAlias(Prefix.getDstReg(), Inst.getOperand(i).getReg()))
+        return Error(Loc[0], "instruction is unpredictable when following a"
+                     " movprfx and destination also used as non-destructive"
+                     " source");
+    }
+
+    auto PPRRegClass = AArch64MCRegisterClasses[AArch64::PPRRegClassID];
+    if (Prefix.isPredicated()) {
+      int PgIdx = -1;
+
+      // Find the instructions general predicate.
+      for (unsigned i = 1; i < Inst.getNumOperands(); ++i)
+        if (Inst.getOperand(i).isReg() &&
+            PPRRegClass.contains(Inst.getOperand(i).getReg())) {
+          PgIdx = i;
+          break;
+        }
+
+      // Instruction must be predicated if the movprfx is predicated.
+      if (PgIdx == -1 ||
+          (MCID.TSFlags & AArch64::ElementSizeMask) == AArch64::ElementSizeNone)
+        return Error(IDLoc, "instruction is unpredictable when following a"
+                     " predicated movprfx, suggest using unpredicated movprfx");
+
+      // Instruction must use same general predicate as the movprfx.
+      if (Inst.getOperand(PgIdx).getReg() != Prefix.getPgReg())
+        return Error(IDLoc, "instruction is unpredictable when following a"
+                     " predicated movprfx using a different general predicate");
+
+      // Instruction element type must match the movprfx.
+      if ((MCID.TSFlags & AArch64::ElementSizeMask) != Prefix.getElementSize())
+        return Error(IDLoc, "instruction is unpredictable when following a"
+                     " predicated movprfx with a different element size");
+    }
+  }
+
   // Check for indexed addressing modes w/ the base register being the
   // same as a destination/source register or pair load where
   // the Rt == Rt2. All of those are undefined behaviour.
@@ -3865,6 +4035,7 @@ bool AArch64AsmParser::showMatchError(SMLoc Loc, unsigned ErrCode,
     case RegConstraintEqualityTy::EqualsReg:
       return Error(Loc, "operand must match destination register");
     }
+    llvm_unreachable("Unknown RegConstraintEqualityTy");
   }
   case Match_MissingFeature:
     return Error(Loc,
@@ -4099,6 +4270,14 @@ bool AArch64AsmParser::showMatchError(SMLoc Loc, unsigned ErrCode,
   case Match_InvalidZPR64UXTW64:
   case Match_InvalidZPR64SXTW64:
     return Error(Loc, "invalid shift/extend specified, expected 'z[0..31].d, (lsl|uxtw|sxtw) #3'");
+  case Match_InvalidZPR32LSL8:
+    return Error(Loc, "invalid shift/extend specified, expected 'z[0..31].s'");
+  case Match_InvalidZPR32LSL16:
+    return Error(Loc, "invalid shift/extend specified, expected 'z[0..31].s, lsl #1'");
+  case Match_InvalidZPR32LSL32:
+    return Error(Loc, "invalid shift/extend specified, expected 'z[0..31].s, lsl #2'");
+  case Match_InvalidZPR32LSL64:
+    return Error(Loc, "invalid shift/extend specified, expected 'z[0..31].s, lsl #3'");
   case Match_InvalidZPR64LSL8:
     return Error(Loc, "invalid shift/extend specified, expected 'z[0..31].d'");
   case Match_InvalidZPR64LSL16:
@@ -4477,7 +4656,7 @@ bool AArch64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
     NumOperands = Operands.size();
     for (unsigned i = 1; i < NumOperands; ++i)
       OperandLocs.push_back(Operands[i]->getStartLoc());
-    if (validateInstruction(Inst, OperandLocs))
+    if (validateInstruction(Inst, IDLoc, OperandLocs))
       return true;
 
     Inst.setLoc(IDLoc);
@@ -4625,6 +4804,10 @@ bool AArch64AsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
   case Match_InvalidZPR64SXTW32:
   case Match_InvalidZPR64UXTW64:
   case Match_InvalidZPR64SXTW64:
+  case Match_InvalidZPR32LSL8:
+  case Match_InvalidZPR32LSL16:
+  case Match_InvalidZPR32LSL32:
+  case Match_InvalidZPR32LSL64:
   case Match_InvalidZPR64LSL8:
   case Match_InvalidZPR64LSL16:
   case Match_InvalidZPR64LSL32:
@@ -4676,7 +4859,6 @@ bool AArch64AsmParser::ParseDirective(AsmToken DirectiveID) {
   const MCObjectFileInfo::Environment Format =
     getContext().getObjectFileInfo()->getObjectFileType();
   bool IsMachO = Format == MCObjectFileInfo::IsMachO;
-  bool IsCOFF = Format == MCObjectFileInfo::IsCOFF;
 
   StringRef IDVal = DirectiveID.getIdentifier();
   SMLoc Loc = DirectiveID.getLoc();
@@ -4690,14 +4872,14 @@ bool AArch64AsmParser::ParseDirective(AsmToken DirectiveID) {
     parseDirectiveLtorg(Loc);
   else if (IDVal == ".unreq")
     parseDirectiveUnreq(Loc);
-  else if (!IsMachO && !IsCOFF) {
-    if (IDVal == ".inst")
-      parseDirectiveInst(Loc);
+  else if (IDVal == ".inst")
+    parseDirectiveInst(Loc);
+  else if (IsMachO) {
+    if (IDVal == MCLOHDirectiveName())
+      parseDirectiveLOH(IDVal, Loc);
     else
       return true;
-  } else if (IDVal == MCLOHDirectiveName())
-    parseDirectiveLOH(IDVal, Loc);
-  else
+  } else
     return true;
   return false;
 }
@@ -4706,7 +4888,11 @@ static const struct {
   const char *Name;
   const FeatureBitset Features;
 } ExtensionMap[] = {
-  { "crc", {AArch64::FeatureCRC} },
+  { "crc",  {AArch64::FeatureCRC} },
+  { "sm4",  {AArch64::FeatureSM4} },
+  { "sha3", {AArch64::FeatureSHA3} },
+  { "sha2", {AArch64::FeatureSHA2} },
+  { "aes",  {AArch64::FeatureAES} },
   { "crypto", {AArch64::FeatureCrypto} },
   { "fp", {AArch64::FeatureFPARMv8} },
   { "simd", {AArch64::FeatureNEON} },
@@ -4719,6 +4905,54 @@ static const struct {
   { "rdma", {} },
   { "profile", {} },
 };
+
+static void ExpandCryptoAEK(AArch64::ArchKind ArchKind,
+                            SmallVector<StringRef, 4> &RequestedExtensions) {
+  const bool NoCrypto =
+      (std::find(RequestedExtensions.begin(), RequestedExtensions.end(),
+                 "nocrypto") != std::end(RequestedExtensions));
+  const bool Crypto =
+      (std::find(RequestedExtensions.begin(), RequestedExtensions.end(),
+                 "crypto") != std::end(RequestedExtensions));
+
+  if (!NoCrypto && Crypto) {
+    switch (ArchKind) {
+    default:
+      // Map 'generic' (and others) to sha2 and aes, because
+      // that was the traditional meaning of crypto.
+    case AArch64::ArchKind::ARMV8_1A:
+    case AArch64::ArchKind::ARMV8_2A:
+    case AArch64::ArchKind::ARMV8_3A:
+      RequestedExtensions.push_back("sha2");
+      RequestedExtensions.push_back("aes");
+      break;
+    case AArch64::ArchKind::ARMV8_4A:
+      RequestedExtensions.push_back("sm4");
+      RequestedExtensions.push_back("sha3");
+      RequestedExtensions.push_back("sha2");
+      RequestedExtensions.push_back("aes");
+      break;
+    }
+  } else if (NoCrypto) {
+    switch (ArchKind) {
+    default:
+      // Map 'generic' (and others) to sha2 and aes, because
+      // that was the traditional meaning of crypto.
+    case AArch64::ArchKind::ARMV8_1A:
+    case AArch64::ArchKind::ARMV8_2A:
+    case AArch64::ArchKind::ARMV8_3A:
+      RequestedExtensions.push_back("nosha2");
+      RequestedExtensions.push_back("noaes");
+      break;
+    case AArch64::ArchKind::ARMV8_4A:
+      RequestedExtensions.push_back("nosm4");
+      RequestedExtensions.push_back("nosha3");
+      RequestedExtensions.push_back("nosha2");
+      RequestedExtensions.push_back("noaes");
+      break;
+    }
+  }
+}
 
 /// parseDirectiveArch
 ///   ::= .arch token
@@ -4749,6 +4983,8 @@ bool AArch64AsmParser::parseDirectiveArch(SMLoc L) {
   SmallVector<StringRef, 4> RequestedExtensions;
   if (!ExtensionString.empty())
     ExtensionString.split(RequestedExtensions, '+');
+
+  ExpandCryptoAEK(ID, RequestedExtensions);
 
   FeatureBitset Features = STI.getFeatureBits();
   for (auto Name : RequestedExtensions) {
@@ -4808,6 +5044,8 @@ bool AArch64AsmParser::parseDirectiveCPU(SMLoc L) {
   MCSubtargetInfo &STI = copySTI();
   STI.setDefaultFeatures(CPU, "");
   CurLoc = incrementLoc(CurLoc, CPU.size());
+
+  ExpandCryptoAEK(llvm::AArch64::getCPUArchKind(CPU), RequestedExtensions);
 
   FeatureBitset Features = STI.getFeatureBits();
   for (auto Name : RequestedExtensions) {

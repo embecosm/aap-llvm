@@ -2451,45 +2451,73 @@ let AddedComplexity = 400, Predicates = [HasP9Vector] in {
   let isCommutable = 1 in {
   def XSADDQP   : X_VT5_VA5_VB5   <63,   4, "xsaddqp",
                                    [(set f128:$vT, (fadd f128:$vA, f128:$vB))]>;
-  def XSADDQPO  : X_VT5_VA5_VB5_Ro<63,   4, "xsaddqpo", []>;
+  def XSADDQPO : X_VT5_VA5_VB5_Ro<63, 4, "xsaddqpo",
+                                  [(set f128:$vT,
+                                  (int_ppc_addf128_round_to_odd
+                                  f128:$vA, f128:$vB))]>;
   def XSMULQP   : X_VT5_VA5_VB5   <63,  36, "xsmulqp",
                                    [(set f128:$vT, (fmul f128:$vA, f128:$vB))]>;
-  def XSMULQPO  : X_VT5_VA5_VB5_Ro<63,  36, "xsmulqpo", []>;
+  def XSMULQPO : X_VT5_VA5_VB5_Ro<63, 36, "xsmulqpo",
+                                  [(set f128:$vT,
+                                  (int_ppc_mulf128_round_to_odd
+                                  f128:$vA, f128:$vB))]>;
   }
 
   def XSSUBQP   : X_VT5_VA5_VB5   <63, 516, "xssubqp" ,
                                    [(set f128:$vT, (fsub f128:$vA, f128:$vB))]>;
-  def XSSUBQPO  : X_VT5_VA5_VB5_Ro<63, 516, "xssubqpo", []>;
+  def XSSUBQPO : X_VT5_VA5_VB5_Ro<63, 516, "xssubqpo",
+                                  [(set f128:$vT,
+                                  (int_ppc_subf128_round_to_odd
+                                  f128:$vA, f128:$vB))]>;
   def XSDIVQP   : X_VT5_VA5_VB5   <63, 548, "xsdivqp",
                                    [(set f128:$vT, (fdiv f128:$vA, f128:$vB))]>;
-  def XSDIVQPO  : X_VT5_VA5_VB5_Ro<63, 548, "xsdivqpo", []>;
+  def XSDIVQPO : X_VT5_VA5_VB5_Ro<63, 548, "xsdivqpo",
+                                  [(set f128:$vT,
+                                  (int_ppc_divf128_round_to_odd
+                                  f128:$vA, f128:$vB))]>;
 
   // Square-Root
   def XSSQRTQP  : X_VT5_XO5_VB5   <63, 27, 804, "xssqrtqp",
                                    [(set f128:$vT, (fsqrt f128:$vB))]>;
-  def XSSQRTQPO : X_VT5_XO5_VB5_Ro<63, 27, 804, "xssqrtqpo", []>;
+  def XSSQRTQPO : X_VT5_XO5_VB5_Ro<63, 27, 804, "xssqrtqpo",
+                                  [(set f128:$vT,
+                                  (int_ppc_sqrtf128_round_to_odd f128:$vB))]>;
 
   // (Negative) Multiply-{Add/Subtract}
   def XSMADDQP : X_VT5_VA5_VB5_FMA <63, 388, "xsmaddqp",
                                     [(set f128:$vT,
                                           (fma f128:$vA, f128:$vB,
                                                f128:$vTi))]>;
-  def XSMADDQPO : X_VT5_VA5_VB5_FMA_Ro<63, 388, "xsmaddqpo" , []>;
+
+  def XSMADDQPO : X_VT5_VA5_VB5_FMA_Ro<63, 388, "xsmaddqpo",
+                                      [(set f128:$vT,
+                                      (int_ppc_fmaf128_round_to_odd
+                                      f128:$vA,f128:$vB,f128:$vTi))]>;
+
   def XSMSUBQP  : X_VT5_VA5_VB5_FMA   <63, 420, "xsmsubqp"  ,
                                        [(set f128:$vT,
                                              (fma f128:$vA, f128:$vB,
                                                   (fneg f128:$vTi)))]>;
-  def XSMSUBQPO : X_VT5_VA5_VB5_FMA_Ro<63, 420, "xsmsubqpo" , []>;
+  def XSMSUBQPO : X_VT5_VA5_VB5_FMA_Ro<63, 420, "xsmsubqpo" ,
+                                      [(set f128:$vT,
+                                      (int_ppc_fmaf128_round_to_odd
+                                      f128:$vA, f128:$vB, (fneg f128:$vTi)))]>;
   def XSNMADDQP : X_VT5_VA5_VB5_FMA <63, 452, "xsnmaddqp",
                                      [(set f128:$vT,
                                            (fneg (fma f128:$vA, f128:$vB,
                                                       f128:$vTi)))]>;
-  def XSNMADDQPO: X_VT5_VA5_VB5_FMA_Ro<63, 452, "xsnmaddqpo", []>;
+  def XSNMADDQPO: X_VT5_VA5_VB5_FMA_Ro<63, 452, "xsnmaddqpo",
+                                      [(set f128:$vT,
+                                      (fneg (int_ppc_fmaf128_round_to_odd
+                                      f128:$vA, f128:$vB, f128:$vTi)))]>;
   def XSNMSUBQP : X_VT5_VA5_VB5_FMA <63, 484, "xsnmsubqp",
                                      [(set f128:$vT,
                                            (fneg (fma f128:$vA, f128:$vB,
                                                       (fneg f128:$vTi))))]>;
-  def XSNMSUBQPO: X_VT5_VA5_VB5_FMA_Ro<63, 484, "xsnmsubqpo", []>;
+  def XSNMSUBQPO: X_VT5_VA5_VB5_FMA_Ro<63, 484, "xsnmsubqpo",
+                                      [(set f128:$vT,
+                                      (fneg (int_ppc_fmaf128_round_to_odd
+                                      f128:$vA, f128:$vB, (fneg f128:$vTi))))]>;
 
   // Additional fnmsub patterns: -a*c + b == -(a*c - b)
   def : Pat<(fma (fneg f128:$A), f128:$C, f128:$B), (XSNMSUBQP $B, $C, $A)>;
@@ -2536,7 +2564,10 @@ let AddedComplexity = 400, Predicates = [HasP9Vector] in {
 
   // Round & Convert QP -> DP (dword[1] is set to zero)
   def XSCVQPDP  : X_VT5_XO5_VB5_VSFR<63, 20, 836, "xscvqpdp" , []>;
-  def XSCVQPDPO : X_VT5_XO5_VB5_VSFR_Ro<63, 20, 836, "xscvqpdpo", []>;
+  def XSCVQPDPO : X_VT5_XO5_VB5_VSFR_Ro<63, 20, 836, "xscvqpdpo",
+                                        [(set f64:$vT,
+                                        (int_ppc_truncf128_round_to_odd
+                                        f128:$vB))]>;
 
   // Truncate & Convert QP -> (Un)Signed (D)Word (dword[1] is set to zero)
   def XSCVQPSDZ : X_VT5_XO5_VB5<63, 25, 836, "xscvqpsdz", []>;
@@ -2605,6 +2636,20 @@ let AddedComplexity = 400, Predicates = [HasP9Vector] in {
   // Round to Quad-Precision Integer [with Inexact]
   def XSRQPI   : Z23_VT5_R1_VB5_RMC2_EX1<63,  5, 0, "xsrqpi" , []>;
   def XSRQPIX  : Z23_VT5_R1_VB5_RMC2_EX1<63,  5, 1, "xsrqpix", []>;
+
+  // Use current rounding mode
+  def : Pat<(f128 (fnearbyint f128:$vB)), (f128 (XSRQPI 0, $vB, 3))>;
+  // Round to nearest, ties away from zero
+  def : Pat<(f128 (fround f128:$vB)), (f128 (XSRQPI 0, $vB, 0))>;
+  // Round towards Zero
+  def : Pat<(f128 (ftrunc f128:$vB)), (f128 (XSRQPI 1, $vB, 1))>;
+  // Round towards +Inf
+  def : Pat<(f128 (fceil f128:$vB)), (f128 (XSRQPI 1, $vB, 2))>;
+  // Round towards -Inf
+  def : Pat<(f128 (ffloor f128:$vB)), (f128 (XSRQPI 1, $vB, 3))>;
+
+  // Use current rounding mode, [with Inexact]
+  def : Pat<(f128 (frint f128:$vB)), (f128 (XSRQPIX 0, $vB, 3))>;
 
   // Round Quad-Precision to Double-Extended Precision (fp80)
   def XSRQPXP  : Z23_VT5_R1_VB5_RMC2_EX1<63, 37, 0, "xsrqpxp", []>;
@@ -3449,6 +3494,17 @@ def DblToFlt {
   dag B1 = (f32 (fpround (f64 (extractelt v2f64:$B, 1))));
 }
 
+def ExtDbl {
+  dag A0S = (i32 (PPCmfvsr (f64 (PPCfctiwz (f64 (extractelt v2f64:$A, 0))))));
+  dag A1S = (i32 (PPCmfvsr (f64 (PPCfctiwz (f64 (extractelt v2f64:$A, 1))))));
+  dag B0S = (i32 (PPCmfvsr (f64 (PPCfctiwz (f64 (extractelt v2f64:$B, 0))))));
+  dag B1S = (i32 (PPCmfvsr (f64 (PPCfctiwz (f64 (extractelt v2f64:$B, 1))))));
+  dag A0U = (i32 (PPCmfvsr (f64 (PPCfctiwuz (f64 (extractelt v2f64:$A, 0))))));
+  dag A1U = (i32 (PPCmfvsr (f64 (PPCfctiwuz (f64 (extractelt v2f64:$A, 1))))));
+  dag B0U = (i32 (PPCmfvsr (f64 (PPCfctiwuz (f64 (extractelt v2f64:$B, 0))))));
+  dag B1U = (i32 (PPCmfvsr (f64 (PPCfctiwuz (f64 (extractelt v2f64:$B, 1))))));
+}
+
 def ByteToWord {
   dag LE_A0 = (i32 (sext_inreg (i32 (vector_extract v16i8:$A, 0)), i8));
   dag LE_A1 = (i32 (sext_inreg (i32 (vector_extract v16i8:$A, 4)), i8));
@@ -3526,9 +3582,15 @@ def FltToULong {
 }
 def DblToInt {
   dag A = (i32 (PPCmfvsr (f64 (PPCfctiwz f64:$A))));
+  dag B = (i32 (PPCmfvsr (f64 (PPCfctiwz f64:$B))));
+  dag C = (i32 (PPCmfvsr (f64 (PPCfctiwz f64:$C))));
+  dag D = (i32 (PPCmfvsr (f64 (PPCfctiwz f64:$D))));
 }
 def DblToUInt {
   dag A = (i32 (PPCmfvsr (f64 (PPCfctiwuz f64:$A))));
+  dag B = (i32 (PPCmfvsr (f64 (PPCfctiwuz f64:$B))));
+  dag C = (i32 (PPCmfvsr (f64 (PPCfctiwuz f64:$C))));
+  dag D = (i32 (PPCmfvsr (f64 (PPCfctiwuz f64:$D))));
 }
 def DblToLong {
   dag A = (i64 (PPCmfvsr (f64 (PPCfctidz f64:$A))));
@@ -3565,6 +3627,47 @@ def MrgFP {
   dag ABlToFlt = (XVCVDPSP (XXPERMDI $A, $B, 3));
   dag BAhToFlt = (XVCVDPSP (XXPERMDI $B, $A, 0));
   dag BAlToFlt = (XVCVDPSP (XXPERMDI $B, $A, 3));
+}
+
+// Word-element merge dags - conversions from f64 to i32 merged into vectors.
+def MrgWords {
+  // For big endian, we merge low and hi doublewords (A, B).
+  dag A0B0 = (v2f64 (XXPERMDI v2f64:$A, v2f64:$B, 0));
+  dag A1B1 = (v2f64 (XXPERMDI v2f64:$A, v2f64:$B, 3));
+  dag CVA1B1S = (v4i32 (XVCVDPSXWS A1B1));
+  dag CVA0B0S = (v4i32 (XVCVDPSXWS A0B0));
+  dag CVA1B1U = (v4i32 (XVCVDPUXWS A1B1));
+  dag CVA0B0U = (v4i32 (XVCVDPUXWS A0B0));
+
+  // For little endian, we merge low and hi doublewords (B, A).
+  dag B1A1 = (v2f64 (XXPERMDI v2f64:$B, v2f64:$A, 0));
+  dag B0A0 = (v2f64 (XXPERMDI v2f64:$B, v2f64:$A, 3));
+  dag CVB1A1S = (v4i32 (XVCVDPSXWS B1A1));
+  dag CVB0A0S = (v4i32 (XVCVDPSXWS B0A0));
+  dag CVB1A1U = (v4i32 (XVCVDPUXWS B1A1));
+  dag CVB0A0U = (v4i32 (XVCVDPUXWS B0A0));
+
+  // For big endian, we merge hi doublewords of (A, C) and (B, D), convert
+  // then merge.
+  dag AC = (v2f64 (XXPERMDI (COPY_TO_REGCLASS f64:$A, VSRC),
+                            (COPY_TO_REGCLASS f64:$C, VSRC), 0));
+  dag BD = (v2f64 (XXPERMDI (COPY_TO_REGCLASS f64:$B, VSRC),
+                            (COPY_TO_REGCLASS f64:$D, VSRC), 0));
+  dag CVACS = (v4i32 (XVCVDPSXWS AC));
+  dag CVBDS = (v4i32 (XVCVDPSXWS BD));
+  dag CVACU = (v4i32 (XVCVDPUXWS AC));
+  dag CVBDU = (v4i32 (XVCVDPUXWS BD));
+
+  // For little endian, we merge hi doublewords of (D, B) and (C, A), convert
+  // then merge.
+  dag DB = (v2f64 (XXPERMDI (COPY_TO_REGCLASS f64:$D, VSRC),
+                            (COPY_TO_REGCLASS f64:$B, VSRC), 0));
+  dag CA = (v2f64 (XXPERMDI (COPY_TO_REGCLASS f64:$C, VSRC),
+                            (COPY_TO_REGCLASS f64:$A, VSRC), 0));
+  dag CVDBS = (v4i32 (XVCVDPSXWS DB));
+  dag CVCAS = (v4i32 (XVCVDPSXWS CA));
+  dag CVDBU = (v4i32 (XVCVDPUXWS DB));
+  dag CVCAU = (v4i32 (XVCVDPUXWS CA));
 }
 
 // Patterns for BUILD_VECTOR nodes.
@@ -3634,6 +3737,20 @@ let AddedComplexity = 400 in {
     def : Pat<(v4f32 (build_vector DblToFlt.A0, DblToFlt.A1,
                                    DblToFlt.B0, DblToFlt.B1)),
               (v4f32 (VMRGEW MrgFP.ABhToFlt, MrgFP.ABlToFlt))>;
+
+    // Convert 4 doubles to a vector of ints.
+    def : Pat<(v4i32 (build_vector DblToInt.A, DblToInt.B,
+                                   DblToInt.C, DblToInt.D)),
+              (v4i32 (VMRGEW MrgWords.CVACS, MrgWords.CVBDS))>;
+    def : Pat<(v4i32 (build_vector DblToUInt.A, DblToUInt.B,
+                                   DblToUInt.C, DblToUInt.D)),
+              (v4i32 (VMRGEW MrgWords.CVACU, MrgWords.CVBDU))>;
+    def : Pat<(v4i32 (build_vector ExtDbl.A0S, ExtDbl.A1S,
+                                   ExtDbl.B0S, ExtDbl.B1S)),
+              (v4i32 (VMRGEW MrgWords.CVA0B0S, MrgWords.CVA1B1S))>;
+    def : Pat<(v4i32 (build_vector ExtDbl.A0U, ExtDbl.A1U,
+                                   ExtDbl.B0U, ExtDbl.B1U)),
+              (v4i32 (VMRGEW MrgWords.CVA0B0U, MrgWords.CVA1B1U))>;
   }
 
   let Predicates = [IsLittleEndian, HasVSX] in {
@@ -3648,6 +3765,20 @@ let AddedComplexity = 400 in {
     def : Pat<(v4f32 (build_vector DblToFlt.A0, DblToFlt.A1,
                                    DblToFlt.B0, DblToFlt.B1)),
               (v4f32 (VMRGEW MrgFP.BAhToFlt, MrgFP.BAlToFlt))>;
+
+    // Convert 4 doubles to a vector of ints.
+    def : Pat<(v4i32 (build_vector DblToInt.A, DblToInt.B,
+                                   DblToInt.C, DblToInt.D)),
+              (v4i32 (VMRGEW MrgWords.CVDBS, MrgWords.CVCAS))>;
+    def : Pat<(v4i32 (build_vector DblToUInt.A, DblToUInt.B,
+                                   DblToUInt.C, DblToUInt.D)),
+              (v4i32 (VMRGEW MrgWords.CVDBU, MrgWords.CVCAU))>;
+    def : Pat<(v4i32 (build_vector ExtDbl.A0S, ExtDbl.A1S,
+                                   ExtDbl.B0S, ExtDbl.B1S)),
+              (v4i32 (VMRGEW MrgWords.CVB1A1S, MrgWords.CVB0A0S))>;
+    def : Pat<(v4i32 (build_vector ExtDbl.A0U, ExtDbl.A1U,
+                                   ExtDbl.B0U, ExtDbl.B1U)),
+              (v4i32 (VMRGEW MrgWords.CVB1A1U, MrgWords.CVB0A0U))>;
   }
 
   let Predicates = [HasDirectMove] in {

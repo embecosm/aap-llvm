@@ -462,3 +462,126 @@ define float @fabs_select_positive_constants_vector_extract(i32 %c) {
   %fabs = call float @llvm.fabs.f32(float %extract)
   ret float %fabs
 }
+
+declare float @llvm.minnum.f32(float, float)
+declare float @llvm.maxnum.f32(float, float)
+declare double @llvm.minnum.f64(double, double)
+declare double @llvm.maxnum.f64(double, double)
+declare <2 x double> @llvm.minnum.v2f64(<2 x double>, <2 x double>)
+declare <2 x double> @llvm.maxnum.v2f64(<2 x double>, <2 x double>)
+
+; From the LangRef for minnum/maxnum:
+; "If either operand is a NaN, returns the other non-NaN operand."
+
+define double @maxnum_nan_op0(double %x) {
+; CHECK-LABEL: @maxnum_nan_op0(
+; CHECK-NEXT:    ret double [[X:%.*]]
+;
+  %r = call double @llvm.maxnum.f64(double 0x7ff8000000000000, double %x)
+  ret double %r
+}
+
+define double @maxnum_nan_op1(double %x) {
+; CHECK-LABEL: @maxnum_nan_op1(
+; CHECK-NEXT:    ret double [[X:%.*]]
+;
+  %r = call double @llvm.maxnum.f64(double %x, double 0x7ff800000000dead)
+  ret double %r
+}
+
+define double @minnum_nan_op0(double %x) {
+; CHECK-LABEL: @minnum_nan_op0(
+; CHECK-NEXT:    ret double [[X:%.*]]
+;
+  %r = call double @llvm.minnum.f64(double 0x7ff8000dead00000, double %x)
+  ret double %r
+}
+
+define double @minnum_nan_op1(double %x) {
+; CHECK-LABEL: @minnum_nan_op1(
+; CHECK-NEXT:    ret double [[X:%.*]]
+;
+  %r = call double @llvm.minnum.f64(double %x, double 0x7ff800dead00dead)
+  ret double %r
+}
+
+define <2 x double> @maxnum_nan_op0_vec(<2 x double> %x) {
+; CHECK-LABEL: @maxnum_nan_op0_vec(
+; CHECK-NEXT:    ret <2 x double> [[X:%.*]]
+;
+  %r = call <2 x double> @llvm.maxnum.v2f64(<2 x double> <double 0x7ff8000000000000, double undef>, <2 x double> %x)
+  ret <2 x double> %r
+}
+
+define <2 x double> @maxnum_nan_op1_vec(<2 x double> %x) {
+; CHECK-LABEL: @maxnum_nan_op1_vec(
+; CHECK-NEXT:    ret <2 x double> [[X:%.*]]
+;
+  %r = call <2 x double> @llvm.maxnum.v2f64(<2 x double> %x, <2 x double> <double 0x7ff800000000dead, double 0x7ff8ffffffffffff>)
+  ret <2 x double> %r
+}
+
+define <2 x double> @minnum_nan_op0_vec(<2 x double> %x) {
+; CHECK-LABEL: @minnum_nan_op0_vec(
+; CHECK-NEXT:    ret <2 x double> [[X:%.*]]
+;
+  %r = call <2 x double> @llvm.minnum.v2f64(<2 x double> <double undef, double 0x7ff8000dead00000>, <2 x double> %x)
+  ret <2 x double> %r
+}
+
+define <2 x double> @minnum_nan_op1_vec(<2 x double> %x) {
+; CHECK-LABEL: @minnum_nan_op1_vec(
+; CHECK-NEXT:    ret <2 x double> [[X:%.*]]
+;
+  %r = call <2 x double> @llvm.minnum.v2f64(<2 x double> %x, <2 x double> <double 0x7ff800dead00dead, double 0x7ff800dead00dead>)
+  ret <2 x double> %r
+}
+
+define float @maxnum_undef_op1(float %x) {
+; CHECK-LABEL: @maxnum_undef_op1(
+; CHECK-NEXT:    ret float [[X:%.*]]
+;
+  %val = call float @llvm.maxnum.f32(float %x, float undef)
+  ret float %val
+}
+
+define float @maxnum_undef_op0(float %x) {
+; CHECK-LABEL: @maxnum_undef_op0(
+; CHECK-NEXT:    ret float [[X:%.*]]
+;
+  %val = call float @llvm.maxnum.f32(float undef, float %x)
+  ret float %val
+}
+
+define float @minnum_undef_op1(float %x) {
+; CHECK-LABEL: @minnum_undef_op1(
+; CHECK-NEXT:    ret float [[X:%.*]]
+;
+  %val = call float @llvm.minnum.f32(float %x, float undef)
+  ret float %val
+}
+
+define float @minnum_undef_op0(float %x) {
+; CHECK-LABEL: @minnum_undef_op0(
+; CHECK-NEXT:    ret float [[X:%.*]]
+;
+  %val = call float @llvm.minnum.f32(float undef, float %x)
+  ret float %val
+}
+
+define float @minnum_same_args(float %x) {
+; CHECK-LABEL: @minnum_same_args(
+; CHECK-NEXT:    ret float [[X:%.*]]
+;
+  %y = call float @llvm.minnum.f32(float %x, float %x)
+  ret float %y
+}
+
+define float @maxnum_same_args(float %x) {
+; CHECK-LABEL: @maxnum_same_args(
+; CHECK-NEXT:    ret float [[X:%.*]]
+;
+  %y = call float @llvm.maxnum.f32(float %x, float %x)
+  ret float %y
+}
+

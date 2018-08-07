@@ -574,6 +574,8 @@ namespace llvm {
 
     bool useSoftFloat() const override;
 
+    bool hasSPE() const;
+
     MVT getScalarShiftAmountTy(const DataLayout &, EVT) const override {
       return MVT::i32;
     }
@@ -663,7 +665,7 @@ namespace llvm {
     SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 
     SDValue BuildSDIVPow2(SDNode *N, const APInt &Divisor, SelectionDAG &DAG,
-                          std::vector<SDNode *> *Created) const override;
+                          SmallVectorImpl<SDNode *> &Created) const override;
 
     unsigned getRegisterByName(const char* RegName, EVT VT,
                                SelectionDAG &DAG) const override;
@@ -868,6 +870,14 @@ namespace llvm {
     const MCExpr *getPICJumpTableRelocBaseExpr(const MachineFunction *MF,
                                                unsigned JTI,
                                                MCContext &Ctx) const override;
+
+    unsigned getNumRegistersForCallingConv(LLVMContext &Context,
+                                           CallingConv:: ID CC,
+                                           EVT VT) const override;
+
+    MVT getRegisterTypeForCallingConv(LLVMContext &Context,
+                                      CallingConv:: ID CC,
+                                      EVT VT) const override;
 
   private:
     struct ReuseLoadInfo {
@@ -1133,7 +1143,7 @@ namespace llvm {
                                          ISD::ArgFlagsTy &ArgFlags,
                                          CCState &State);
 
-  bool 
+  bool
   CC_PPC32_SVR4_Custom_SkipLastArgRegsPPCF128(unsigned &ValNo, MVT &ValVT,
                                                  MVT &LocVT,
                                                  CCValAssign::LocInfo &LocInfo,
