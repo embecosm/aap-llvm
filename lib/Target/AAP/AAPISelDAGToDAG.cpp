@@ -85,6 +85,7 @@ bool AAPDAGToDAGISel::SelectInlineAsmMemoryOperand(
   switch (ConstraintID) {
   default:
     return true;
+  case InlineAsm::Constraint_i:
   case InlineAsm::Constraint_m:
     SDLoc DL(Op);
     SDValue RC =
