@@ -702,7 +702,6 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   unsigned RegMaskSize = MachineOperand::getRegMaskSize(TRI->getNumRegs());
   memcpy(RegMask, Mask, sizeof(RegMask[0]) * RegMaskSize);
 
-
   // Create the RegMask Operand according to our dynamic mask, the dynamic
   // mask will be updated in LowerCallResult
   Ops.push_back(DAG.getRegisterMask(RegMask));

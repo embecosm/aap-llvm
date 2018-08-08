@@ -57,6 +57,10 @@ class AAPTargetLowering : public TargetLowering {
 public:
   explicit AAPTargetLowering(const TargetMachine &TM, const AAPSubtarget &STI);
 
+  MVT::SimpleValueType getCmpLibcallReturnType() const override {
+    return MVT::i16;
+  }
+
   /// getTargetNodeName - This method returns the name of a target specific
   //  DAG node.
   const char *getTargetNodeName(unsigned Opcode) const override;
