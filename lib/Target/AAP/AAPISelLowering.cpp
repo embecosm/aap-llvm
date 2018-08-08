@@ -698,9 +698,10 @@ SDValue AAPTargetLowering::LowerCCCCallTo(
   assert(Mask && "No call preserved mask for the calling convention");
 
   // Define a new dynamic register mask based on the exiting static mask.
-  uint32_t *RegMask = MF.allocateRegisterMask(TRI->getNumRegs());
-  unsigned RegMaskSize = (TRI->getNumRegs() + 31) / 32;
-  memcpy(RegMask, Mask, sizeof(uint32_t) * RegMaskSize);
+  uint32_t *RegMask = MF.allocateRegMask();
+  unsigned RegMaskSize = MachineOperand::getRegMaskSize(TRI->getNumRegs());
+  memcpy(RegMask, Mask, sizeof(RegMask[0]) * RegMaskSize);
+
 
   // Create the RegMask Operand according to our dynamic mask, the dynamic
   // mask will be updated in LowerCallResult
