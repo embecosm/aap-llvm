@@ -13,6 +13,11 @@ Architecture & Platform Information for Compiler Writers
 Hardware
 ========
 
+AAP
+---
+
+* `AAP (An Altruistic Processor) Architecture Specification <https://www.embecosm.com/appnotes/ean13/ean13.pdf>`_
+
 AArch64 & ARM
 -------------
 
