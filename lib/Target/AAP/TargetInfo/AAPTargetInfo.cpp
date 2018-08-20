@@ -22,5 +22,3 @@ extern "C" void LLVMInitializeAAPTargetInfo() {
   RegisterTarget<Triple::aap> X(getTheAAPTarget(), "aap", "AAP [experimental]",
                                 "AAP");
 }
-
-extern "C" void LLVMInitializeAAPTargetMC() {}

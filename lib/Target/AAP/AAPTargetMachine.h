@@ -14,6 +14,7 @@
 #ifndef AAP_TARGETMACHINE_H
 #define AAP_TARGETMACHINE_H
 
+#include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Target/TargetMachine.h"
@@ -34,7 +35,6 @@ public:
     return TLOF.get();
   }
 }; // AAPTargetMachine
-Target &getTheAAPTarget();
 } // end namespace llvm
 
 #endif
