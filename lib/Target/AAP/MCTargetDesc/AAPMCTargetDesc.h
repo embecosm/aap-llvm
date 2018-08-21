@@ -52,4 +52,7 @@ std::unique_ptr<MCObjectTargetWriter> createAAPELFObjectWriter(uint8_t OSABI,
 #define GET_INSTRINFO_ENUM
 #include "AAPGenInstrInfo.inc"
 
+#define GET_SUBTARGETINFO_ENUM
+#include "AAPGenSubtargetInfo.inc"
+
 #endif

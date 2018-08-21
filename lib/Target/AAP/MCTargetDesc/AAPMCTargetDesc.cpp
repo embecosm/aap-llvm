@@ -17,6 +17,7 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/TargetRegistry.h"
 
 using namespace llvm;
@@ -26,6 +27,9 @@ using namespace llvm;
 
 #define GET_REGINFO_MC_DESC
 #include "AAPGenRegisterInfo.inc"
+
+#define GET_SUBTARGETINFO_MC_DESC
+#include "AAPGenSubtargetInfo.inc"
 
 static MCInstrInfo *createAAPMCInstrInfo() {
   MCInstrInfo *X = new MCInstrInfo();
@@ -47,6 +51,11 @@ static MCInstPrinter *createAAPMCInstPrinter(const Triple &T,
   return new AAPInstPrinter(MAI, MII, MRI);
 }
 
+static MCSubtargetInfo *createAAPMCSubtargetInfo(const Triple &TT,
+                                                 StringRef CPU, StringRef FS) {
+  return createAAPMCSubtargetInfoImpl(TT, CPU, FS);
+}
+
 extern "C" void LLVMInitializeAAPTargetMC() {
   // Register the MC asm info.
   RegisterMCAsmInfo<AAPMCAsmInfo> X(getTheAAPTarget());
@@ -63,6 +72,9 @@ extern "C" void LLVMInitializeAAPTargetMC() {
   // Register the instruction printer
   TargetRegistry::RegisterMCInstPrinter(getTheAAPTarget(),
                                         createAAPMCInstPrinter);
+  // Reguster the MC subtarget info
+  TargetRegistry::RegisterMCSubtargetInfo(getTheAAPTarget(),
+                                          createAAPMCSubtargetInfo);
   // Register the asm backend
   TargetRegistry::RegisterMCAsmBackend(getTheAAPTarget(), createAAPAsmBackend);
 }

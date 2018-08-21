@@ -88,6 +88,6 @@ MCAsmBackend *llvm::createAAPAsmBackend(const Target &T,
                                         const MCRegisterInfo &MRI,
                                         const MCTargetOptions &Options) {
   uint8_t OSABI =
-      MCELFObjectTargetWriter::getOSABI(Triple("aap").getOS());
+      MCELFObjectTargetWriter::getOSABI(Triple(STI.getTargetTriple()).getOS());
   return new AAPAsmBackend(OSABI);
 }

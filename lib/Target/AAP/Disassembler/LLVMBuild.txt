@@ -1,4 +1,4 @@
-;===- ./lib/Target/AAP/LLVMBuild.txt ---------------------------*- Conf -*--===;
+;===- ./lib/Target/AAP/Disassembler/LLVMBuild.txt --------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -15,20 +15,9 @@
 ;
 ;===------------------------------------------------------------------------===;
 
-[common]
-subdirectories = AsmParser Disassembler InstPrinter TargetInfo MCTargetDesc
-
 [component_0]
-type = TargetGroup
-name = AAP
-parent = Target
-has_asmparser = 1
-has_asmprinter = 1
-has_disassembler = 1
-
-[component_1]
 type = Library
-name = AAPCodeGen
+name = AAPDisassembler
 parent = AAP
-required_libraries = AsmPrinter CodeGen Core Support Target AAPAsmPrinter AAPDesc AAPInfo
+required_libraries = MCDisassembler Support AAPInfo
 add_to_library_groups = AAP
