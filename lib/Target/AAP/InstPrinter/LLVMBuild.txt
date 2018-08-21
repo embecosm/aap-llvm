@@ -1,4 +1,4 @@
-;===- ./lib/Target/AAP/MCTargetDesc/LLVMBuild.txt --------------*- Conf -*--===;
+;===- ./lib/Target/AAP/InstPrinter/LLVMBuild.txt ---------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -17,7 +17,7 @@
 
 [component_0]
 type = Library
-name = AAPDesc
+name = AAPAsmPrinter
 parent = AAP
-required_libraries = MC Support AAPAsmPrinter AAPInfo
+required_libraries = MC Support
 add_to_library_groups = AAP
