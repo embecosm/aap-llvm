@@ -6,8 +6,8 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-#ifndef LLVM_AAP_AAPFIXUPKINDS_H
-#define LLVM_AAP_AAPFIXUPKINDS_H
+#ifndef LLVM_LIB_TARGET_AAP_MCTARGETDESC_AAPFIXUPKINDS_H
+#define LLVM_LIB_TARGET_AAP_MCTARGETDESC_AAPFIXUPKINDS_H
 
 #include "llvm/MC/MCFixup.h"
 
@@ -17,7 +17,7 @@ namespace AAP {
 // one can have multiple fixup types for a given relocation and thus need
 // to be uniquely named.
 //
-// This table *must* be in the save order of
+// This table *must* be in the same order of
 // MCFixupKindInfo Infos[AAP::NumTargetFixupKinds]
 // in AAPAsmBackend.cpp.
 //

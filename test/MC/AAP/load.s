@@ -27,6 +27,12 @@ ldb   $r0,  [$r61,  (11 - 9)]         ;CHECK: ldb $r0,  [$r61,    2] ; encoding:
 ldb   $r5,  [$r1,   (256 + 255)]      ;CHECK: ldb $r5,  [$r1,   511] ; encoding: [0x4f,0xa1,0x07,0x0e]
 ldb   $r43, [$r17,  (-256 - 256)]     ;CHECK: ldb $r43, [$r17, -512] ; encoding: [0xc8,0xa0,0x50,0x11]
 
+; Byte loads with relocations
+ldb   $r0,  [$r5,   a]        ;CHECK: ldb $r0,  [$r5,   a]   ; encoding: [0x28'A',0xa0'A',A,A]
+ldb   $r1,  [$r3,   b]        ;CHECK: ldb $r1,  [$r3,   b]   ; encoding: [0x58'A',0xa0'A',A,A]
+ldb   $r17, [$r39,  b]        ;CHECK: ldb $r17, [$r39,  b]   ; encoding: [0x78'A',0xa0'A',0xa0'A',A]
+ldb   $r15, [$r11,  (a - b)]  ;CHECK: ldb $r15, [$r11,  a-b] ; encoding: [0xd8'A',0xa1'A',0x48'A',A]
+
 ; Postinc/Predec bytes loads with immediate
 ldb   $r5,  [$r4+,   0]    ;CHECK: ldb $r5,  [$r4+,     0] ; encoding: [0x60,0x23]
 ldb   $r0,  [$r2+,   2]    ;CHECK: ldb $r0,  [$r2+,     2] ; encoding: [0x12,0x22]
@@ -51,6 +57,12 @@ ldb   $r0,  [$r61+, (11 - 9)]         ;CHECK: ldb $r0,  [$r61+,    2] ; encoding
 ldb   $r5,  [$r1+,  (256 + 255)]      ;CHECK: ldb $r5,  [$r1+,   511] ; encoding: [0x4f,0xa3,0x07,0x0e]
 ldb   $r43, [$r17+, (-256 - 256)]     ;CHECK: ldb $r43, [$r17+, -512] ; encoding: [0xc8,0xa2,0x50,0x11]
 
+; Postinc/Predec byte loads with relocations
+ldb   $r0,  [$r5+,   a]        ;CHECK: ldb $r0,  [$r5+,   a]   ; encoding: [0x28'A',0xa2'A',A,A]
+ldb   $r1,  [-$r3,   b]        ;CHECK: ldb $r1,  [-$r3,   b]   ; encoding: [0x58'A',0xa4'A',A,A]
+ldb   $r17, [$r39+,  b]        ;CHECK: ldb $r17, [$r39+,  b]   ; encoding: [0x78'A',0xa2'A',0xa0'A',A]
+ldb   $r15, [-$r11,  (a - b)]  ;CHECK: ldb $r15, [-$r11,  a-b] ; encoding: [0xd8'A',0xa5'A',0x48'A',A]
+
 
 ; Word loads with immediates
 ldw   $r7,  [$r1,   0]    ;CHECK: ldw $r7,  [$r1,     0] ; encoding: [0xc8,0x29]
@@ -66,6 +78,10 @@ ldw   $r5,  [$r7,   (81726 - 81727)]  ;CHECK: ldw $r5,  [$r7,    -1] ; encoding:
 ldw   $r15, [$r34,  (0 + 0)]          ;CHECK: ldw $r15, [$r34,    0] ; encoding: [0xd0,0xa9,0x60,0x00]
 ldw   $r43, [$r17,  (-256 - 256)]     ;CHECK: ldw $r43, [$r17, -512] ; encoding: [0xc8,0xa8,0x50,0x11]
 
+; Word loads with relocations
+ldw   $r17, [$r39,  b]        ;CHECK: ldw $r17, [$r39,  b]   ; encoding: [0x78'A',0xa8'A',0xa0'A',A]
+ldw   $r15, [$r11,  (a - b)]  ;CHECK: ldw $r15, [$r11,  a-b] ; encoding: [0xd8'A',0xa9'A',0x48'A',A]
+
 ; Postinc/Predec word loads with immediates
 ldw   $r0,  [$r2+,   2]    ;CHECK: ldw $r0,  [$r2+,     2] ; encoding: [0x12,0x2a]
 ldw   $r7,  [-$r2,  -2]    ;CHECK: ldw $r7,  [-$r2,    -2] ; encoding: [0xd6,0x2d]
@@ -80,3 +96,7 @@ ldw   $r7,  [-$r6,  (-5 + 1)]     ;CHECK: ldw $r7,  [-$r6,    -4] ; encoding: [0
 ldw   $r29, [$r34+, (0 + 0)]      ;CHECK: ldw $r29, [$r34+,    0] ; encoding: [0x50,0xab,0xe0,0x00]
 ldw   $r40, [-$r1,  (5 - 2)]      ;CHECK: ldw $r40, [-$r1,     3] ; encoding: [0x0b,0xac,0x40,0x01]
 ldw   $r43, [$r17+, (-256 - 256)] ;CHECK: ldw $r43, [$r17+, -512] ; encoding: [0xc8,0xaa,0x50,0x11]
+
+; Postinc/Predec word loads with relocations
+ldw   $r17, [$r39+,  b]        ;CHECK: ldw $r17, [$r39+, b]   ; encoding: [0x78'A',0xaa'A',0xa0'A',A]
+ldw   $r15, [-$r11,  (a - b)]  ;CHECK: ldw $r15, [-$r11, a-b] ; encoding: [0xd8'A',0xad'A',0x48'A',A]

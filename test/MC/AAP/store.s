@@ -27,6 +27,11 @@ stb   [$r1,   (1024 - 513)],      $r0   ;CHECK: stb [$r1,   511], $r0  ; encodin
 stb   [$r40,  (-256 + 123)],      $r16  ;CHECK: stb [$r40, -133], $r16 ; encoding: [0x03,0xb0,0x57,0x1b]
 stb   [$r18,  (0xdead - 0xdeaf)], $r8   ;CHECK: stb [$r18,   -2], $r8  ; encoding: [0x86,0xb0,0x8f,0x1e]
 
+; Byte stores with relocations
+stb   [$r0,  a],        $r1   ;CHECK: stb [$r0, a],   $r1  ; encoding: [0x08'A',0xb0'A',A,A]
+stb   [$r7,  b],        $r2   ;CHECK: stb [$r7, b],   $r2  ; encoding: [0xd0'A',0xb1'A',A,A]
+stb   [$r1,  (c - a)],  $r50  ;CHECK: stb [$r1, c-a], $r50 ; encoding: [0x50'A',0xb0'A',0x30'A',A]
+
 ; Postinc/Predec byte stores with immediates
 stb   [$r5+,   1],   $r0   ;CHECK: stb [$r5+,   1],   $r0  ; encoding: [0x41,0x33]
 stb   [$r6+,   3],   $r2   ;CHECK: stb [$r6+,   3],   $r2  ; encoding: [0x93,0x33]
@@ -51,6 +56,11 @@ stb   [-$r1,   (1024 - 513)],      $r8   ;CHECK: stb [-$r1, 511], $r8  ; encodin
 stb   [$r40+,  (-256 + 256)],      $r16  ;CHECK: stb [$r40+,  0], $r16 ; encoding: [0x00,0xb2,0x50,0x01]
 stb   [-$r18,  (0xdead - 0xdead)], $r8   ;CHECK: stb [-$r18,  0], $r8  ; encoding: [0x80,0xb4,0x88,0x00]
 
+; Postinc/Predec byte stores with relocations
+stb   [$r7+,  a],        $r6   ;CHECK: stb [$r7+,  a],   $r6  ; encoding: [0xf0'A',0xb3'A',A,A]
+stb   [-$r0,  b],        $r3   ;CHECK: stb [-$r0,  b],   $r3  ; encoding: [0x18'A',0xb4'A',A,A]
+stb   [$r1+,  (b + a)],  $r8   ;CHECK: stb [$r1+,  b+a], $r8  ; encoding: [0x40'A',0xb2'A',0x08'A',A]
+
 
 ; Word stores with immediates
 stw   [$r1,   2],   $r1   ;CHECK: stw [$r1,   2], $r1  ; encoding: [0x4a,0x38]
@@ -65,6 +75,10 @@ stw   [$r6,   (-2 + 1)],          $r2   ;CHECK: stw [$r6,   -1], $r2  ; encoding
 stw   [$r1,   (1024 - 513)],      $r0   ;CHECK: stw [$r1,  511], $r0  ; encoding: [0x47,0xb8,0x07,0x0e]
 stw   [$r18,  (0xdead - 0xdeaf)], $r8   ;CHECK: stw [$r18,  -2], $r8  ; encoding: [0x86,0xb8,0x8f,0x1e]
 
+; Word stores with relocations
+stw   [$r7,  b],        $r2   ;CHECK: stw [$r7, b],   $r2  ; encoding: [0xd0'A',0xb9'A',A,A]
+stw   [$r1,  (c - a)],  $r50  ;CHECK: stw [$r1, c-a], $r50 ; encoding: [0x50'A',0xb8'A',0x30'A',A]
+
 ; Postinc/Predec word stores with immediates
 stw   [-$r7,   2],   $r7   ;CHECK: stw [-$r7,   2], $r7 ; encoding: [0xfa,0x3d]
 stw   [$r2+,  -4],   $r2   ;CHECK: stw [$r2+,  -4], $r2 ; encoding: [0x94,0x3a]
@@ -78,3 +92,7 @@ stw   [-$r2,   (91 - 95)],         $r2   ;CHECK: stw [-$r2,  -4], $r2  ; encodin
 stw   [$r6+,   (2 - 1)],           $r2   ;CHECK: stw [$r6+,   1], $r2  ; encoding: [0x91,0x3b]
 stw   [$r40+,  (-256 + 256)],      $r16  ;CHECK: stw [$r40+,  0], $r16 ; encoding: [0x00,0xba,0x50,0x01]
 stw   [-$r18,  (0xdead - 0xdead)], $r8   ;CHECK: stw [-$r18,  0], $r8  ; encoding: [0x80,0xbc,0x88,0x00]
+
+; Postinc/Predec word stores with relocations
+stw   [$r7+,  a],  $r6   ;CHECK: stw [$r7+,  a], $r6 ; encoding: [0xf0'A',0xbb'A',A,A]
+stw   [-$r0,  b],  $r3   ;CHECK: stw [-$r0,  b], $r3 ; encoding: [0x18'A',0xbc'A',A,A]

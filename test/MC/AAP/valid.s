@@ -55,16 +55,13 @@ ldw $r2, [$r3, 511]
 ; CHECK: encoding: [0x98,0xa8,0x00,0x10]
 ldw $r2, [$r3, -512]
 
-; CHECK-INST: .L1:
-.L1:
+; CHECK-INST: bra -16
+; CHECK: encoding: [0xf0,0xc1,0xff,0x1f]
+bra -16
 
-; CHECK-INST: bra .L1
-; CHECK: encoding: [0x00,0xc0,0x00,0x00]
-bra .L1
-
-; CHECK-INST: beq .L1, $r2, $r3
-; CHECK: encoding: [0x13,0xc4,0x00,0x00]
-beq .L1, $r2, $r3
+; CHECK-INST: beq -16, $r2, $r3
+; CHECK: encoding: [0x13,0xc4,0x80,0x1f]
+beq -16, $r2, $r3
 
 ; CHECK-INST: jmp $r0
 ; CHECK: encoding: [0x00,0x50]

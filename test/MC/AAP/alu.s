@@ -37,6 +37,10 @@ subi  $r7,  $r7,  (1024 - 1023)   ;CHECK: subi $r7, $r7, 1 ; encoding: [0xf9,0x1
 addi  $r1,  $r5,  (8 - 1)         ;CHECK: addi $r1, $r5, 7 ; encoding: [0x6f,0x14]
 subi  $r3,  $r0,  (7 + 1)         ;CHECK: subi $r3, $r0, 8 ; encoding: [0xc0,0x96,0x01,0x00]
 
+; Add/Sub with relocs
+addi  $r5,  $r2,  a     ;CHECK: addi $r5, $r2, a ; encoding: [0x50'A',0x95'A',A,A]
+subi  $r7,  $r0,  b     ;CHECK: subi $r7, $r0, b ; encoding: [0xc0'A',0x97'A',A,A]
+
 
 ; Logical operation with immediates
 andi  $r0,  $r2,  7   ;CHECK: andi $r0,  $r2,  7    ; encoding: [0x17,0x86,0x00,0x02]
@@ -51,6 +55,11 @@ andi  $r9,  $r14, 511 ;CHECK: andi $r9,  $r14, 511  ; encoding: [0x77,0x86,0x4f,
 andi  $r0,  $r1,  (5 - 3)   ;CHECK: andi $r0,  $r1,  2  ; encoding: [0x0a,0x86,0x00,0x02]
 xori  $r15, $r12, (0 - 0)   ;CHECK: xori $r15, $r12, 0  ; encoding: [0xe0,0x8b,0x48,0x02]
 ori   $r43, $r19, (15 + 48) ;CHECK: ori  $r43, $r19, 63 ; encoding: [0xdf,0x88,0x57,0x03]
+
+; Logical operations with relocations
+andi  $r5,  $r1,  a   ;CHECK: andi $r5,  $r1, a   ; encoding: [0x48'A',0x87'A',A,0x02'A']
+xori  $r11, $r5,  a+b ;CHECK: xori $r11, $r5, a+b ; encoding: [0xe8'A',0x8a'A',0x40'A',0x02'A']
+ori   $r0,  $r0,  c-a ;CHECK: ori  $r0,  $r0, c-a ; encoding: [A,0x88'A',A,0x02'A']
 
 
 ; Shift operations with immediates
@@ -74,3 +83,8 @@ lsri  $r4,  $r2,  (3 + 2)     ;CHECK: lsri $r4, $r2,  5 ; encoding: [0x14,0x1d]
 asri  $r1,  $r1,  (1 + 0)     ;CHECK: asri $r1, $r1,  1 ; encoding: [0x48,0x18]
 lsli  $r2,  $r7,  (128 - 65)  ;CHECK: lsli $r2, $r7, 63 ; encoding: [0xbe,0x9a,0x07,0x00]
 lsri  $r8,  $r0,  (1 + 2)     ;CHECK: lsri $r8, $r0,  3 ; encoding: [0x02,0x9c,0x40,0x00]
+
+; Shift operations with relocations
+lsli  $r0,  $r5,  a   ;CHECK: lsli $r0, $r5, a ; encoding: [0x28'A',0x9a'A',A,0x00]
+lsri  $r0,  $r5,  b   ;CHECK: lsri $r0, $r5, b ; encoding: [0x28'A',0x9c'A',A,0x00]
+asri  $r0,  $r5,  c   ;CHECK: asri $r0, $r5, c ; encoding: [0x28'A',0x98'A',A,0x00]

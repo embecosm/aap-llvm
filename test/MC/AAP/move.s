@@ -31,3 +31,8 @@ movi  $r63, -0x7fff ;CHECK: movi $r63, -32767 ; encoding: [0xc1,0x9f,0xc0,0x11]
 movi  $r2,  (5 + 5)           ;CHECK: movi $r2,  10   ; encoding: [0x8a,0x1e]
 movi  $r4,  (65 - 10)         ;CHECK: movi $r4,  55   ; encoding: [0x37,0x1f]
 movi  $r12, (0xdead - 0xbeef) ;CHECK: movi $r12, 8126 ; encoding: [0x3e,0x9f,0x7e,0x02]
+
+; Moves with relocations. These should always assemble to long instructions
+movi  $r0,  a       ;CHECK: movi $r0,  a   ; encoding: [A,0x9e'A',A,A]
+movi  $r8,  b       ;CHECK: movi $r8,  b   ; encoding: [A,0x9e'A',0x40'A',A]
+movi  $r16, (a + b) ;CHECK: movi $r16, a+b ; encoding: [A,0x9e'A',0x80'A',A]
