@@ -4,6 +4,22 @@
 ; Check the correctness of various simple load operations.
 
 
+@a = external global i16
+@b = external global i16
+
+@c = external global i8
+@d = external global i8
+
+
+define i8 @ldb_global() {
+entry:
+;CHECK: ldb_global:
+;CHECK: movi $[[REG1:r[0-9]+]], c             {{.*MOVI_i16}}
+;CHECK: ldb ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDB}}
+  %0 = load i8, i8* @c, align 1
+  ret i8 %0 ;CHECK: jmp   {{.*JMP}}
+}
+
 define i8 @ldb_imm() {
 entry:
 ;CHECK: ldb_imm:
@@ -22,9 +38,17 @@ entry:
   ret i8 %0 ;CHECK: jmp   {{.*JMP}}
 }
 
-; TODO: ldb_global
 ; TODO: postinc/predec?
 
+
+define i16 @ldw_global() {
+entry:
+;CHECK: ldw_global:
+;CHECK: movi $[[REG1:r[0-9]+]], a             {{.*MOVI_i16}}
+;CHECK: ldw ${{r[0-9]+}}, [$[[REG1]], 0]      {{.*LDW}}
+  %0 = load i16, i16* @a, align 2
+  ret i16 %0 ;CHECK: jmp   {{.*JMP}}
+}
 
 define i16 @ldw_imm() {
 entry:
@@ -44,5 +68,4 @@ entry:
   ret i16 %0 ;CHECK: jmp   {{.*JMP}}
 }
 
-; TODO: ldw_global
 ; TODO: postinc/predec?

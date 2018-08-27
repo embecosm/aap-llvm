@@ -4,6 +4,74 @@
 ; Check the correctness of stores with offsets
 
 
+@i8_array = external global [12345 x i8]
+@i16_array = external global [12345 x i16]
+
+@i8_ptr = external global i8
+@i16_ptr = external global i16
+
+
+; Byte stores with positive immediate offsets
+
+define void @stb_global_zero_imm_offset_imm() {
+entry:
+;CHECK: stb_global_zero_imm_offset_imm:
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], 123       {{.*MOVI_i16}}
+;CHECK-DAG: movi $[[REG2:r[0-9]+]], i8_array  {{.*MOVI_i16}}
+;CHECK-DAG: stb [$[[REG2]], 0], $[[REG1]]     {{.*STB(_short)?}}
+  %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 0
+  store i8 123, i8* %0
+  ret void ;CHECK jmp   {{.*JMP}}
+}
+
+define void @stb_global_short_imm_offset_imm() {
+entry:
+;CHECK: stb_global_short_imm_offset_imm:
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], 123         {{.*MOVI_i16}}
+;CHECK-DAG: movi $[[REG2:r[0-9]+]], i8_array+3  {{.*MOVI_i16}}
+;CHECK-DAG: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB(_short)?}}
+  %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 3
+  store i8 123, i8* %0
+  ret void ;CHECK jmp   {{.*JMP}}
+}
+
+define void @stb_global_imm_offset_imm() {
+entry:
+;CHECK: stb_global_imm_offset_imm:
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], 123         {{.*MOVI_i16}}
+;CHECK-DAG: movi $[[REG2:r[0-9]+]], i8_array+4  {{.*MOVI_i16}}
+;CHECK-DAG: stb [$[[REG2]], 0], $[[REG1]]       {{.*STB(_short)?}}
+  %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 4
+  store i8 123, i8* %0
+  ret void ;CHECK jmp   {{.*JMP}}
+}
+
+
+; Byte stores with negative immediate offsets
+
+define void @stb_global_neg_imm_offset_imm() {
+entry:
+;CHECK: stb_global_neg_imm_offset_imm:
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], 123           {{.*MOVI_i16}}
+;CHECK-DAG: movi $[[REG2:r[0-9]+]], i8_array+511  {{.*MOVI_i16}}
+;CHECK-DAG: stb [$[[REG2]], 0], $[[REG1]]         {{.*STB(_short)?}}
+  %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 511
+  store i8 123, i8* %0
+  ret void ;CHECK jmp   {{.*JMP}}
+}
+
+define void @stb_global_big_neg_imm_offset_imm() {
+entry:
+;CHECK: stb_global_big_neg_imm_offset_imm:
+;CHECK-DAG: movi $[[REG1:r[0-9]+]], 123     {{.*MOVI_i16}}
+;CHECK-DAG: movi ${{r[0-9]+}}, i8_array-513 {{.*MOVI_i16}}
+;CHECK-DAG: stb [$[[REG2]], 0], $[[REG1]]   {{.*STB(_short)?}}
+  %0 = getelementptr [12345 x i8], [12345 x i8]* @i8_array, i16 0, i16 -513
+  store i8 123, i8* %0
+  ret void ;CHECK jmp   {{.*JMP}}
+}
+
+
 ; Word stores to a register with an immediate offset
 
 define void @stw_reg_short_imm_offset_imm(i16* %x) {
@@ -32,6 +100,4 @@ entry:
   ret void ;CHECK jmp   {{.*JMP}}
 }
 
-
-; TODO: globals
 ; TODO: postinc/predec?

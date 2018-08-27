@@ -38,6 +38,8 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setMinFunctionAlignment(1);
   setPrefFunctionAlignment(2);
 
+  setOperationAction(ISD::GlobalAddress, MVT::i16, Custom);
+
   // Custom DAGCombine
   setTargetDAGCombine(ISD::ADD);
 
@@ -60,11 +62,29 @@ const char *AAPTargetLowering::getTargetNodeName(unsigned Opcode) const {
   }
 }
 
+//===----------------------------------------------------------------------===//
+//                       Custom Lowering Implementation
+//===----------------------------------------------------------------------===//
+
 SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   default:
     llvm_unreachable("Unimplemented operation");
+  case ISD::GlobalAddress:
+    return LowerGlobalAddress(Op, DAG);
   }
+}
+
+SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
+                                              SelectionDAG &DAG) const {
+  SDLoc Loc(Op);
+  EVT Ty = getPointerTy(DAG.getDataLayout());
+  GlobalAddressSDNode *N = cast<GlobalAddressSDNode>(Op);
+  const GlobalValue *GV = N->getGlobal();
+  int64_t Offset = N->getOffset();
+
+  SDValue Result = DAG.getTargetGlobalAddress(GV, Loc, Ty, Offset);
+  return DAG.getNode(AAPISD::Wrapper, Loc, Ty, Result);
 }
 
 //===----------------------------------------------------------------------===//

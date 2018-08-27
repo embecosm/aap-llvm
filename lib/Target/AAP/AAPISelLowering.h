@@ -57,6 +57,8 @@ public:
   const char *getTargetNodeName(unsigned Opcode) const override;
 
 private:
+  SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
+
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 
   SDValue PerformADDCombine(SDNode *N, DAGCombinerInfo &DCI) const;
