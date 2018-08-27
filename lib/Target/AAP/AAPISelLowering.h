@@ -56,8 +56,19 @@ public:
 
   const char *getTargetNodeName(unsigned Opcode) const override;
 
+  MachineBasicBlock *
+  EmitInstrWithCustomInserter(MachineInstr &MI,
+                              MachineBasicBlock *MBB) const override;
+
+  EVT getSetCCResultType(const DataLayout &DL, LLVMContext &Context,
+                         EVT VT) const override;
+
 private:
   SDValue LowerGlobalAddress(SDValue Op, SelectionDAG &DAG) const;
+
+  SDValue LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const;
+
+  SDValue LowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
 
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 
@@ -76,6 +87,12 @@ private:
                       const SmallVectorImpl<ISD::OutputArg> &Outs,
                       const SmallVectorImpl<SDValue> &OutVals, const SDLoc &Loc,
                       SelectionDAG &DAG) const override;
+
+  MachineBasicBlock *EmitSELECT_CC(MachineInstr &MI,
+                                   MachineBasicBlock *MBB) const;
+
+  MachineBasicBlock *EmitBR_CC(MachineInstr &MI,
+                               MachineBasicBlock *MBB) const;
 };
 }
 

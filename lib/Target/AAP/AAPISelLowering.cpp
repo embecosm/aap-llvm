@@ -13,10 +13,12 @@
 
 #include "AAPISelLowering.h"
 #include "AAPMachineFunctionInfo.h"
+#include "AAPInstrInfo.h"
 #include "AAPRegisterInfo.h"
 #include "AAPSubtarget.h"
 #include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/CodeGen/CallingConvLower.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 
 #define DEBUG_TYPE "aap-lower"
@@ -39,6 +41,24 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setPrefFunctionAlignment(2);
 
   setOperationAction(ISD::GlobalAddress, MVT::i16, Custom);
+
+  // Handle conditionals via brcc and selectcc
+  setOperationAction(ISD::BRCOND, MVT::i16, Expand);
+  setOperationAction(ISD::BRCOND, MVT::Other, Expand);
+  setOperationAction(ISD::SELECT, MVT::i16, Expand);
+  setOperationAction(ISD::SETCC, MVT::i16, Expand);
+  setOperationAction(ISD::SETCC, MVT::Other, Expand);
+  setOperationAction(ISD::SELECT_CC, MVT::i16, Custom);
+  setOperationAction(ISD::BR_CC, MVT::i16, Custom);
+
+  // Expand some condition codes which are not natively supported
+  setCondCodeAction(ISD::SETGT, MVT::i16, Expand);
+  setCondCodeAction(ISD::SETGE, MVT::i16, Expand);
+  setCondCodeAction(ISD::SETUGT, MVT::i16, Expand);
+  setCondCodeAction(ISD::SETUGE, MVT::i16, Expand);
+
+  // BR_JT unsupported by the architecture
+  setOperationAction(ISD::BR_JT, MVT::Other, Expand);
 
   // Custom DAGCombine
   setTargetDAGCombine(ISD::ADD);
@@ -72,6 +92,10 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     llvm_unreachable("Unimplemented operation");
   case ISD::GlobalAddress:
     return LowerGlobalAddress(Op, DAG);
+  case ISD::SELECT_CC:
+    return LowerSELECT_CC(Op, DAG);
+  case ISD::BR_CC:
+    return LowerBR_CC(Op, DAG);
   }
 }
 
@@ -85,6 +109,71 @@ SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
 
   SDValue Result = DAG.getTargetGlobalAddress(GV, Loc, Ty, Offset);
   return DAG.getNode(AAPISD::Wrapper, Loc, Ty, Result);
+}
+
+// Get the AAP specific condition code for a given CondCode DAG node.
+static AAPCC::CondCode getAAPCondCode(ISD::CondCode CC) {
+  switch (CC) {
+  // These have a direct equivalent
+  case ISD::SETEQ:
+    return AAPCC::COND_EQ;
+  case ISD::SETNE:
+    return AAPCC::COND_NE;
+  case ISD::SETLT:
+    return AAPCC::COND_LTS;
+  case ISD::SETLE:
+    return AAPCC::COND_LES;
+  case ISD::SETULT:
+    return AAPCC::COND_LTU;
+  case ISD::SETULE:
+    return AAPCC::COND_LEU;
+  // Other condition codes are unhandled
+  default:
+    llvm_unreachable("Unhandled condition code for branch lowering");
+  }
+}
+
+SDValue AAPTargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc Loc(Op);
+
+  SDValue LHS = Op.getOperand(0);
+  SDValue RHS = Op.getOperand(1);
+  SDValue TrueValue = Op.getOperand(2);
+  SDValue FalseValue = Op.getOperand(3);
+
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(4))->get();
+  // get equivalent AAP condition code
+  AAPCC::CondCode TargetCC = getAAPCondCode(CC);
+
+  SDValue Ops[] = {LHS, RHS, TrueValue, FalseValue,
+                   DAG.getConstant(TargetCC, Loc, MVT::i16)};
+  return DAG.getNode(AAPISD::SELECT_CC, Loc, Op.getValueType(), Ops);
+}
+
+EVT AAPTargetLowering::getSetCCResultType(const DataLayout &DL,
+                                          LLVMContext &Context, EVT VT) const {
+  if (!VT.isVector())
+    return getPointerTy(DL);
+
+  return VT.changeVectorElementTypeToInteger();
+}
+
+SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
+  SDLoc Loc(Op);
+
+  SDValue Chain = Op.getOperand(0);
+
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(1))->get();
+  // get equivalent AAP condition code
+  AAPCC::CondCode TargetCC = getAAPCondCode(CC);
+
+  SDValue LHS = Op.getOperand(2);
+  SDValue RHS = Op.getOperand(3);
+  SDValue BranchTarget = Op.getOperand(4);
+
+  SDValue Ops[] = {Chain, DAG.getConstant(TargetCC, Loc, MVT::i16), LHS, RHS,
+                   BranchTarget};
+  return DAG.getNode(AAPISD::BR_CC, Loc, Op.getValueType(), Ops);
 }
 
 //===----------------------------------------------------------------------===//
@@ -286,4 +375,101 @@ SDValue AAPTargetLowering::LowerReturn(
     RetOps.push_back(Flag);
 
   return DAG.getNode(AAPISD::RET_FLAG, Loc, {MVT::Other, MVT::i16}, RetOps);
+}
+
+//===----------------------------------------------------------------------===//
+//                      AAP Custom Instruction Emission
+//===----------------------------------------------------------------------===//
+
+MachineBasicBlock *
+AAPTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
+                                               MachineBasicBlock *MBB) const {
+  switch (MI.getOpcode()) {
+  default:
+    llvm_unreachable("Unexpected instruction for custom emission");
+  case AAP::SELECT_CC:
+    return EmitSELECT_CC(MI, MBB);
+  case AAP::BR_CC:
+    return EmitBR_CC(MI, MBB);
+  }
+}
+
+MachineBasicBlock *
+AAPTargetLowering::EmitSELECT_CC(MachineInstr &MI,
+                                 MachineBasicBlock *MBB) const {
+  DebugLoc DL = MI.getDebugLoc();
+  const TargetInstrInfo &TII = *MBB->getParent()->getSubtarget().getInstrInfo();
+
+  // Insert a diamond control flow pattern to handle the select, IE:
+  //
+  //     EntryMBB
+  //      |  \
+  //      |  FalseValueMBB
+  //      | /
+  //     SinkMBB
+
+  const BasicBlock *BB = MBB->getBasicBlock();
+  MachineFunction::iterator It = MBB->getIterator();
+  ++It;
+
+  MachineBasicBlock *EntryMBB = MBB;
+  MachineFunction *MF = MBB->getParent();
+  MachineBasicBlock *FalseValueMBB = MF->CreateMachineBasicBlock(BB);
+  MachineBasicBlock *SinkMBB = MF->CreateMachineBasicBlock(BB);
+  MF->insert(It, FalseValueMBB);
+  MF->insert(It, SinkMBB);
+
+  // Transfer remainder of entryMBB to sinkMBB
+  SinkMBB->splice(SinkMBB->begin(), EntryMBB,
+                  std::next(MachineBasicBlock::iterator(MI)), EntryMBB->end());
+  SinkMBB->transferSuccessorsAndUpdatePHIs(EntryMBB);
+
+  // Add false value and fallthrough blocks as successors
+  EntryMBB->addSuccessor(FalseValueMBB);
+  EntryMBB->addSuccessor(SinkMBB);
+
+  AAPCC::CondCode CC = (AAPCC::CondCode)MI.getOperand(5).getImm();
+  unsigned BranchOp = AAPInstrInfo::getBranchOpcodeFromCond(CC);
+
+  unsigned InReg = MI.getOperand(0).getReg();
+  unsigned LHSReg = MI.getOperand(1).getReg();
+  unsigned RHSReg = MI.getOperand(2).getReg();
+  BuildMI(EntryMBB, DL, TII.get(BranchOp))
+      .addMBB(SinkMBB)
+      .addReg(LHSReg)
+      .addReg(RHSReg);
+
+  FalseValueMBB->addSuccessor(SinkMBB);
+
+  unsigned TrueValueReg = MI.getOperand(3).getReg();
+  unsigned FalseValueReg = MI.getOperand(4).getReg();
+  BuildMI(*SinkMBB, SinkMBB->begin(), DL, TII.get(AAP::PHI), InReg)
+      .addReg(TrueValueReg)
+      .addMBB(EntryMBB)
+      .addReg(FalseValueReg)
+      .addMBB(FalseValueMBB);
+
+  MI.eraseFromParent();
+  return SinkMBB;
+}
+
+MachineBasicBlock *AAPTargetLowering::EmitBR_CC(MachineInstr &MI,
+                                                MachineBasicBlock *MBB) const {
+  DebugLoc DL = MI.getDebugLoc();
+  const TargetInstrInfo &TII = *MBB->getParent()->getSubtarget().getInstrInfo();
+
+  AAPCC::CondCode CC = (AAPCC::CondCode)MI.getOperand(0).getImm();
+  unsigned BranchOp = AAPInstrInfo::getBranchOpcodeFromCond(CC);
+
+  unsigned LHSReg = MI.getOperand(1).getReg();
+  unsigned RHSReg = MI.getOperand(2).getReg();
+  MachineBasicBlock *TargetMBB = MI.getOperand(3).getMBB();
+
+  BuildMI(*MBB, &MI, DL, TII.get(BranchOp))
+      .addMBB(TargetMBB)
+      .addReg(LHSReg)
+      .addReg(RHSReg);
+
+  MI.eraseFromParent();
+  return MBB;
 }
