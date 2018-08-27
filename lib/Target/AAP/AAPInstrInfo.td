@@ -107,42 +107,43 @@ let RenderMethod = "addImmOperands" in {
 }
 
 // The various AAP functions called in ImmLeaf here are defined in AAP.h
-def field16 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isField16(Imm); }]> {
+def field16 : Operand<i16>,
+              ImmLeaf<i16, [{ return isInt<16>(Imm) || isUInt<16>(Imm); }]> {
   let EncoderMethod = "encodeField16";
   let ParserMatchClass = field16AsmOperand;
 }
-def imm12 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm12(Imm); }]> {
+def imm12 : Operand<i16>, ImmLeaf<i16, [{ return isUInt<12>(Imm); }]> {
   let EncoderMethod = "encodeImm12";
   let ParserMatchClass = imm12AsmOperand;
 }
-def imm10 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm10(Imm); }]> {
+def imm10 : Operand<i16>, ImmLeaf<i16, [{ return isUInt<10>(Imm); }]> {
   let EncoderMethod = "encodeImm10";
   let ParserMatchClass = imm10AsmOperand;
 }
-def imm9 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm9(Imm); }]> {
+def imm9 : Operand<i16>, ImmLeaf<i16, [{ return isUInt<9>(Imm); }]> {
   let EncoderMethod = "encodeImm9";
   let ParserMatchClass = imm9AsmOperand;
 }
-def const6 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm6(Imm); }]> {
+def const6 : Operand<i16>, ImmLeaf<i16, [{ return isUInt<6>(Imm); }]> {
   let EncoderMethod = "encodeImm6";
   let ParserMatchClass = const6AsmOperand;
 }
-def imm6 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm6(Imm); }]> {
+def imm6 : Operand<i16>, ImmLeaf<i16, [{ return isUInt<6>(Imm); }]> {
   let EncoderMethod = "encodeImm6";
   let ParserMatchClass = imm6AsmOperand;
 }
-def const3 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isImm3(Imm); }]> {
+def const3 : Operand<i16>, ImmLeaf<i16, [{ return isUInt<3>(Imm); }]> {
   let EncoderMethod = "encodeImm3";
   let ParserMatchClass = const3AsmOperand;
 }
 
 // Offset operands
-def off10 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isOff10(Imm); }]> {
+def off10 : Operand<i16>, ImmLeaf<i16, [{ return isInt<10>(Imm); }]> {
   let EncoderMethod = "encodeOff10";
   let DecoderMethod = "decodeOff10";
   let ParserMatchClass = off10AsmOperand;
 }
-def off3 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isOff3(Imm); }]> {
+def off3 : Operand<i16>, ImmLeaf<i16, [{ return isInt<3>(Imm); }]> {
   let EncoderMethod = "encodeOff3";
   let DecoderMethod = "decodeOff3";
   let ParserMatchClass = off3AsmOperand;
@@ -151,13 +152,13 @@ def off3 : Operand<i16>, ImmLeaf<i16, [{ return AAP::isOff3(Imm); }]> {
 // Shift operands, these have custom encoding/decoding to handle the bias
 // applied to the value.
 def shift_imm6 : Operand<i16>,
-                 ImmLeaf<i16, [{ return AAP::isShiftImm6(Imm); }]> {
+                 ImmLeaf<i16, [{ return isUInt<6>(Imm - 1); }]> {
   let EncoderMethod = "encodeShiftImm6";
   let DecoderMethod = "decodeShiftOperand";
   let ParserMatchClass = shiftImm6AsmOperand;
 }
 def shift_const3 : Operand<i16>,
-                   ImmLeaf<i16, [{ return AAP::isShiftImm3(Imm); }]> {
+                   ImmLeaf<i16, [{ return isUInt<3>(Imm - 1); }]> {
   let EncoderMethod = "encodeShiftConst3";
   let DecoderMethod = "decodeShiftOperand";
   let ParserMatchClass = shiftConst3AsmOperand;

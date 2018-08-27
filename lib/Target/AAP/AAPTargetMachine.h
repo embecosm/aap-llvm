@@ -11,9 +11,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef AAP_TARGETMACHINE_H
-#define AAP_TARGETMACHINE_H
+#ifndef LLVM_LIB_TARGET_AAP_AAPTARGETMACHINE_H
+#define LLVM_LIB_TARGET_AAP_AAPTARGETMACHINE_H
 
+#include "AAPSubtarget.h"
 #include "MCTargetDesc/AAPMCTargetDesc.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/DataLayout.h"
@@ -22,12 +23,17 @@
 namespace llvm {
 class AAPTargetMachine : public LLVMTargetMachine {
   std::unique_ptr<TargetLoweringObjectFile> TLOF;
+  AAPSubtarget Subtarget;
 
 public:
   AAPTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                    StringRef FS, const TargetOptions &Options,
                    Optional<Reloc::Model> RM, Optional<CodeModel::Model> CM,
                    CodeGenOpt::Level OL, bool JIT);
+
+  const AAPSubtarget *getSubtargetImpl(const Function &F) const override {
+    return &Subtarget;
+  }
 
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
 

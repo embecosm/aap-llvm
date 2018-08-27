@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "AAP.h"
 #include "AAPTargetMachine.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/CodeGen/Passes.h"
@@ -45,10 +46,30 @@ AAPTargetMachine::AAPTargetMachine(const Target &T, const Triple &TT,
     : LLVMTargetMachine(T, "e-m:e-p:16:16-i32:16-i64:16-f32:16-f64:16-n16", TT,
                         CPU, FS, Options, getEffectiveRelocModel(RM),
                         getEffectiveCodeModel(CM), OL),
-      TLOF(make_unique<TargetLoweringObjectFileELF>()) {
+      TLOF(make_unique<TargetLoweringObjectFileELF>()),
+      Subtarget(TT, CPU, FS, *this) {
   initAsmInfo();
 }
 
+namespace {
+class AAPPassConfig : public TargetPassConfig {
+public:
+  AAPPassConfig(AAPTargetMachine &TM, PassManagerBase &PM)
+      : TargetPassConfig(TM, PM) {}
+
+  AAPTargetMachine &getAAPTargetMachine() const {
+    return getTM<AAPTargetMachine>();
+  }
+
+  bool addInstSelector() override;
+};
+}
+
 TargetPassConfig *AAPTargetMachine::createPassConfig(PassManagerBase &PM) {
-  return new TargetPassConfig(*this, PM);
+  return new AAPPassConfig(*this, PM);
+}
+
+bool AAPPassConfig::addInstSelector() {
+  addPass(createAAPISelDag(getAAPTargetMachine()));
+  return false;
 }
