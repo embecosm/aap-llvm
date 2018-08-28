@@ -660,11 +660,13 @@ let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in {
 // Indirect branches are a jump through a given register
 def : Pat<(brind GR64:$rD), (JMP GR64:$rD)>;
 
+// Adds and subs can produce carry
+def : Pat<(addc GR64:$src1, GR64:$src2), (ADD_r GR64:$src1, GR64:$src2)>;
+def : Pat<(subc GR64:$src1, GR64:$src2), (SUB_r GR64:$src1, GR64:$src2)>;
 
 //===----------------------------------------------------------------------===//
 // Peephole Patterns
 //===----------------------------------------------------------------------===//
-def : Pat<(addc GR64:$src1, GR64:$src2), (ADD_r GR64:$src1, GR64:$src2)>;
 
 def : Pat<(i16 (AAPwrapper tglobaladdr:$dst)), (MOVI_i16 tglobaladdr:$dst)>;
 def : Pat<(i16 (AAPwrapper texternalsym:$dst)), (MOVI_i16 texternalsym:$dst)>;

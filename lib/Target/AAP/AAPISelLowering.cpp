@@ -40,8 +40,67 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setMinFunctionAlignment(1);
   setPrefFunctionAlignment(2);
 
+  // Expand all i1 -> {i8, i16} loads
+  setLoadExtAction(ISD::EXTLOAD, MVT::i8, MVT::i1, Promote);
+  setLoadExtAction(ISD::EXTLOAD, MVT::i16, MVT::i1, Promote);
+  setLoadExtAction(ISD::ZEXTLOAD, MVT::i8, MVT::i1, Expand);
+  setLoadExtAction(ISD::ZEXTLOAD, MVT::i16, MVT::i1, Expand);
+  setLoadExtAction(ISD::SEXTLOAD, MVT::i8, MVT::i1, Expand);
+  setLoadExtAction(ISD::SEXTLOAD, MVT::i16, MVT::i1, Expand);
+
+  // Expand i8 -> i16 loads
+  setLoadExtAction(ISD::ZEXTLOAD, MVT::i16, MVT::i8, Expand);
+  setLoadExtAction(ISD::SEXTLOAD, MVT::i16, MVT::i8, Expand);
+
   setOperationAction(ISD::GlobalAddress, MVT::i16, Custom);
   setOperationAction(ISD::ExternalSymbol, MVT::i16, Custom);
+
+  // Use SHL & SRA to sign extend in register
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
+  setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8, Expand);
+
+  // Division operations unsupported by the architecture
+  setOperationAction(ISD::SDIV, MVT::i16, Expand);
+  setOperationAction(ISD::UDIV, MVT::i16, Expand);
+  setOperationAction(ISD::SREM, MVT::i16, Expand);
+  setOperationAction(ISD::UREM, MVT::i16, Expand);
+  setOperationAction(ISD::SDIVREM, MVT::i16, Expand);
+  setOperationAction(ISD::UDIVREM, MVT::i16, Expand);
+
+  // Multiplication operations unsupported by the architecture
+  setOperationAction(ISD::MUL, MVT::i16, Expand);
+  setOperationAction(ISD::SMUL_LOHI, MVT::i16, Expand);
+  setOperationAction(ISD::UMUL_LOHI, MVT::i16, Expand);
+  setOperationAction(ISD::MULHS, MVT::i16, Expand);
+  setOperationAction(ISD::MULHU, MVT::i16, Expand);
+  setOperationAction(ISD::SMULO, MVT::i16, Expand);
+  setOperationAction(ISD::UMULO, MVT::i16, Expand);
+
+  // Adds and subs can produce carry
+  setOperationAction(ISD::ADDC, MVT::i16, Legal);
+  setOperationAction(ISD::SUBC, MVT::i16, Legal);
+
+  // Use ADDE/SUBE
+  setOperationAction(ISD::SADDO, MVT::i16, Expand);
+  setOperationAction(ISD::UADDO, MVT::i16, Expand);
+  setOperationAction(ISD::SSUBO, MVT::i16, Expand);
+  setOperationAction(ISD::USUBO, MVT::i16, Expand);
+
+  // Compound shifting operations unsupported by the architecture
+  setOperationAction(ISD::SHL_PARTS, MVT::i16, Expand);
+  setOperationAction(ISD::SRA_PARTS, MVT::i16, Expand);
+  setOperationAction(ISD::SRL_PARTS, MVT::i16, Expand);
+  setOperationAction(ISD::ROTL, MVT::i16, Expand);
+  setOperationAction(ISD::ROTR, MVT::i16, Expand);
+
+  // Bit manipulation operations unsupported by the architecture
+  setOperationAction(ISD::BSWAP, MVT::i16, Expand);
+  setOperationAction(ISD::CTLZ, MVT::i16, Expand);
+  setOperationAction(ISD::CTTZ, MVT::i16, Expand);
+  setOperationAction(ISD::CTLZ_ZERO_UNDEF, MVT::i16, Expand);
+  setOperationAction(ISD::CTTZ_ZERO_UNDEF, MVT::i16, Expand);
+  setOperationAction(ISD::CTPOP, MVT::i16, Expand);
+  setOperationAction(ISD::BITREVERSE, MVT::i16, Expand);
 
   // Handle conditionals via brcc and selectcc
   setOperationAction(ISD::BRCOND, MVT::i16, Expand);
