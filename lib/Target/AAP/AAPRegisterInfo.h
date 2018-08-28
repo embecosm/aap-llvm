@@ -24,6 +24,9 @@ class AAPRegisterInfo : public AAPGenRegisterInfo {
 public:
   AAPRegisterInfo();
 
+  const uint32_t *getCallPreservedMask(const MachineFunction &MF,
+                                       CallingConv::ID CC) const override;
+
   const MCPhysReg *
   getCalleeSavedRegs(const MachineFunction *MF = nullptr) const override;
 

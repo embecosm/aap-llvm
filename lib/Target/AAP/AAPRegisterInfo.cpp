@@ -27,6 +27,12 @@ using namespace llvm;
 
 AAPRegisterInfo::AAPRegisterInfo() : AAPGenRegisterInfo(getLinkRegister()) {}
 
+const uint32_t *
+AAPRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
+                                      CallingConv::ID CC) const {
+  return CSR_RegMask;
+}
+
 const MCPhysReg *
 AAPRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   return CSR_SaveList;

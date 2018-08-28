@@ -25,10 +25,6 @@ class AAPMachineFunctionInfo : public MachineFunctionInfo {
 
   MachineFunction &MF;
 
-  /// CalleeSavedFrameSize - Size of the callee-saved register portion of the
-  /// stack frame in bytes
-  unsigned CalleeSavedFrameSize;
-
   /// SRetReturnReg - AAP ABI require that sret lowering includes
   /// returning the value of the returned struct in a register. This field
   /// holds the virtual register into which the sret argument is passed.
@@ -44,11 +40,7 @@ class AAPMachineFunctionInfo : public MachineFunctionInfo {
 
 public:
   AAPMachineFunctionInfo(MachineFunction &MF)
-      : MF(MF), CalleeSavedFrameSize(0), SRetReturnReg(0), GlobalBaseReg(0),
-        VarArgsFrameIndex(0) {}
-
-  unsigned getCalleeSavedFrameSize() { return CalleeSavedFrameSize; }
-  void setCalleeSavedFrameSize(unsigned bytes) { CalleeSavedFrameSize = bytes; }
+      : MF(MF), SRetReturnReg(0), GlobalBaseReg(0), VarArgsFrameIndex(0) {}
 
   unsigned getSRetReturnReg() const { return SRetReturnReg; }
   void setSRetReturnReg(unsigned Reg) { SRetReturnReg = Reg; }

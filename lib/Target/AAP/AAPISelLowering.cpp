@@ -41,6 +41,7 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setPrefFunctionAlignment(2);
 
   setOperationAction(ISD::GlobalAddress, MVT::i16, Custom);
+  setOperationAction(ISD::ExternalSymbol, MVT::i16, Custom);
 
   // Handle conditionals via brcc and selectcc
   setOperationAction(ISD::BRCOND, MVT::i16, Expand);
@@ -92,6 +93,8 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     llvm_unreachable("Unimplemented operation");
   case ISD::GlobalAddress:
     return LowerGlobalAddress(Op, DAG);
+  case ISD::ExternalSymbol:
+    return LowerExternalSymbol(Op, DAG);
   case ISD::SELECT_CC:
     return LowerSELECT_CC(Op, DAG);
   case ISD::BR_CC:
@@ -109,6 +112,15 @@ SDValue AAPTargetLowering::LowerGlobalAddress(SDValue Op,
 
   SDValue Result = DAG.getTargetGlobalAddress(GV, Loc, Ty, Offset);
   return DAG.getNode(AAPISD::Wrapper, Loc, Ty, Result);
+}
+
+SDValue AAPTargetLowering::LowerExternalSymbol(SDValue Op,
+                                               SelectionDAG &DAG) const {
+  EVT Ty = getPointerTy(DAG.getDataLayout());
+  const char *Sym = cast<ExternalSymbolSDNode>(Op)->getSymbol();
+
+  SDValue Result = DAG.getTargetExternalSymbol(Sym, Ty);
+  return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), Ty, Result);
 }
 
 // Get the AAP specific condition code for a given CondCode DAG node.
@@ -375,6 +387,177 @@ SDValue AAPTargetLowering::LowerReturn(
     RetOps.push_back(Flag);
 
   return DAG.getNode(AAPISD::RET_FLAG, Loc, {MVT::Other, MVT::i16}, RetOps);
+}
+
+/// LowerCallTo - functions arguments are copied from virtual regs to
+/// (physical regs)/(stack frame), CALLSEQ_START and CALLSEQ_END are emitted.
+SDValue AAPTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
+                                     SmallVectorImpl<SDValue> &InVals) const {
+  switch (CLI.CallConv) {
+  default:
+    llvm_unreachable("Unsupported calling convention");
+  case CallingConv::Fast:
+  case CallingConv::C:
+    break;
+  }
+
+  SelectionDAG &DAG = CLI.DAG;
+  SDLoc &DL = CLI.DL;
+  SmallVectorImpl<ISD::OutputArg> &Outs = CLI.Outs;
+  SmallVectorImpl<SDValue> &OutVals = CLI.OutVals;
+  SmallVectorImpl<ISD::InputArg> &Ins = CLI.Ins;
+  SDValue Chain = CLI.Chain;
+  SDValue Callee = CLI.Callee;
+  // AAP target does not yet support tail call optimization.
+  CLI.IsTailCall = false;
+  CallingConv::ID CallConv = CLI.CallConv;
+  bool isVarArg = CLI.IsVarArg;
+
+  EVT PtrTy = getPointerTy(DAG.getDataLayout());
+  MachineFunction &MF = DAG.getMachineFunction();
+
+  // Analyze operands of the call, assigning locations to each operand.
+  SmallVector<CCValAssign, 16> ArgLocs;
+  CCState CCInfo(CallConv, isVarArg, MF, ArgLocs, *DAG.getContext());
+
+  CCInfo.AnalyzeCallOperands(Outs, CC_AAP);
+
+  // Get a count of how many bytes are to be pushed on the stack.
+  unsigned NumBytes = CCInfo.getNextStackOffset();
+
+  Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, DL);
+
+  SmallVector<std::pair<unsigned, SDValue>, 4> RegsToPass;
+  SmallVector<SDValue, 12> MemOpChains;
+  SDValue StackPtr;
+
+  // Walk the register/memloc assignments, inserting copies/loads.
+  for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
+    CCValAssign &VA = ArgLocs[i];
+    SDValue Arg = OutVals[i];
+
+    // Promote the value if needed.
+    switch (VA.getLocInfo()) {
+    default:
+      llvm_unreachable("Unknown loc info!");
+    case CCValAssign::Full:
+      break;
+    case CCValAssign::SExt:
+      Arg = DAG.getNode(ISD::SIGN_EXTEND, DL, VA.getLocVT(), Arg);
+      break;
+    case CCValAssign::ZExt:
+      Arg = DAG.getNode(ISD::ZERO_EXTEND, DL, VA.getLocVT(), Arg);
+      break;
+    case CCValAssign::AExt:
+      Arg = DAG.getNode(ISD::ANY_EXTEND, DL, VA.getLocVT(), Arg);
+      break;
+    }
+
+    // Arguments that can be passed on register must be kept in RegsToPass
+    // vector
+    if (VA.isRegLoc())
+      RegsToPass.push_back(std::make_pair(VA.getLocReg(), Arg));
+    else {
+      assert(VA.isMemLoc() && "Argument not register or memory");
+
+      if (StackPtr.getNode() == 0)
+        StackPtr = DAG.getCopyFromReg(
+            Chain, DL, AAPRegisterInfo::getStackPtrRegister(), PtrTy);
+
+      SDValue PtrOff =
+          DAG.getNode(ISD::ADD, DL, PtrTy, StackPtr,
+                      DAG.getIntPtrConstant(VA.getLocMemOffset(), DL));
+
+      SDValue MemOp;
+      ISD::ArgFlagsTy Flags = Outs[i].Flags;
+
+      if (Flags.isByVal()) {
+        SDValue SizeNode = DAG.getConstant(Flags.getByValSize(), DL, MVT::i16);
+        MemOp = DAG.getMemcpy(
+            Chain, DL, PtrOff, Arg, SizeNode, Flags.getByValAlign(),
+            /*isVolatile*/ false,
+            /*AlwaysInline*/ true,
+            /*isTailCall*/ false, MachinePointerInfo(), MachinePointerInfo());
+      } else
+        MemOp = DAG.getStore(Chain, DL, Arg, PtrOff, MachinePointerInfo());
+
+      MemOpChains.push_back(MemOp);
+    }
+  }
+
+  // Transform all store nodes into one single node because all store nodes are
+  // independent of each other.
+  if (!MemOpChains.empty())
+    Chain = DAG.getNode(ISD::TokenFactor, DL, MVT::Other, MemOpChains);
+
+  // Build a sequence of copy-to-reg nodes chained together with token chain and
+  // flag operands which copy the outgoing args into registers.  The Glue is
+  // necessary since all emitted instructions must be stuck together.
+  SDValue Glue;
+  for (auto &Reg : RegsToPass) {
+    Chain = DAG.getCopyToReg(Chain, DL, Reg.first, Reg.second, Glue);
+    Glue = Chain.getValue(1);
+  }
+
+  // If the callee is a global address or external symbol, convert it to a
+  // target node so that legalize doesn't hack it.
+  if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee))
+    Callee = DAG.getTargetGlobalAddress(G->getGlobal(), DL, PtrTy, 0);
+  if (ExternalSymbolSDNode *E = dyn_cast<ExternalSymbolSDNode>(Callee))
+    Callee = DAG.getTargetExternalSymbol(E->getSymbol(), PtrTy);
+
+  // The first call operand is the chain and the second is the target address.
+  SmallVector<SDValue, 8> Ops;
+  Ops.push_back(Chain);
+  Ops.push_back(Callee);
+
+  // Add the link register as the first operand
+  Ops.push_back(DAG.getRegister(AAPRegisterInfo::getLinkRegister(), MVT::i16));
+
+  // Add argument registers to the end of the list so that they are
+  // known live into the call.
+  for (unsigned i = 0, e = RegsToPass.size(); i != e; ++i)
+    Ops.push_back(DAG.getRegister(RegsToPass[i].first,
+                                  RegsToPass[i].second.getValueType()));
+
+  // Add the caller saved registers as a register mask operand to the call
+  const TargetRegisterInfo *TRI = STI.getRegisterInfo();
+  const uint32_t *Mask = TRI->getCallPreservedMask(MF, CallConv);
+  assert(Mask && "No call preserved mask for the calling convention");
+  Ops.push_back(DAG.getRegisterMask(Mask));
+
+  // Glue the call to the argument copies, if any.
+  if (Glue.getNode())
+    Ops.push_back(Glue);
+
+  // Emit the call.
+  SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
+  Chain = DAG.getNode(AAPISD::CALL, DL, NodeTys, Ops);
+  Glue = Chain.getValue(1);
+
+  // Create the CALLSEQ_END node to mark the end of the call.
+  Chain = DAG.getCALLSEQ_END(Chain, DAG.getConstant(NumBytes, DL, PtrTy, true),
+                             DAG.getConstant(0, DL, PtrTy, true), Glue, DL);
+  Glue = Chain.getValue(1);
+
+  // Handle result values, copying them out of physregs into vregs that we
+  // return.
+  // Assign locations to each value returned by this call.
+  SmallVector<CCValAssign, 16> RVLocs;
+  CCState CCResInfo(CallConv, isVarArg, MF, RVLocs, *DAG.getContext());
+
+  CCResInfo.AnalyzeCallResult(Ins, RetCC_AAP);
+
+  // Copy all of the result registers out of their specified physreg.
+  for (auto &VA : RVLocs) {
+    Chain = DAG.getCopyFromReg(Chain, DL, VA.getLocReg(), VA.getValVT(), Glue)
+                .getValue(1);
+    Glue = Chain.getValue(2);
+
+    InVals.push_back(Chain.getValue(0));
+  }
+
+  return Chain;
 }
 
 //===----------------------------------------------------------------------===//
