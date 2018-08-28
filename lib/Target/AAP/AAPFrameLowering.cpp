@@ -23,42 +23,6 @@
 
 using namespace llvm;
 
-static void adjustReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
-                      const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
-                      int64_t Val, MachineInstr::MIFlag Flag) {
-  if (Val == 0 && DestReg == SrcReg)
-    return;
-
-  bool isSub = Val < 0;
-  Val = isSub ? -Val : Val;
-
-  if (!isUInt<16>(Val))
-    llvm_unreachable("adjustReg cannot handle adjustments > 16 bits");
-
-  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
-
-  if (isUInt<10>(Val)) {
-    unsigned Opcode = isSub ? AAP::SUBI_i10 : AAP::ADDI_i10;
-    BuildMI(MBB, MBBI, DL, TII.get(Opcode), DestReg)
-        .addReg(SrcReg)
-        .addImm(Val)
-        .setMIFlag(Flag);
-    return;
-  }
-
-  MachineRegisterInfo &MRI = MBB.getParent()->getRegInfo();
-  unsigned ScratchReg = MRI.createVirtualRegister(&AAP::GR64RegClass);
-  BuildMI(MBB, MBBI, DL, TII.get(AAP::MOVI_i16), ScratchReg)
-      .addImm(Val)
-      .setMIFlag(Flag);
-
-  unsigned Opcode = isSub ? AAP::SUB_r : AAP::ADD_r;
-  BuildMI(MBB, MBBI, DL, TII.get(Opcode), DestReg)
-      .addReg(SrcReg)
-      .addReg(ScratchReg, RegState::Kill)
-      .setMIFlag(Flag);
-}
-
 bool AAPFrameLowering::hasFP(const MachineFunction &MF) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
   return MF.getTarget().Options.DisableFramePointerElim(MF) ||
@@ -66,12 +30,107 @@ bool AAPFrameLowering::hasFP(const MachineFunction &MF) const {
          MFI.hasVarSizedObjects() || MFI.isFrameAddressTaken();
 }
 
+void AAPFrameLowering::determineCalleeSaves(MachineFunction &MF,
+                                            BitVector &SavedRegs,
+                                            RegScavenger *RS) const {
+  TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
+  // Unconditionally spill RA and FP only if the function uses a frame
+  // pointer.
+  if (hasFP(MF)) {
+    SavedRegs.set(AAP::R0);
+    SavedRegs.set(AAPRegisterInfo::getFramePtrRegister());
+  }
+}
+
+const TargetFrameLowering::SpillSlot *
+AAPFrameLowering::getCalleeSavedSpillSlots(unsigned &NumEntries) const {
+  // Ensure that the frame pointer is stored at a constant stack offset.
+  NumEntries = 2;
+  static const SpillSlot Offsets[] = {
+      {AAP::R0, -2}, {AAPRegisterInfo::getFramePtrRegister(), -4}};
+  return Offsets;
+}
+
+int AAPFrameLowering::getFrameIndexReference(const MachineFunction &MF, int FI,
+                                             unsigned &FrameReg) const {
+  const MachineFrameInfo &MFrameInfo = MF.getFrameInfo();
+
+  // Determine the offset to the start of the frame.
+  int Offset = MFrameInfo.getObjectOffset(FI) - getOffsetOfLocalArea() +
+               MFrameInfo.getOffsetAdjustment();
+
+  // Determine whether to use the frame pointer. The logic is kept as a set of
+  // if statements for clarity.
+  bool UseFP = false;
+  if (hasFP(MF)) {
+    // For callee saved registers the stack pointer must be used.
+
+    const std::vector<CalleeSavedInfo> &CSI = MFrameInfo.getCalleeSavedInfo();
+    int MinCSFI = 0;
+    int MaxCSFI = -1;
+    for (auto &CS : CSI) {
+      int CSFI = CS.getFrameIdx();
+      if (CSFI < MinCSFI)
+        MinCSFI = CSFI;
+      if (CSFI > MaxCSFI)
+        MaxCSFI = CSFI;
+    }
+
+    // Not a callee saved register:
+    if (FI < MinCSFI || FI > MaxCSFI) {
+
+      // If the offset is to a fixed stack object, the frame pointer should be
+      // used.
+      if (MFrameInfo.isFixedObjectIndex(FI))
+        UseFP = true;
+
+      // If the stack frame contains variable sized objects, the frame pointer
+      // should be used.
+      if (MFrameInfo.hasVarSizedObjects())
+        UseFP = true;
+
+      // For other objects the frame pointer should only be used if the offset
+      // is within a safe range.
+      if (Offset >= -512)
+        UseFP = true;
+    }
+  }
+
+  if (!UseFP) {
+    FrameReg = AAPRegisterInfo::getStackPtrRegister();
+    Offset += MFrameInfo.getStackSize();
+  } else
+    FrameReg = AAPRegisterInfo::getFramePtrRegister();
+
+  // NOTE: If AAP did not pass all varargs on the stack, an offset to the frame
+  // pointer would need to take into account the size of the varargs stored off
+  // the stack to remain accurate.
+
+  return Offset;
+}
+
 // Eliminate ADJCALLSTACKDOWN, ADJCALLSTACKUP pseudo instructions
 MachineBasicBlock::iterator AAPFrameLowering::eliminateCallFramePseudoInstr(
     MachineFunction &MF, MachineBasicBlock &MBB,
     MachineBasicBlock::iterator MI) const {
-  // TODO: Support frame pointer.
-  assert(!hasFP(MF) && "Frame pointer unsupported");
+  unsigned SP = AAPRegisterInfo::getStackPtrRegister();
+  DebugLoc DL = MI != MBB.end() ? MI->getDebugLoc() : DebugLoc();
+
+  if (MF.getFrameInfo().hasVarSizedObjects()) {
+    // If the current frame contains variable sized stack objects, IE created by
+    // alloca, the stack pointer must be adjusted.
+    int64_t NumBytes = MI->getOperand(0).getImm();
+
+    if (NumBytes != 0) {
+      NumBytes = alignSPAdjust(NumBytes);
+
+      if (MI->getOpcode() == AAP::ADJCALLSTACKDOWN)
+        NumBytes = -NumBytes;
+
+      AAPRegisterInfo::adjustReg(MBB, MI, DL, SP, SP, NumBytes,
+                                 MachineInstr::NoFlags);
+    }
+  }
   return MBB.erase(MI);
 }
 
@@ -87,10 +146,25 @@ void AAPFrameLowering::emitPrologue(MachineFunction &MF,
   const uint64_t StackSize = MFrameInfo.getStackSize();
 
   // Adjust the stack pointer down by the number of bytes needed.
-  adjustReg(MBB, MBBI, DL, SP, SP, -StackSize, MachineInstr::FrameSetup);
+  AAPRegisterInfo::adjustReg(MBB, MBBI, DL, SP, SP, -StackSize,
+                             MachineInstr::FrameSetup);
 
-  // TODO: Support frame pointer adjustment.
-  assert(!hasFP(MF) && "Frame pointer unsupported");
+  if (!hasFP(MF))
+    return;
+
+  unsigned FP = AAPRegisterInfo::getFramePtrRegister();
+
+  // To ensure that the previous state of the frame pointer remains available to
+  // be restored, the frame pointer adjustment must be done after the callee
+  // saved registers are spilled to the stack, since the frame pointer is a
+  // callee saved register.
+  std::advance(MBBI, MFrameInfo.getCalleeSavedInfo().size());
+
+  // NOTE: If AAP did not pass all varargs on the stack, the restore adjustment
+  // would need to take into account the size of the varargs stored off the
+  // stack to remain accurate.
+  AAPRegisterInfo::adjustReg(MBB, MBBI, DL, FP, SP, StackSize,
+                             MachineInstr::FrameSetup);
 }
 
 void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
@@ -106,9 +180,25 @@ void AAPFrameLowering::emitEpilogue(MachineFunction &MF,
   // Get the number of bytes to deallocate from the FrameInfo
   const uint64_t StackSize = MFrameInfo.getStackSize();
 
-  // TODO: Support frame pointer adjustment.
-  assert(!hasFP(MF) && "Frame pointer unsupported");
+  if (MFrameInfo.hasVarSizedObjects() ||
+      MF.getSubtarget().getRegisterInfo()->needsStackRealignment(MF)) {
+    unsigned FP = AAPRegisterInfo::getFramePtrRegister();
+
+    // To ensure that the state of the stack pointer can be restored to the
+    // current state of the frame pointer, the adjustment must be done before
+    // the callee saved registers are restored from the stack, since the frame
+    // pointer is a callee saved register.
+    MachineBasicBlock::iterator PreRestore = MBBI;
+    std::advance(PreRestore, -MFrameInfo.getCalleeSavedInfo().size());
+
+    // NOTE: If AAP did not pass all varargs on the stack, the restore
+    // adjustment would need to take into account the size of the varargs stored
+    // off the stack to remain accurate.
+    AAPRegisterInfo::adjustReg(MBB, PreRestore, DL, SP, FP, -StackSize,
+                               MachineInstr::FrameDestroy);
+  }
 
   // Adjust the stack pointer up by the number of bytes needed.
-  adjustReg(MBB, MBBI, DL, SP, SP, StackSize, MachineInstr::FrameDestroy);
+  AAPRegisterInfo::adjustReg(MBB, MBBI, DL, SP, SP, StackSize,
+                             MachineInstr::FrameDestroy);
 }

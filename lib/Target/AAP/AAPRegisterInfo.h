@@ -39,6 +39,19 @@ public:
   // Debug information queries.
   unsigned getFrameRegister(const MachineFunction &MF) const override;
 
+  bool requiresRegisterScavenging(const MachineFunction &MF) const override {
+    return true;
+  }
+
+  bool requiresFrameIndexScavenging(const MachineFunction &MF) const override {
+    return true;
+  }
+
+  static void adjustReg(MachineBasicBlock &MBB,
+                        MachineBasicBlock::iterator MBBI, const DebugLoc &DL,
+                        unsigned DestReg, unsigned SrcReg, int64_t Val,
+                        MachineInstr::MIFlag Flag);
+
   static unsigned getLinkRegister();
   static unsigned getStackPtrRegister();
   static unsigned getFramePtrRegister();

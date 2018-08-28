@@ -56,56 +56,87 @@ void AAPRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MBBI,
   MachineInstr &MI = *MBBI;
   MachineBasicBlock &MBB = *MI.getParent();
   MachineFunction &MF = *MBB.getParent();
-  const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
-
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+  const AAPInstrInfo *TII = MF.getSubtarget<AAPSubtarget>().getInstrInfo();
   DebugLoc DL = MI.getDebugLoc();
 
-  unsigned i = 0;
-  while (!MI.getOperand(i).isFI()) {
-    ++i;
-    assert(i < MI.getNumOperands() &&
-           "Instr does not have a Frame Index operand!");
-  }
+  int FrameIdx = MI.getOperand(FIOperandNum).getIndex();
+  unsigned BaseReg;
+  int Offset =
+      getFrameLowering(MF)->getFrameIndexReference(MF, FrameIdx, BaseReg) +
+      MI.getOperand(FIOperandNum + 1).getImm();
 
-  int FrameIdx = MI.getOperand(i).getIndex();
-  unsigned BaseReg = getFrameRegister(MF);
-
-  int Offset = MF.getFrameInfo().getObjectOffset(FrameIdx);
-  if (!TFI->hasFP(MF))
-    Offset += MF.getFrameInfo().getStackSize();
-
-  // fold imm into offset
-  Offset += MI.getOperand(i + 1).getImm();
-
-  // If the MachineInstr is an LEA, expand it to an ADDI_i10 or SUBI_i10 here
+  // If the MachineInstr is an LEA, expand it to a register adjustment here.
   if (MI.getOpcode() == AAP::LEA) {
-    const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
-    unsigned DstReg = MI.getOperand(0).getReg();
-
-    assert(((Offset >= -1023) || (Offset <= 1023)) &&
-           "Currently LEA immediates must be in the range [-1023, 1023]");
-
-    if (Offset > 0) {
-      BuildMI(MBB, &MI, DL, TII->get(AAP::ADDI_i10), DstReg)
-          .addReg(BaseReg)
-          .addImm(Offset);
-    } else if (Offset < 0) {
-      BuildMI(MBB, &MI, DL, TII->get(AAP::SUBI_i10), DstReg)
-          .addReg(BaseReg)
-          .addImm(-Offset);
-    } else
-      BuildMI(MBB, &MI, DL, TII->get(AAP::MOV_r), DstReg).addReg(BaseReg);
+    unsigned DestReg = MI.getOperand(0).getReg();
+    adjustReg(MBB, MBBI, DL, DestReg, BaseReg, Offset, MachineInstr::NoFlags);
     MI.eraseFromParent();
-  } else {
-    MI.getOperand(i).ChangeToRegister(BaseReg, false);
-    MI.getOperand(i + 1).ChangeToImmediate(Offset);
+    return;
   }
+
+  if (!(isInt<16>(Offset) || isUInt<16>(Offset)))
+    llvm_unreachable("eliminateFrameIndex cannot handle offsets > 16 bits");
+
+  bool BaseRegIsKill = false;
+
+  if (!isInt<10>(Offset)) {
+    unsigned ScratchReg = MRI.createVirtualRegister(&AAP::GR64RegClass);
+    BuildMI(MBB, MBBI, DL, TII->get(AAP::MOVI_i16), ScratchReg).addImm(Offset);
+    BuildMI(MBB, MBBI, DL, TII->get(AAP::ADD_r), ScratchReg)
+        .addReg(BaseReg)
+        .addReg(ScratchReg, RegState::Kill);
+    Offset = 0;
+    BaseReg = ScratchReg;
+    BaseRegIsKill = true;
+  }
+
+  MI.getOperand(FIOperandNum)
+      .ChangeToRegister(BaseReg, false, false, BaseRegIsKill);
+  MI.getOperand(FIOperandNum + 1).ChangeToImmediate(Offset);
 }
 
 unsigned AAPRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
 
   return TFI->hasFP(MF) ? getFramePtrRegister() : getStackPtrRegister();
+}
+
+void AAPRegisterInfo::adjustReg(MachineBasicBlock &MBB,
+                                MachineBasicBlock::iterator MBBI,
+                                const DebugLoc &DL, unsigned DestReg,
+                                unsigned SrcReg, int64_t Val,
+                                MachineInstr::MIFlag Flag) {
+  if (Val == 0 && DestReg == SrcReg)
+    return;
+
+  bool isSub = Val < 0;
+  Val = isSub ? -Val : Val;
+
+  if (!isUInt<16>(Val))
+    llvm_unreachable("adjustReg cannot handle adjustments > 16 bits");
+
+  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+
+  if (isUInt<10>(Val)) {
+    unsigned Opcode = isSub ? AAP::SUBI_i10 : AAP::ADDI_i10;
+    BuildMI(MBB, MBBI, DL, TII.get(Opcode), DestReg)
+        .addReg(SrcReg)
+        .addImm(Val)
+        .setMIFlag(Flag);
+    return;
+  }
+
+  MachineRegisterInfo &MRI = MBB.getParent()->getRegInfo();
+  unsigned ScratchReg = MRI.createVirtualRegister(&AAP::GR64RegClass);
+  BuildMI(MBB, MBBI, DL, TII.get(AAP::MOVI_i16), ScratchReg)
+      .addImm(Val)
+      .setMIFlag(Flag);
+
+  unsigned Opcode = isSub ? AAP::SUB_r : AAP::ADD_r;
+  BuildMI(MBB, MBBI, DL, TII.get(Opcode), DestReg)
+      .addReg(SrcReg)
+      .addReg(ScratchReg, RegState::Kill)
+      .setMIFlag(Flag);
 }
 
 unsigned AAPRegisterInfo::getLinkRegister() { return AAP::R0; }

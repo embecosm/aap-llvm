@@ -120,6 +120,11 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   // BR_JT unsupported by the architecture
   setOperationAction(ISD::BR_JT, MVT::Other, Expand);
 
+  // Expand alloca and stacksave/stackrestore
+  setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Expand);
+  setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
+  setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
+
   // Custom DAGCombine
   setTargetDAGCombine(ISD::ADD);
 
