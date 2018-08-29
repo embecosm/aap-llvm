@@ -54,6 +54,7 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
 
   setOperationAction(ISD::GlobalAddress, MVT::i16, Custom);
   setOperationAction(ISD::ExternalSymbol, MVT::i16, Custom);
+  setOperationAction(ISD::BlockAddress, MVT::i16, Custom);
 
   // Use SHL & SRA to sign extend in register
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
@@ -159,6 +160,8 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerGlobalAddress(Op, DAG);
   case ISD::ExternalSymbol:
     return LowerExternalSymbol(Op, DAG);
+  case ISD::BlockAddress:
+    return LowerBlockAddress(Op, DAG);
   case ISD::SELECT_CC:
     return LowerSELECT_CC(Op, DAG);
   case ISD::BR_CC:
@@ -184,6 +187,15 @@ SDValue AAPTargetLowering::LowerExternalSymbol(SDValue Op,
   const char *Sym = cast<ExternalSymbolSDNode>(Op)->getSymbol();
 
   SDValue Result = DAG.getTargetExternalSymbol(Sym, Ty);
+  return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), Ty, Result);
+}
+
+SDValue AAPTargetLowering::LowerBlockAddress(SDValue Op,
+                                             SelectionDAG &DAG) const {
+  EVT Ty = getPointerTy(DAG.getDataLayout());
+  const BlockAddress *BA = cast<BlockAddressSDNode>(Op)->getBlockAddress();
+
+  SDValue Result = DAG.getTargetBlockAddress(BA, Ty);
   return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), Ty, Result);
 }
 
