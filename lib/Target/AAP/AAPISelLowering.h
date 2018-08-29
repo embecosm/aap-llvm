@@ -85,6 +85,10 @@ private:
 
   SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
 
+  SDValue LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
+
+  SDValue LowerRETURNADDR(SDValue Op, SelectionDAG &DAG) const;
+
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 
   SDValue PerformADDCombine(SDNode *N, DAGCombinerInfo &DCI) const;

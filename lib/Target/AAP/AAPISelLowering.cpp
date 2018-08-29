@@ -177,6 +177,10 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerBR_CC(Op, DAG);
   case ISD::VASTART:
     return LowerVASTART(Op, DAG);
+  case ISD::FRAMEADDR:
+    return LowerFRAMEADDR(Op, DAG);
+  case ISD::RETURNADDR:
+    return LowerRETURNADDR(Op, DAG);
   }
 }
 
@@ -299,6 +303,66 @@ SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
   // Create a store of the frame index to the location operand
   return DAG.getStore(Op.getOperand(0), SDLoc(Op), FrameIndex, Op.getOperand(1),
                       MachinePointerInfo(Src));
+}
+
+SDValue AAPTargetLowering::LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const {
+  MachineFunction &MF = DAG.getMachineFunction();
+  MachineFrameInfo &MFI = MF.getFrameInfo();
+  MFI.setFrameAddressIsTaken(true);
+  unsigned FrameReg = AAPRegisterInfo::getFramePtrRegister();
+
+  EVT VT = Op.getValueType();
+  SDLoc Loc(Op);
+
+  // Get the address of the current stack frame.
+  SDValue FrameAddr = DAG.getCopyFromReg(DAG.getEntryNode(), Loc, FrameReg, MVT::i16);
+
+  // If the depth is non-zero, the required frame address can be found by
+  // continually restoring the previous state of the frame pointer and following
+  // it back up the stack.
+  unsigned Depth = cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue();
+  while (Depth--) {
+    // Get the location on the stack of the previously saved frame pointer.
+    SDValue Offset = DAG.getIntPtrConstant(-4, Loc);
+    SDValue Ptr = DAG.getNode(ISD::ADD, Loc, VT, FrameAddr, Offset);
+
+    // Follow the previous frame pointer to get the address of the previous
+    // stack frame.
+    FrameAddr = DAG.getLoad(VT, Loc, DAG.getEntryNode(), Ptr, MachinePointerInfo());
+  }
+  return FrameAddr;
+}
+
+SDValue AAPTargetLowering::LowerRETURNADDR(SDValue Op, SelectionDAG &DAG) const {
+  const TargetRegisterInfo &RI = *STI.getRegisterInfo();
+  MachineFunction &MF = DAG.getMachineFunction();
+
+  if (verifyReturnAddressArgumentIsConstant(Op, DAG))
+    return SDValue();
+
+  EVT VT = Op.getValueType();
+  SDLoc Loc(Op);
+
+  // If the operand specifies a non-zero function depth, the required return
+  // address can be found by traversing back up the stack to find where the
+  // link register was stored for that depth.
+  unsigned Depth = cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue();
+  if (Depth) {
+    // Get the address of the required stack frame.
+    SDValue FrameAddr = LowerFRAMEADDR(Op, DAG);
+
+    // Get the location on the stack of the link register for the required
+    // stack frame.
+    SDValue Offset = DAG.getIntPtrConstant(-2, Loc);
+    SDValue Ptr = DAG.getNode(ISD::ADD, Loc, VT, FrameAddr, Offset);
+
+    return DAG.getLoad(VT, Loc, DAG.getEntryNode(), Ptr, MachinePointerInfo());
+  }
+
+  // Since the function depth is 0, the return address is currently stored in
+  // the return address register, IE the link register.
+  unsigned Reg = MF.addLiveIn(RI.getRARegister(), getRegClassFor(MVT::i16));
+  return DAG.getCopyFromReg(DAG.getEntryNode(), Loc, Reg, MVT::i16);
 }
 
 //===----------------------------------------------------------------------===//
