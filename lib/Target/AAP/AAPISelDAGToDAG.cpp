@@ -43,6 +43,9 @@ public:
 
   void Select(SDNode *N) override;
 
+  bool SelectInlineAsmMemoryOperand(const SDValue &Op, unsigned ConstraintID,
+                                    std::vector<SDValue> &OutOps) override;
+
 #include "AAPGenDAGISel.inc"
 private:
   bool SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset);
@@ -84,6 +87,26 @@ void AAPISelDAGToDAG::Select(SDNode *Node) {
 
   // Select the default instruction
   SelectCode(Node);
+}
+
+bool AAPISelDAGToDAG::SelectInlineAsmMemoryOperand(
+    const SDValue &Op, unsigned ConstraintID, std::vector<SDValue> &OutOps) {
+  switch (ConstraintID) {
+  default:
+    return true;
+  case InlineAsm::Constraint_i:
+  case InlineAsm::Constraint_m:
+    SDLoc Loc(Op);
+    SDValue RC =
+        CurDAG->getTargetConstant(AAP::GR64RegClass.getID(), Loc, MVT::i16);
+    SDNode *N = CurDAG->getMachineNode(TargetOpcode::COPY_TO_REGCLASS, Loc,
+                                       Op.getValueType(), Op, RC);
+    SDValue Zero = CurDAG->getTargetConstant(0, Loc, MVT::i16);
+    OutOps.push_back(SDValue(N, 0));
+    OutOps.push_back(Zero);
+    break;
+  }
+  return false;
 }
 
 bool AAPISelDAGToDAG::SelectAddr(SDValue Addr, SDValue &Base, SDValue &Offset) {

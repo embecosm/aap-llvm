@@ -770,3 +770,38 @@ MachineBasicBlock *AAPTargetLowering::EmitBR_CC(MachineInstr &MI,
   MI.eraseFromParent();
   return MBB;
 }
+
+//===----------------------------------------------------------------------===//
+//                      AAP Inline Assembly Support
+//===----------------------------------------------------------------------===//
+
+/// getConstraintType - Given a constraint letter, return the type of
+/// constraint it is for this target
+TargetLowering::ConstraintType
+AAPTargetLowering::getConstraintType(StringRef Constraint) const {
+  if (Constraint.size() == 1) {
+    switch (Constraint[0]) {
+    default:
+      break;
+    case 'r':
+      return C_RegisterClass;
+    }
+  }
+  return TargetLowering::getConstraintType(Constraint);
+}
+
+std::pair<unsigned, const TargetRegisterClass *>
+AAPTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                                                StringRef Constraint,
+                                                MVT VT) const {
+  if (Constraint.size() == 1) {
+    switch (Constraint[0]) {
+    default:
+      break;
+    case 'r':
+      // General purpose registers
+      return std::make_pair(0U, &AAP::GR64RegClass);
+    }
+  }
+  return TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
+}

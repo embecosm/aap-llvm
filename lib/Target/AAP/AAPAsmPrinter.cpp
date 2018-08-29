@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AAP.h"
+#include "InstPrinter/AAPInstPrinter.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -33,6 +34,14 @@ public:
   // Wrapper used by tablegen pseudo lowering implementation.
   bool lowerOperand(const MachineOperand &MO, MCOperand &OutMO);
 
+  bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
+                       unsigned AsmVariant, const char *ExtraCode,
+                       raw_ostream &O) override;
+
+  bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
+                             unsigned AsmVariant, const char *ExtraCode,
+                             raw_ostream &O) override;
+
   // Implemented by tablegen.
   bool emitPseudoExpansionLowering(MCStreamer &OutStreamer,
                                    const MachineInstr *MI);
@@ -40,6 +49,42 @@ public:
   void EmitInstruction(const MachineInstr *MI) override;
 };
 } // end of anonymous namespace
+
+bool AAPAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
+                                    unsigned AsmVariant, const char *ExtraCode,
+                                    raw_ostream &O) {
+  const MachineOperand &MO = MI->getOperand(OpNo);
+  switch (MO.getType()) {
+  default:
+    llvm_unreachable("Not implemented yet!");
+  case MachineOperand::MO_Register:
+    O << '$' << AAPInstPrinter::getRegisterName(MO.getReg());
+    break;
+  case MachineOperand::MO_Immediate:
+    O << MO.getImm();
+    break;
+  case MachineOperand::MO_MachineBasicBlock:
+    O << *MO.getMBB()->getSymbol();
+    break;
+  case MachineOperand::MO_GlobalAddress: {
+    O << *getSymbol(MO.getGlobal());
+    break;
+  }
+  }
+  return false;
+}
+
+bool AAPAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
+                                          unsigned AsmVariant,
+                                          const char *ExtraCode,
+                                          raw_ostream &O) {
+  O << '[';
+  PrintAsmOperand(MI, OpNo, AsmVariant, ExtraCode, O);
+  O << ", ";
+  PrintAsmOperand(MI, OpNo + 1, AsmVariant, ExtraCode, O);
+  O << ']';
+  return false;
+}
 
 bool AAPAsmPrinter::lowerOperand(const MachineOperand &MO, MCOperand &OutMO) {
   return LowerAAPMachineOperandToMCOperand(MO, OutMO, *this);
