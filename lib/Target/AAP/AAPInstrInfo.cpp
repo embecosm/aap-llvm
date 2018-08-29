@@ -15,6 +15,7 @@
 #include "AAPTargetMachine.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/Support/MathExtras.h"
 
 using namespace llvm;
 
@@ -24,6 +25,221 @@ using namespace llvm;
 AAPInstrInfo::AAPInstrInfo()
     : AAPGenInstrInfo(AAP::ADJCALLSTACKDOWN, AAP::ADJCALLSTACKUP) {}
 
+bool AAPInstrInfo::isBranchOffsetInRange(unsigned BranchOpc,
+                                         int64_t BrOffset) const {
+  switch (BranchOpc) {
+  default:
+    llvm_unreachable("Invalid opcode");
+  case AAP::BRA:
+    return isInt<22>(BrOffset);
+  case AAP::BEQ_:
+  case AAP::BNE_:
+  case AAP::BLTS_:
+  case AAP::BLES_:
+  case AAP::BLTU_:
+  case AAP::BLEU_:
+    return isInt<10>(BrOffset);
+  }
+}
+
+MachineBasicBlock *
+AAPInstrInfo::getBranchDestBlock(const MachineInstr &MI) const {
+  assert(MI.getDesc().isBranch() && "Invalid opcode");
+
+  // The branch target is always the first operand.
+  return MI.getOperand(0).getMBB();
+}
+
+bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
+                                 MachineBasicBlock *&TBB,
+                                 MachineBasicBlock *&FBB,
+                                 SmallVectorImpl<MachineOperand> &Cond,
+                                 bool AllowModify) const {
+  // Setup default return state
+  TBB = FBB = nullptr;
+  Cond.clear();
+
+  MachineBasicBlock::iterator I = MBB.end();
+  MachineBasicBlock::iterator FirstBr = MBB.end();
+  MachineBasicBlock::iterator FirstUnCondBr = MBB.end();
+  unsigned NumTerminators = 0;
+
+  // Find the first branch and the first unconditional branch
+  while (I != MBB.begin()) {
+    --I;
+    if (I->isDebugValue())
+      continue;
+
+    // If we see a non-terminator, we're done
+    if (!isUnpredicatedTerminator(*I))
+      break;
+
+    ++NumTerminators;
+    FirstBr = I;
+    if (I->getDesc().isUnconditionalBranch() || I->getDesc().isIndirectBranch())
+      FirstUnCondBr = I;
+  }
+
+  bool HaveUnCondBr = FirstUnCondBr != MBB.end();
+
+  // Nuke everything after the first unconditional branch
+  if (AllowModify && HaveUnCondBr) {
+    while (std::next(FirstUnCondBr) != MBB.end()) {
+      std::next(FirstUnCondBr)->eraseFromParent();
+      --NumTerminators;
+    }
+  }
+
+  // If the block ends in an unconditional branch we can't analyze it further
+  if (HaveUnCondBr && FirstUnCondBr->getDesc().isIndirectBranch())
+    return true;
+
+  // Nuke the unconditional branch if it's actually a fallthrough
+  if (AllowModify && HaveUnCondBr &&
+      MBB.isLayoutSuccessor(getBranchDestBlock(*FirstUnCondBr))) {
+    FirstUnCondBr->eraseFromParent();
+    --NumTerminators;
+    HaveUnCondBr = false;
+  }
+
+  // If the block ends in more than one conditional branch, we can't analyze it
+  // TODO: Relax this constraint. We should be able to handle things such as:
+  //   beq  L1, r0, r1
+  //   bne  L2, r0, r1
+  // More elegantly
+  if ((!HaveUnCondBr && NumTerminators > 1) || NumTerminators > 2)
+    return true;
+
+  // We may be able to modify the following code:
+  //
+  //   bCC L1
+  //   bra L2
+  // L1:
+  //   ...
+  // L2:
+  //
+  // To something more efficient such as
+  //
+  //   bnCC L2
+  // L1:
+  //   ...
+  // L2:
+  //
+  if (AllowModify && HaveUnCondBr && NumTerminators == 2 &&
+      MBB.isLayoutSuccessor(getBranchDestBlock(*FirstBr))) {
+    AAPCC::CondCode CC = getCondFromBranchOpcode(FirstBr->getOpcode());
+    AAPCC::CondCode RCC = reverseCondCode(CC);
+    if (RCC != AAPCC::COND_INVALID) {
+
+      MachineBasicBlock *Target = getBranchDestBlock(*FirstUnCondBr);
+
+      DebugLoc DL = MBB.findDebugLoc(FirstBr);
+
+      MachineInstr *OldCondBr = &*FirstBr;
+      FirstBr = BuildMI(&MBB, DL, get(getBranchOpcodeFromCond(RCC)))
+                    .addMBB(Target)
+                    .addReg(FirstBr->getOperand(1).getReg())
+                    .addReg(FirstBr->getOperand(2).getReg());
+
+      // Replace the conditional branch with the inverted branch
+      FirstUnCondBr->eraseFromParent();
+      OldCondBr->eraseFromParent();
+      --NumTerminators;
+      HaveUnCondBr = false;
+    }
+  }
+
+  // If the block has no terminators, it's just a fallthrough
+  if (NumTerminators == 0)
+    return false;
+
+  // Only an unconditional branch, set TBB to the destination block
+  if (HaveUnCondBr && NumTerminators == 1) {
+    TBB = getBranchDestBlock(*FirstUnCondBr);
+    return false;
+  }
+
+  // Conditional branch /w fallthrough. Set TBB to destination and
+  // set Cond to operands to evaluate the condition
+  if (!HaveUnCondBr && NumTerminators == 1) {
+    TBB = getBranchDestBlock(*FirstBr);
+    AAPCC::CondCode CC = getCondFromBranchOpcode(FirstBr->getOpcode());
+    Cond.push_back(MachineOperand::CreateImm(CC));
+    Cond.push_back(FirstBr->getOperand(1));
+    Cond.push_back(FirstBr->getOperand(2));
+    return false;
+  }
+
+  // Unconditional branch preceded by conditional branch
+  assert(HaveUnCondBr && NumTerminators == 2);
+
+  TBB = getBranchDestBlock(*FirstBr);
+  FBB = getBranchDestBlock(*FirstUnCondBr);
+
+  AAPCC::CondCode CC = getCondFromBranchOpcode(FirstBr->getOpcode());
+  Cond.push_back(MachineOperand::CreateImm(CC));
+  Cond.push_back(FirstBr->getOperand(1));
+  Cond.push_back(FirstBr->getOperand(2));
+  return false;
+}
+
+unsigned AAPInstrInfo::insertBranch(MachineBasicBlock &MBB,
+                                    MachineBasicBlock *TBB,
+                                    MachineBasicBlock *FBB,
+                                    ArrayRef<MachineOperand> Cond,
+                                    const DebugLoc &DL, int *BytesAdded) const {
+  assert(TBB && "InsertBranch cannot insert a fallthrough");
+  assert(Cond.size() == 3 || Cond.size() == 0);
+
+  MachineInstr *MI;
+
+  if (Cond.empty()) {
+    assert(!FBB && "Unconditional branch cannot have multiple successors");
+    MI = BuildMI(&MBB, DL, get(AAP::BRA)).addMBB(TBB);
+    if (BytesAdded)
+      *BytesAdded += getInstSizeInBytes(*MI);
+    return 1;
+  }
+  // Conditional branch
+  unsigned Count = 0;
+  AAPCC::CondCode CC = (AAPCC::CondCode)Cond[0].getImm();
+  MI = BuildMI(&MBB, DL, get(getBranchOpcodeFromCond(CC)))
+           .addMBB(TBB)
+           .addReg(Cond[1].getReg())
+           .addReg(Cond[2].getReg());
+  if (BytesAdded)
+    *BytesAdded += getInstSizeInBytes(*MI);
+  ++Count;
+
+  if (FBB) {
+    MI = BuildMI(&MBB, DL, get(AAP::BRA)).addMBB(FBB);
+    if (BytesAdded)
+      *BytesAdded += getInstSizeInBytes(*MI);
+    ++Count;
+  }
+  return Count;
+}
+
+unsigned AAPInstrInfo::removeBranch(MachineBasicBlock &MBB,
+                                    int *BytesRemoved) const {
+  unsigned Count = 0;
+  auto I = MBB.end();
+  while (I != MBB.begin()) {
+    --I;
+    if (I->isDebugValue())
+      continue;
+    if (!I->isBranch())
+      break;
+    // Remove the branch
+    I->eraseFromParent();
+    // Add to the number of bytes removed
+    if (BytesRemoved)
+      *BytesRemoved += getInstSizeInBytes(*I);
+    I = MBB.end();
+    ++Count;
+  }
+  return Count;
+}
 
 unsigned AAPInstrInfo::isStoreToStackSlot(const MachineInstr &MI,
                                           int &FrameIndex) const {

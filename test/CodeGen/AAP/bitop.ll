@@ -39,15 +39,14 @@ define i16 @test_cttz_i16(i16 %a) nounwind {
 ; CHECK:         subi $r1, $r1, 4
 ; CHECK:         stw [$r1, 2], $r0
 ; CHECK:         stw [$r1, 0], $r3
-; CHECK:         movi $[[REG1:r[0-9]+]], 16
-; CHECK:         movi $[[REG2:r[0-9]+]], 0
-; CHECK:         beq .[[END:LBB[0-9]+_[0-9]+]], $r2, $[[REG2]]
+; CHECK:         movi $[[REG1:r[0-9]+]], 0
+; CHECK:         beq .[[PRE:LBB[0-9]+_[0-9]+]], $r2, $[[REG1]]
 ; CHECK:         movi $[[REG1]], -1
 ; CHECK:         xor $[[REG1]], $r2, $[[REG1]]
 ; CHECK:         subi $r2, $r2, 1
 ; CHECK:         and $r2, $[[REG1]], $r2
 ; CHECK:         lsri $[[REG1]], $r2, 1
-; CHECK:         movi $[[REG2]], 21845
+; CHECK:         movi $[[REG2:r[0-9]+]], 21845
 ; CHECK:         and $[[REG1]], $[[REG1]], $[[REG2]]
 ; CHECK:         sub $r2, $r2, $[[REG1]]
 ; CHECK:         movi $[[REG1]], 13107
@@ -61,9 +60,11 @@ define i16 @test_cttz_i16(i16 %a) nounwind {
 ; CHECK:         and $r2, $r2, $[[REG1]]
 ; CHECK:         movi $r3, 257
 ; CHECK:         bal __mulhi3, $r0
-; CHECK:         lsri $[[REG1]], $r2, 8
+; CHECK:         lsri $r2, $r2, 8
+; CHECK:         bra .[[END:LBB[0-9]+_[0-9]+]]
+; CHECK:       .[[PRE]]
+; CHECK:         movi $r2, 16
 ; CHECK:       .[[END]]:
-; CHECK:         mov $r2, $[[REG1]]
 ; CHECK:         ldw $r3, [$r1, 0]
 ; CHECK:         ldw $r0, [$r1, 2]
 ; CHECK:         addi $r1, $r1, 4
@@ -76,12 +77,10 @@ define i16 @test_ctlz_i16(i16 %a) nounwind {
 ; CHECK:         subi $r1, $r1, 4
 ; CHECK:         stw [$r1, 2], $r0
 ; CHECK:         stw [$r1, 0], $r3
-; CHECK:         mov $[[REG1:r[0-9]+]], $r2
-; CHECK:         movi $r2, 16
-; CHECK:         movi $[[REG2:r[0-9]+]], 0
-; CHECK:         beq .[[END:LBB[0-9]+_[0-9]+]], $[[REG1]], $[[REG2]]
-; CHECK:         lsri $r2, $[[REG1]], 1
-; CHECK:         or $r2, $[[REG1]], $r2
+; CHECK:         movi $[[REG1:r[0-9]+]], 0
+; CHECK:         beq .[[PRE:LBB[0-9]+_[0-9]+]], $r2, $[[REG1]]
+; CHECK:         lsri $[[REG1]], $r2, 1
+; CHECK:         or $r2, $r2, $[[REG1]]
 ; CHECK:         lsri $[[REG1]], $r2, 2
 ; CHECK:         or $r2, $r2, $[[REG1]]
 ; CHECK:         lsri $[[REG1]], $r2, 4
@@ -91,7 +90,7 @@ define i16 @test_ctlz_i16(i16 %a) nounwind {
 ; CHECK:         movi $[[REG1]], -1
 ; CHECK:         xor $r2, $r2, $[[REG1]]
 ; CHECK:         movi $[[REG1]], 21845
-; CHECK:         lsri $[[REG2]], $r2, 1
+; CHECK:         lsri $[[REG2:r[0-9]+]], $r2, 1
 ; CHECK:         and $[[REG1]], $[[REG2]], $[[REG1]]
 ; CHECK:         sub $r2, $r2, $[[REG1]]
 ; CHECK:         movi $[[REG1]], 13107
@@ -106,6 +105,9 @@ define i16 @test_ctlz_i16(i16 %a) nounwind {
 ; CHECK:         movi $r3, 257
 ; CHECK:         bal __mulhi3, $r0
 ; CHECK:         lsri $r2, $r2, 8
+; CHECK:         bra .[[END:LBB[0-9]+_[0-9]+]]
+; CHECK:       .[[PRE]]:
+; CHECK:         movi $r2, 16
 ; CHECK:       .[[END]]:
 ; CHECK:         ldw $r3, [$r1, 0]
 ; CHECK:         ldw $r0, [$r1, 2]
