@@ -18,6 +18,9 @@ foreach(t ${LLVM_TARGETS_TO_BUILD})
   add_subdirectory(${t})
 endforeach()
 
+# Special case for AAP Simulator, which lives in Target but isn't one
+add_subdirectory(AAPSimulator)
+
 # Currently we do not allow libraries from lib to reference targets directly.
 # This property is used to enforce that convention. It is important because the
 # logic in llvm_map_components_to_libnames is order dependent on the target

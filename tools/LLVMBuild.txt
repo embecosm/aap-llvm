@@ -17,6 +17,7 @@
 
 [common]
 subdirectories =
+ aap-run
  bugpoint
  dsymutil
  llc
