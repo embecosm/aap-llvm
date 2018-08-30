@@ -76,6 +76,8 @@ private:
 
   SDValue LowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
 
+  SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
+
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
 
   SDValue PerformADDCombine(SDNode *N, DAGCombinerInfo &DCI) const;

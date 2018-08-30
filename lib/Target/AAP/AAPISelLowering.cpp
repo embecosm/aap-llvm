@@ -122,6 +122,12 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   // BR_JT unsupported by the architecture
   setOperationAction(ISD::BR_JT, MVT::Other, Expand);
 
+  // Handle varargs through VASTART
+  setOperationAction(ISD::VASTART, MVT::Other, Custom);
+  setOperationAction(ISD::VAARG, MVT::Other, Expand);
+  setOperationAction(ISD::VAEND, MVT::Other, Expand);
+  setOperationAction(ISD::VACOPY, MVT::Other, Expand);
+
   // Expand alloca and stacksave/stackrestore
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i16, Expand);
   setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
@@ -169,6 +175,8 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerSELECT_CC(Op, DAG);
   case ISD::BR_CC:
     return LowerBR_CC(Op, DAG);
+  case ISD::VASTART:
+    return LowerVASTART(Op, DAG);
   }
 }
 
@@ -279,6 +287,20 @@ SDValue AAPTargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
   return DAG.getNode(AAPISD::BR_CC, Loc, Op.getValueType(), Ops);
 }
 
+SDValue AAPTargetLowering::LowerVASTART(SDValue Op, SelectionDAG &DAG) const {
+  MachineFunction &MF = DAG.getMachineFunction();
+  AAPMachineFunctionInfo *MFI = MF.getInfo<AAPMachineFunctionInfo>();
+
+  // Frame index of first vaarg argument
+  SDValue FrameIndex = DAG.getFrameIndex(MFI->getVarArgsFrameIndex(),
+                                         getPointerTy(DAG.getDataLayout()));
+  const Value *Src = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
+
+  // Create a store of the frame index to the location operand
+  return DAG.getStore(Op.getOperand(0), SDLoc(Op), FrameIndex, Op.getOperand(1),
+                      MachinePointerInfo(Src));
+}
+
 //===----------------------------------------------------------------------===//
 //                      Custom DAG Combine Implementation
 //===----------------------------------------------------------------------===//
@@ -347,7 +369,8 @@ SDValue AAPTargetLowering::LowerFormalArguments(
   // Create frame index for the start of the first vararg value
   if (IsVarArg) {
     unsigned Offset = CCInfo.getNextStackOffset();
-    MFuncInfo->setVarArgsFrameIndex(MFI.CreateFixedObject(1, Offset, true));
+    int FI = MFI.CreateFixedObject(2, Offset, true);
+    MFuncInfo->setVarArgsFrameIndex(FI);
   }
 
   for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
