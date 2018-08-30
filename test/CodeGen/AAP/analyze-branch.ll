@@ -46,7 +46,7 @@ define void @test_bcc_fallthrough_nottaken(i16 %in) nounwind {
 ; CHECK:         subi $r1, $r1, 2
 ; CHECK:         stw [$r1, 0], $r0
 ; CHECK:         movi $r10, 42
-; CHECK:         beq .LBB1_1, $r2, $r10
+; CHECK:         beq .LBB1_3, $r2, $r10
 ;
 ; CHECK:         bal test_false, $r0
 ;
@@ -55,7 +55,7 @@ define void @test_bcc_fallthrough_nottaken(i16 %in) nounwind {
 ; CHECK:         addi $r1, $r1, 2
 ; CHECK:         jmp $r0
 ;
-; CHECK:       .LBB1_1:
+; CHECK:       .LBB1_3:
 ; CHECK:         bal test_true, $r0
 ; CHECK:         bra .LBB1_2
   %tst = icmp eq i16 %in, 42

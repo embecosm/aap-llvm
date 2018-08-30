@@ -62,6 +62,7 @@ public:
   }
 
   bool addInstSelector() override;
+  void addPreEmitPass() override;
 };
 }
 
@@ -73,3 +74,5 @@ bool AAPPassConfig::addInstSelector() {
   addPass(createAAPISelDag(getAAPTargetMachine()));
   return false;
 }
+
+void AAPPassConfig::addPreEmitPass() { addPass(&BranchRelaxationPassID); }

@@ -50,6 +50,18 @@ AAPInstrInfo::getBranchDestBlock(const MachineInstr &MI) const {
   return MI.getOperand(0).getMBB();
 }
 
+/// ReverseBranchCondition - Return the inverse opcode of the
+/// specified Branch instruction.
+bool AAPInstrInfo::reverseBranchCondition(
+    SmallVectorImpl<MachineOperand> &Cond) const {
+  assert(Cond.size() == 3 && "Invalid branch");
+  AAPCC::CondCode RCC = reverseCondCode((AAPCC::CondCode)Cond[0].getImm());
+  if (RCC == AAPCC::COND_INVALID)
+    return true;
+  Cond[0].setImm(RCC);
+  return false;
+}
+
 bool AAPInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
                                  MachineBasicBlock *&TBB,
                                  MachineBasicBlock *&FBB,
@@ -220,6 +232,29 @@ unsigned AAPInstrInfo::insertBranch(MachineBasicBlock &MBB,
   return Count;
 }
 
+unsigned AAPInstrInfo::insertIndirectBranch(MachineBasicBlock &MBB,
+                                            MachineBasicBlock &TBB,
+                                            const DebugLoc &DL,
+                                            int64_t BrOffset,
+                                            RegScavenger *RS) const {
+  assert(MBB.empty() &&
+         "new block should be inserted for expanding unconditional branch");
+
+  MachineBasicBlock::iterator MBBI = MBB.end();
+
+  // NOTE: While this function is named insertIndirectBranch, its purpose is to
+  // insert a branch capable of a longer offset than the conditional branches it
+  // replaces in the branch relaxation pass. Therefore for AAP it makes sense to
+  // insert an unconditional branch instead of an indirect branch, as it is
+  // capable of branching to 22 bit offsets versus only 16 bit absolutes.
+  if (!isInt<22>(BrOffset))
+    llvm_unreachable("Branch offsets > 22 bits unsupported");
+
+  // Insert an unconditional branch.
+  MachineInstr &MI = *BuildMI(MBB, MBBI, DL, get(AAP::BRA)).addMBB(&TBB);
+  return getInstSizeInBytes(MI);
+}
+
 unsigned AAPInstrInfo::removeBranch(MachineBasicBlock &MBB,
                                     int *BytesRemoved) const {
   unsigned Count = 0;
@@ -348,6 +383,24 @@ void AAPInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
       .addFrameIndex(FrameIdx)
       .addImm(0)
       .addMemOperand(MMO);
+}
+
+unsigned AAPInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
+  switch (MI.getOpcode()) {
+  default:
+    return MI.getDesc().getSize();
+  case TargetOpcode::EH_LABEL:
+  case TargetOpcode::IMPLICIT_DEF:
+  case TargetOpcode::KILL:
+  case TargetOpcode::DBG_VALUE:
+    return 0;
+  case TargetOpcode::INLINEASM: {
+    const MachineFunction &MF = *MI.getParent()->getParent();
+    const auto &TM = static_cast<const AAPTargetMachine &>(MF.getTarget());
+    return getInlineAsmLength(MI.getOperand(0).getSymbolName(),
+                              *TM.getMCAsmInfo());
+  }
+  }
 }
 
 AAPCC::CondCode AAPInstrInfo::getCondFromBranchOpcode(unsigned Opcode) {

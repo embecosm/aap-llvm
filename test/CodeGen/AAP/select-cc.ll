@@ -18,7 +18,7 @@ define i16 @foo(i16 %a, i16 *%b) {
   %tst2 = icmp ne i16 %val2, %val3
   %val4 = select i1 %tst2, i16 %val2, i16 %val3
 
-; CHECK:       .LBB0_4
+; CHECK:       .LBB0_2
 ; CHECK:         ldw $[[REG3:r[0-9]+]], [$r3, 0]
 ; CHECK:         bltu .[[TEST4:LBB0_[0-9]+]], $r2, $[[REG3]]
 ; CHECK:         bra .[[FIXUP3:LBB0_[0-9]+]]
@@ -53,7 +53,7 @@ define i16 @foo(i16 %a, i16 *%b) {
 ; CHECK:       .[[FIXUP1]]
 ; CHECK:         mov $r2, $[[REG1]]
 ; CHECK:         ldw $[[REG1]], [$r3, 0]
-; CHECK:         bne .LBB0_4, $r2, $[[REG1]]
+; CHECK:         bne .LBB0_2, $r2, $[[REG1]]
 
 ; CHECK:       .[[FIXUP2]]
 ; CHECK:         mov $r2, $[[REG2]]

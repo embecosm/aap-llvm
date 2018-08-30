@@ -43,6 +43,9 @@ public:
 
   MachineBasicBlock *getBranchDestBlock(const MachineInstr &MI) const override;
 
+  bool
+  reverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const override;
+
   bool analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
                      MachineBasicBlock *&FBB,
                      SmallVectorImpl<MachineOperand> &Cond,
@@ -52,6 +55,10 @@ public:
                         MachineBasicBlock *FBB, ArrayRef<MachineOperand> Cond,
                         const DebugLoc &DL,
                         int *BytesAdded = nullptr) const override;
+
+  unsigned insertIndirectBranch(MachineBasicBlock &MBB, MachineBasicBlock &TBB,
+                                const DebugLoc &DL, int64_t BrOffset,
+                                RegScavenger *RS) const override;
 
   unsigned removeBranch(MachineBasicBlock &MBB,
                         int *BytesRemoved = nullptr) const override;
@@ -76,6 +83,8 @@ public:
                             MachineBasicBlock::iterator MI, unsigned DestReg,
                             int FrameIndex, const TargetRegisterClass *RC,
                             const TargetRegisterInfo *TRI) const override;
+
+  unsigned getInstSizeInBytes(const MachineInstr &MI) const override;
 
   static AAPCC::CondCode getCondFromBranchOpcode(unsigned Opcode);
   static unsigned getBranchOpcodeFromCond(AAPCC::CondCode CC);
