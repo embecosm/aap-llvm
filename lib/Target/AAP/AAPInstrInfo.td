@@ -671,3 +671,4 @@ def : Pat<(subc GR64:$src1, GR64:$src2), (SUB_r GR64:$src1, GR64:$src2)>;
 def : Pat<(i16 (AAPwrapper tglobaladdr:$dst)), (MOVI_i16 tglobaladdr:$dst)>;
 def : Pat<(i16 (AAPwrapper texternalsym:$dst)), (MOVI_i16 texternalsym:$dst)>;
 def : Pat<(i16 (AAPwrapper tblockaddress:$dst)), (MOVI_i16 tblockaddress:$dst)>;
+def : Pat<(i16 (AAPwrapper tconstpool:$dst)), (MOVI_i16 tconstpool:$dst)>;

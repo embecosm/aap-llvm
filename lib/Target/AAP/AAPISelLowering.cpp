@@ -55,6 +55,7 @@ AAPTargetLowering::AAPTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::GlobalAddress, MVT::i16, Custom);
   setOperationAction(ISD::ExternalSymbol, MVT::i16, Custom);
   setOperationAction(ISD::BlockAddress, MVT::i16, Custom);
+  setOperationAction(ISD::ConstantPool, MVT::i16, Custom);
 
   // Use SHL & SRA to sign extend in register
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1, Expand);
@@ -162,6 +163,8 @@ SDValue AAPTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
     return LowerExternalSymbol(Op, DAG);
   case ISD::BlockAddress:
     return LowerBlockAddress(Op, DAG);
+  case ISD::ConstantPool:
+    return LowerConstantPool(Op, DAG);
   case ISD::SELECT_CC:
     return LowerSELECT_CC(Op, DAG);
   case ISD::BR_CC:
@@ -196,6 +199,18 @@ SDValue AAPTargetLowering::LowerBlockAddress(SDValue Op,
   const BlockAddress *BA = cast<BlockAddressSDNode>(Op)->getBlockAddress();
 
   SDValue Result = DAG.getTargetBlockAddress(BA, Ty);
+  return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), Ty, Result);
+}
+
+SDValue AAPTargetLowering::LowerConstantPool(SDValue Op,
+                                             SelectionDAG &DAG) const {
+  EVT Ty = getPointerTy(DAG.getDataLayout());
+  ConstantPoolSDNode *N = cast<ConstantPoolSDNode>(Op);
+  const Constant *CP = N->getConstVal();
+  unsigned Alignment = N->getAlignment();
+  int64_t Offset = N->getOffset();
+
+  SDValue Result = DAG.getTargetConstantPool(CP, Ty, Alignment, Offset);
   return DAG.getNode(AAPISD::Wrapper, SDLoc(Op), Ty, Result);
 }
 
