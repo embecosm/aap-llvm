@@ -7,7 +7,7 @@
 ; Check that frame index elimination behaves correctly, including in
 ; the case where the offset is > 10 bits.
 
-%struct.key_t = type [504 x i8]
+%struct.key_t = type [502 x i8]
 
 define i16 @test() nounwind {
 ; CHECK-FPELIM-LABEL: test:
@@ -16,7 +16,7 @@ define i16 @test() nounwind {
 ; CHECK-FPELIM:   stw [$r1, 508], $r3
 ; CHECK-FPELIM:   stw [$r1, 506], $r4
 ; CHECK-FPELIM:   stw [$r1, 504], $r5
-; CHECK-FPELIM:   addi $r5, $r1, 0
+; CHECK-FPELIM:   addi $r5, $r1, 2
 ; CHECK-FPELIM:   mov $r2, $r5
 ; CHECK-FPELIM:   movi $r3, 0
 ; CHECK-FPELIM:   movi $r4, 512

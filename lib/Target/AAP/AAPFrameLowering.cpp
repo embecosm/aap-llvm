@@ -19,6 +19,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
@@ -34,11 +35,27 @@ void AAPFrameLowering::determineCalleeSaves(MachineFunction &MF,
                                             BitVector &SavedRegs,
                                             RegScavenger *RS) const {
   TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
+
+  MachineFrameInfo &MFI = MF.getFrameInfo();
+
   // Unconditionally spill RA and FP only if the function uses a frame
   // pointer.
   if (hasFP(MF)) {
     SavedRegs.set(AAP::R0);
     SavedRegs.set(AAPRegisterInfo::getFramePtrRegister());
+  }
+
+  // Reserve emergency stack spill slots for RegScavenger if the stack frame
+  // might require virtual registers for addressing. If the stack frame has
+  // variable sized objects, we don't know in advance whether emergency spill
+  // slots are needed so assume that they are.
+  if (!isInt<9>(MFI.estimateStackSize(MF)) || MFI.hasVarSizedObjects()) {
+    const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
+    const TargetRegisterClass &RC = AAP::GR64RegClass;
+    unsigned Size = TRI->getSpillSize(RC);
+    unsigned Align = TRI->getSpillAlignment(RC);
+    int FI = MFI.CreateStackObject(Size, Align, false);
+    RS->addScavengingFrameIndex(FI);
   }
 }
 

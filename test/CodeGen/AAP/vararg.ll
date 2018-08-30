@@ -74,15 +74,15 @@ define i16 @va1_va_arg(i8* %fmt, ...) nounwind {
 ; pointer is correct
 define i16 @va1_va_arg_alloca(i8* %fmt, ...) nounwind {
 ; CHECK-FPELIM-LABEL: va1_va_arg_alloca:
-; CHECK-FPELIM:  subi $r1, $r1, 8
-; CHECK-FPELIM:  stw [$r1, 6], $r0
-; CHECK-FPELIM:  stw [$r1, 2], $r3
-; CHECK-FPELIM:  stw [$r1, 4], $r8
-; CHECK-FPELIM:  addi $r8, $r1, 8
-; CHECK-FPELIM:  addi $[[PTR:r[0-9]+]], $r1, 10
+; CHECK-FPELIM:  subi $r1, $r1, 10
+; CHECK-FPELIM:  stw [$r1, 8], $r0
+; CHECK-FPELIM:  stw [$r1, 4], $r3
+; CHECK-FPELIM:  stw [$r1, 6], $r8
+; CHECK-FPELIM:  addi $r8, $r1, 10
+; CHECK-FPELIM:  addi $[[PTR:r[0-9]+]], $r1, 12
 ; CHECK-FPELIM:  addi $[[PTR]], $[[PTR]], 2
 ; CHECK-FPELIM:  stw [$r1, 0], $[[PTR]]
-; CHECK-FPELIM:  ldw $[[ARG1:r[0-9]+]], [$r1, 10]
+; CHECK-FPELIM:  ldw $[[ARG1:r[0-9]+]], [$r1, 12]
 ; CHECK-FPELIM:  addi $[[SPADJ:r[0-9]+]], $[[ARG1]], 1
 ; CHECK-FPELIM:  movi $[[REG1:r[0-9]+]], -2
 ; CHECK-FPELIM:  and $[[SPADJ]], $[[SPADJ]], $[[REG1]]
@@ -90,22 +90,22 @@ define i16 @va1_va_arg_alloca(i8* %fmt, ...) nounwind {
 ; CHECK-FPELIM:  mov $r1, $[[SPADJ]]
 ; CHECK-FPELIM:  bal notdead, $r0
 ; CHECK-FPELIM:  mov $r2, $[[ARG1]]
-; CHECK-FPELIM:  subi $r1, $r8, 8
-; CHECK-FPELIM:  ldw $r8, [$r1, 4]
-; CHECK-FPELIM:  ldw $r3, [$r1, 2]
-; CHECK-FPELIM:  ldw $r0, [$r1, 6]
-; CHECK-FPELIM:  addi $r1, $r1, 8
+; CHECK-FPELIM:  subi $r1, $r8, 10
+; CHECK-FPELIM:  ldw $r8, [$r1, 6]
+; CHECK-FPELIM:  ldw $r3, [$r1, 4]
+; CHECK-FPELIM:  ldw $r0, [$r1, 8]
+; CHECK-FPELIM:  addi $r1, $r1, 10
 ;
 ; CHECK-WITHFP-LABEL: va1_va_arg_alloca:
-; CHECK-WITHFP:  subi $r1, $r1, 8
-; CHECK-WITHFP:  stw [$r1, 6], $r0
-; CHECK-WITHFP:  stw [$r1, 2], $r3
-; CHECK-WITHFP:  stw [$r1, 4], $r8
-; CHECK-WITHFP:  addi $r8, $r1, 8
-; CHECK-WITHFP:  addi $[[PTR:r[0-9]+]], $r1, 10
+; CHECK-WITHFP:  subi $r1, $r1, 10
+; CHECK-WITHFP:  stw [$r1, 8], $r0
+; CHECK-WITHFP:  stw [$r1, 4], $r3
+; CHECK-WITHFP:  stw [$r1, 6], $r8
+; CHECK-WITHFP:  addi $r8, $r1, 10
+; CHECK-WITHFP:  addi $[[PTR:r[0-9]+]], $r1, 12
 ; CHECK-WITHFP:  addi $[[PTR]], $[[PTR]], 2
 ; CHECK-WITHFP:  stw [$r1, 0], $[[PTR]]
-; CHECK-WITHFP:  ldw $[[ARG1:r[0-9]+]], [$r1, 10]
+; CHECK-WITHFP:  ldw $[[ARG1:r[0-9]+]], [$r1, 12]
 ; CHECK-WITHFP:  addi $[[SPADJ:r[0-9]+]], $[[ARG1]], 1
 ; CHECK-WITHFP:  movi $[[REG1:r[0-9]+]], -2
 ; CHECK-WITHFP:  and $[[SPADJ]], $[[SPADJ]], $[[REG1]]
@@ -113,11 +113,11 @@ define i16 @va1_va_arg_alloca(i8* %fmt, ...) nounwind {
 ; CHECK-WITHFP:  mov $r1, $[[SPADJ]]
 ; CHECK-WITHFP:  bal notdead, $r0
 ; CHECK-WITHFP:  mov $r2, $[[ARG1]]
-; CHECK-WITHFP:  subi $r1, $r8, 8
-; CHECK-WITHFP:  ldw $r8, [$r1, 4]
-; CHECK-WITHFP:  ldw $r3, [$r1, 2]
-; CHECK-WITHFP:  ldw $r0, [$r1, 6]
-; CHECK-WITHFP:  addi $r1, $r1, 8
+; CHECK-WITHFP:  subi $r1, $r8, 10
+; CHECK-WITHFP:  ldw $r8, [$r1, 6]
+; CHECK-WITHFP:  ldw $r3, [$r1, 4]
+; CHECK-WITHFP:  ldw $r0, [$r1, 8]
+; CHECK-WITHFP:  addi $r1, $r1, 10
   %va = alloca i8*, align 2
   %1 = bitcast i8** %va to i8*
   call void @llvm.va_start(i8* %1)
