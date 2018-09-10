@@ -33,6 +33,8 @@ void LowerAAPMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
                                   const AsmPrinter &AP);
 
 FunctionPass *createAAPISelDag(AAPTargetMachine &TM);
+
+FunctionPass *createAAPShortInstrPeepholePass(AAPTargetMachine &TM);
 }
 
 #endif

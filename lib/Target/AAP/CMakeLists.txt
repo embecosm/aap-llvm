@@ -22,6 +22,7 @@ add_llvm_target(AAPCodeGen
   AAPMachineFunctionInfo.cpp
   AAPMCInstLower.cpp
   AAPRegisterInfo.cpp
+  AAPShortInstrPeephole.cpp
   AAPSubtarget.cpp
   AAPTargetMachine.cpp
 )
